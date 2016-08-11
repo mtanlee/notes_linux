@@ -1,0 +1,185 @@
+MySQL数据库修复方法(MyISAM/InnoDB)
+
+这篇文章主要为大家整理了7条修复MySQL数据库的方法，当简单的重启对数据库不起作用，或者有表崩溃时,需要的朋友可以参考下
+
+在网上找了篇MySQL的技术文章，感觉不错，把它翻译过来共享下。 
+ 
+原文作者：Mike Peters 
+ 
+我整理了7条修复MySQL数据库的方法，当简单的重启对数据库不起作用，或者有表崩溃时。 
+ 
+简单的MySQL重启： 
+ 
+/usr/local/mysql/bin/mysqladmin -uUSERNAME -pPASSWORD shutdown 
+/usr/local/mysql/bin/mysqld_safe & 
+ 
+1、MyISAM表崩溃 
+ 
+MySQL数据库允许不同的表使用不同的存储引擎。它用来存储与检索数据。较流行的存储引擎是MyISAM与InnoDB。 
+ 
+MyISAM表最终“将”崩溃。这是个不争的事实。 
+ 
+幸运的是，在多数情况下，MyISAM表崩溃很容易修复。 
+ 
+修复单一表，连接你的数据库执行： 
+ 
+repair TABLENAME 
+ 
+修复所有的表，执行： 
+ 
+/usr/local/mysql/bin/mysqlcheck --all-databases -uUSERNAME -pPASSWORD -r 
+ 
+多数情况，只有当你浏览日志文件时，才知道MyISAM表崩溃了。 
+我强烈建议在你的/etc/my.cnf配置文件中添加此行。一旦表崩溃它将进行自动修复。 
+ 
+[mysqld] 
+myisam-recover=backup,force 
+ 
+如果这个也不管用，还有其他的方法可以试试。 
+ 
+2、多实例MySQL 
+ 
+当你重启MySQL后，进程马上死掉，这很常见。 
+查看日志文件，它会告诉你，另一个MySQL实例可能正在运行。 
+ 
+停止所有MySQL实例： 
+ 
+/usr/local/mysql/bin/mysqladmin -uUSERNAME -pPASSWORD shutdown 
+killall mysql 
+killall mysqld 
+ 
+现在重启数据库，将只有一个实例在运行。 
+ 
+3、改变InnoDB日志设置 
+一旦MySQL数据库有在运行InnoDB引擎，你就一定不能修改/etc/my.cnf文件中如下几行： 
+ 
+datadir = /usr/local/mysql/data 
+innodb_data_home_dir = /usr/local/mysql/data 
+innodb_data_file_path = ibdata1:10M:autoextend 
+innodb_log_group_home_dir = /usr/local/mysql/data 
+innodb_log_files_in_group = 2 
+innodb_log_file_size = 5242880 
+ 
+InnoDB日志文件大小一旦确定就不能修改。如果改变了，数据库将不能启动。 
+ 
+4、MySQL host表丢失 
+ 
+有见过几次这样的情况。可能是一些异想不到的MyISAM bug。 
+ 
+轻松将其修复如下： 
+ 
+/usr/local/bin/mysql_install_db 
+ 
+5、不正常的MyISAM自动增长(auto_increment) 
+ 
+如果MyISAM表自增计数变得紊乱，你就不能再插入新的纪录。 
+通常你可以告诉自增计数器它现在工作不正常，通过将最后一条纪录的自增字段设为-1。 
+ 
+解决问题-找到最后一条自增记录的有效值(执行如下命令) 
+ 
+SELECT max(id) from tablename 
+ 
+然后更新此表的自增计数器，如下： 
+ 
+ALTER TABLE tablename AUTO_INCREMENT = id+1 
+ 
+6、太多连接数 
+ 
+数据库变得相当繁忙，因为连接数比它能处理的多。而且现在你都不能连接上你的数据库。 
+首先，停止数据库： 
+ 
+/usr/local/mysql/bin/mysqladmin -uUSERNAME -pPASSWORD shutdown 
+ 
+如果上条命令不管用，可以试试 "killall mysql" 和 "killall mysqld" 
+当数据库停止后，编辑/etc/my.cnf文件，增加连接数。不要痴狂的增加这个数字，否则你会把你的整台机器搞崩。
+ 
+在一台专用数据库机器上，我们通常用： 
+ 
+max_connections = 200 
+wait_timeout = 100 
+ 
+试着重启数据库看看是否有帮助。 
+如果你被查询弄的措手不及，需要连接数据库进行表修改操作，那么在/etc/my.cnf文件中设置一个不同的端口号，开启数据库，进行修改操作。然后将端口修改回来(master-port = 3306)再重启。 
+ 
+7、InnoDB表崩溃 
+ 
+InnoDB表是我最钟爱的。事物缓存，可靠,不像MyISAM，InnoDB支持对同一表的并发写。 
+ 
+InnoDB的内部恢复机制也相当不错。如果数据库崩溃，InnoDB将尝试进行修复，通过从最后一个时间戳开始运行日志文件。大多数情况都会成功，整个过程是透明的。 
+ 
+不过，如果InnoDB自行修复失败，那么“整个”数据库将不能启动。MySQL将会发出一个错误信息并退出，你的整个库将处于离线状态。你可以不断尝试重启数据库，但是如果修复进程失败，数据库将拒绝启动。 
+ 
+这就是为什么需要运行master/master当使用InnoDB时——当一个master宕掉时，还有一台冗余master做后备。 
+ 
+在继续操作前，先浏览下MySQL的日志文件，确定数据库不是因为InnoDB表的崩溃而崩溃。 
+ 
+有一种方法是更新InnoDB的日志文件计数器以跳过引起崩溃的查询，但是经验告诉我们这不是个好方法。这种情况下，将造成数据的不一致性而且会经常使主从复制中断。 
+ 
+一旦因InnoDB崩溃造成数据库无法启动，你就应该按如下五个步骤处理问题： 
+ 
+第一：添加此行到/etc/my.cnf文件中： 
+ 
+[mysqld] 
+innodb_force_recovery = 4 
+ 
+第二：重启MySQL。你的数据库现在将启动，但是在innodb_force_recovery参数作用下，所有的插入与更新操作将被忽略。 
+ 
+第三：导出所有的表(Dump all tables) 
+ 
+第四：关闭数据库，删除所有的数据文件。运行mysql_install_db 创建默认MySQL表。 
+ 
+第五：从/etc/my.cnf文件中去掉innodb_force_recovery参数，重启数据库。(库现在应该能正常启动) 
+ 
+第六：从备份文件中恢复所有数据。 
+ 
+续： 
+最近遇到了个让人棘手的任务——修复一个失败的InnoDB数据库。这个数据库因崩溃而无法启动。 
+ 
+第一步将InnoDB在force-recovery模式下开启，此时InnoDB虽开启了但是将忽略所有更新(UPDATEs)与插入(INSERTs)操作。 
+ 
+在/etc/my.cnf文件中添加此行： 
+ 
+innodb_force_recovery = 2 
+ 
+现在重启数据库： 
+ 
+/usr/local/bin/mysqld_safe & 
+ 
+(注意：如果MySQL没有启动，继续增加 innodb_force_recovery 的数值直到将参数值设为8( innodb_force_recovery =) 
+ 
+将所有数据保存到临时文件alldb.sql(下个命令需要花一定时间)： 
+ 
+mysqldump --force --compress --triggers --routines --create-options -uUSERNAME -pPASSWORD --all-databases > /usr/alldb.sql 
+ 
+再次关闭数据库： 
+ 
+mysqladmin -uUSERNAME -pPASSWORD shutdown 
+ 
+删除数据库目录。(注意：我的数据目录在/usr/local/var下。你的设置有可能不同，确保删除的是正确的文件夹。) 
+ 
+rm -fdr /usr/local/var 
+ 
+ 
+重建数据库文件夹，安装MySQL基础表 
+ 
+mkdir /usr/local/var 
+chown -R mysql:mysql /usr/local/var 
+/usr/local/bin/mysql_install_db 
+chown -R mysql:mysql /usr/local/var 
+ 
+ 
+从/etc/my.cnf文件中删除innodb_force_recovery ，重启数据库： 
+ 
+/usr/local/bin/mysqld_safe & 
+ 
+ 
+导入所有备份文件(下一命令需要花一段时间)： 
+ 
+mysql -uroot --compress < /usr/alldb.sql 
+ 
+ 
+最后，刷新MySQL的权限(因为我们也更新了MySQL的表) 
+ 
+/usr/local/bin/mysqladmin -uroot flush-privileges 
+ 
+注意：为了得到最好的结果，添加port=8819(或任何其他随机端口)到/etc/my.cnf文件中在重启MySQL之前，然后将--port=8819添加到mysqldump命令中。这种方法避免了MySQL数据库过于系繁忙当修复进程正在进行时。
