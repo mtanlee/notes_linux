@@ -1,0 +1,22708 @@
+ API built around the Process type:
+	http://golang.org/pkg/os/#Process
+
+The order of arguments to template.Execute has been reversed to be consistent
+the notion of "destination first", as with io.Copy, fmt.Fprint, and others.
+
+Gotest now works for package main in directories using Make.cmd-based makefiles.
+
+The memory allocation runtime problems from the last release are not completely
+fixed.  The virtual memory exhaustion problems encountered by people using
+ulimit -v have been fixed, but there remain known garbage collector problems
+when using GOMAXPROCS > 1.
+
+Other changes:
+* 5l: stopped generating 64-bit eor.
+* 8l: more work on plan9 support (thanks Yuval Pavel Zholkover).
+* archive/zip: handle files with data descriptors.
+* arm: working peep-hole optimizer.
+* asn1: marshal true as 255, not 1.
+* buffer.go: minor optimization, expanded comment.
+* build: drop syslog on DISABLE_NET_TESTS=1 (thanks Gustavo Niemeyer),
+       allow clean.bash to work on fresh checkout,
+       change "all tests pass" message to be more obvious,
+       fix spaces in GOROOT (thanks Christopher Nielsen).
+* bytes: fix bug in buffer.ReadBytes (thanks Evan Shaw).
+* 5g: better int64 code,
+       don't use MVN instruction.
+* cgo: don't run cgo when not compiling (thanks Gustavo Niemeyer),
+       fix _cgo_run timestamp file order (thanks Gustavo Niemeyer),
+       fix handling of signed enumerations (thanks Gustavo Niemeyer),
+       os/arch dependent #cgo directives (thanks Gustavo Niemeyer),
+       rename internal f to avoid conflict with possible C global named f.
+* codereview: fix hgpatch on windows (thanks Yasuhiro Matsumoto),
+       record repository, base revision,
+       use cmd.communicate (thanks Yasuhiro Matsumoto).
+* container/ring: replace Iter() with Do().
+* crypto/cipher: add resync open to OCFB mode.
+* crypto/openpgp/armor: bug fixes.
+* crypto/openpgp/packet: new subpackage.
+* crypto/tls: load a chain of certificates from a file,
+       select best cipher suite, not worst.
+* crypto/x509: add support for name constraints.
+* debug/pe: ImportedSymbols fixes (thanks Wei Guangjing).
+* doc/code: update to reflect that package names need not be unique.
+* doc/codelab/wiki: a bunch of fixes (thanks Andrey Mirtchovski).
+* doc/install: update for new versions of Mercurial.
+* encoding/line: fix line returned after EOF.
+* flag: allow hexadecimal (0xFF) and octal (0377) input for integer flags.
+* fmt.Scan: scan binary-exponent floating format, 2.4p-3,
+       hexadecimal (0xFF) and octal (0377) integers.
+* fmt: document %%; also %b for floating point.
+* gc, ld: detect stale or incompatible object files,
+       package name main no longer reserved.
+* gc: correct receiver in method missing error (thanks Lorenzo Stoakes),
+       correct rounding of denormal constants (thanks Eoghan Sherry),
+       select receive bug fix.
+* go/printer, gofmt: smarter handling of multi-line raw strings.
+* go/printer: line comments must always end in a newline,
+       remove notion of "Styler", remove HTML mode.
+* gob: allow Decode(nil) and have it just discard the next value.
+* godoc: use IsAbs to test for absolute paths (fix for win32) (thanks Yasuhiro Matsumoto),
+       don't hide package lookup error if there's no command with the same name.
+* gotest: enable unit tests for main programs.
+* http: add Server type supporting timeouts,
+       add pipelining to ClientConn, ServerConn (thanks Petar Maymounkov),
+       handle unchunked, un-lengthed HTTP/1.1 responses.
+* io: add RuneReader.
+* json: correct Marshal documentation.
+* netchan: graceful handling of closed connection (thanks Graham Miller).
+* os: implement new Process API (thanks Alex Brainman).
+* regexp tests: make some benchmarks more meaningful.
+* regexp: add support for matching against text read from RuneReader interface.
+* rpc: make more tolerant of errors, properly discard values (thanks Roger Peppe).
+* runtime: detect failed thread creation on Windows,
+       faster allocator, garbage collector,
+       fix virtual memory exhaustion,
+       implemented windows console ctrl handler (SIGINT) (thanks Hector Chu),
+       more detailed panic traces, line number work,
+       improved Windows callback handling (thanks Hector Chu).
+* spec: adjust notion of Assignability,
+       allow import of packages named main,
+       clarification re: method sets of newly declared pointer types,
+       fix a few typos (thanks Anthony Martin),
+       fix Typeof() return type (thanks Gustavo Niemeyer),
+       move to Unicode 6.0.
+* sync: diagnose Unlock of unlocked Mutex,
+       new Waitgroup type (thanks Gustavo Niemeyer).
+* syscall: add SetsockoptIpMreq (thanks Dave Cheney),
+       add sockaddr_dl, sysctl with routing message support for darwin, freebsd (thanks Mikio Hara),
+       do not use NULL for zero-length read, write,
+       implement windows version of Fsync (thanks Alex Brainman),
+       make ForkExec acquire the ForkLock under windows (thanks Hector Chu),
+       make windows API return errno instead of bool (thanks Alex Brainman),
+       remove obsolete socket IO control (thanks Mikio Hara).
+* template: add simple formatter chaining (thanks Kyle Consalus),
+       allow a leading '*' to indirect through a pointer.
+* testing: include elapsed time in test output
+* windows: replace remaining __MINGW32__ instances with _WIN32 (thanks Joe Poirier).
+</pre>
+
+<h2 id="2011-02-01">2011-02-01</h2>
+
+<pre>
+This release includes significant changes to channel operations and minor
+changes to the log package. Your code will require modification if it uses
+channels in non-blocking communications or the log package's Exit functions.
+
+Non-blocking channel operations have been removed from the language.
+The equivalent operations have always been possible using a select statement
+with a default clause.  If a default clause is present in a select, that clause
+will execute (only) if no other is ready, which allows one to avoid blocking on
+a communication.
+
+For example, the old non-blocking send operation,
+
+	if ch &lt;- v {
+		// sent
+	} else {
+		// not sent
+	}
+
+should be rewritten as,
+
+	select {
+	case ch &lt;- v:
+		// sent
+	default:
+		// not sent
+	}
+
+Similarly, this receive,
+
+	v, ok := &lt;-ch
+	if ok {
+		// received
+	} else {
+		// not received
+	}
+
+should be rewritten as,
+
+	select {
+	case v := &lt;-ch:
+		// received
+	default:
+		// not received
+	}
+
+This change is a prelude to redefining the 'comma-ok' syntax for a receive.
+In a later release, a receive expression will return the received value and an
+optional boolean indicating whether the channel has been closed. These changes
+are being made in two stages to prevent this semantic change from silently
+breaking code that uses 'comma-ok' with receives.
+There are no plans to have a boolean expression form for sends.
+
+Sends to a closed channel will panic immediately. Previously, an unspecified
+number of sends would fail silently before causing a panic.
+
+The log package's Exit, Exitf, and Exitln functions have been renamed Fatal,
+Fatalf, and Fatalln respectively. This brings them in line with the naming of
+the testing package. 
+
+The port to the "tiny" operating system has been removed. It is unmaintained
+and untested. It was a toy to show that Go can run on raw hardware and it
+served its purpose. The source code will of course remain in the repository
+history, so it could be brought back if needed later.
+
+This release also changes some of the internal structure of the memory
+allocator in preparation for other garbage collector changes. 
+If you run into problems, please let us know.
+There is one known issue that we are aware of but have not debugged yet:
+	http://code.google.com/p/go/issues/detail?id=1464&amp;.
+
+Other changes in this release:
+* 5l: document -F, force it on old ARMs (software floating point emulation)
+* 6g: fix registerization of temporaries (thanks Eoghan Sherry),
+        fix uint64(uintptr(unsafe.Pointer(&amp;x))).
+* 6l: Relocate CMOV* instructions (thanks Gustavo Niemeyer),
+        windows/amd64 port (thanks Wei Guangjing).
+* 8l: add PE dynexport, emit DWARF in Windows PE, and
+        code generation fixes (thanks Wei Guangjing).
+* bufio: make Flush a no-op when the buffer is empty.
+* bytes: Add Buffer.ReadBytes, Buffer.ReadString (thanks Evan Shaw).
+* cc: mode to generate go-code for types and variables.
+* cgo: define CGO_CFLAGS and CGO_LDFLAGS in Go files (thanks Gustavo Niemeyer),
+        windows/386 port (thanks Wei Guangjing).
+* codereview: fix windows (thanks Hector Chu),
+        handle file patterns better,
+        more ASCII vs. Unicode nonsense.
+* crypto/dsa: add support for DSA.
+* crypto/openpgp: add s2k.
+* crypto/rand: use defer to unlock mutex (thanks Anschel Schaffer-Cohen).
+* crypto/rsa: correct docstring for SignPKCS1v15.
+* crypto: add package, a common place to store identifiers for hash functions.
+* doc/codelab/wiki: update to work with template changes, add to run.bash.
+* doc/spec: clarify address operators.
+* ebnflint: exit with non-zero status on error.
+* encoding/base32: new package (thanks Miek Gieben).
+* encoding/line: make it an io.Reader too.
+* exec: use custom error for LookPath (thanks Gustavo Niemeyer).
+* fmt/doc: define width and precision for strings.
+* gc: clearer error for struct == struct,
+        fix send precedence,
+        handle invalid name in type switch,
+        special case code for single-op blocking and non-blocking selects.
+* go/scanner: fix build (adjust scanner EOF linecount).
+* gob: better debugging, commentary,
+        make nested interfaces work,
+        report an error when encoding a non-empty struct with no public fields.
+* godoc: full text index for whitelisted non-Go files,
+        show line numbers for non-go files (bug fix).
+* gofmt -r: match(...) arguments may be nil; add missing guards.
+* govet: add Panic to the list of functions.
+* http: add host patterns (thanks Jose Luis VÃ¡zquez GonzÃ¡lez),
+        follow relative redirect in Get.
+* json: handle capital floating point exponent (1E100) (thanks Pieter Droogendijk).
+* ld: add -I option to set ELF interpreter,
+        more robust decoding of reflection type info in generating dwarf.
+* lib9: update to Unicode 6.0.0.
+* make.bash: stricter selinux test (don't complain unless it is enabled).
+* misc/vim: Import/Drop commands (thanks Gustavo Niemeyer),
+        set 'syntax sync' to a large value (thanks Yasuhiro Matsumoto).
+* net: fix race condition in test,
+        return cname in LookupHost.
+* netchan: avoid race condition in test,
+        fixed documentation for import (thanks Anschel Schaffer-Cohen).
+* os: add ETIMEDOUT (thanks Albert Strasheim).
+* runtime: generate Go defs for C types,
+        implementation of callback functions for windows (thanks Alex Brainman),
+        make Walk web browser example work (thanks Hector Chu),
+        make select fairer,
+        prefer fixed stack allocator over general memory allocator,
+        simpler heap map, memory allocation.
+* scanner: fix Position returned by Scan, Pos,
+        don't read ahead in Init.
+* suffixarray: use binary search for both ends of Lookup (thanks Eric Eisner).
+* syscall: add missing network interface constants (thanks Mikio Hara).
+* template: treat map keys as zero, not non-existent (thanks Roger Peppe).
+* time: allow cancelling of After events (thanks Roger Peppe),
+        support Solaris zoneinfo directory.
+* token/position: added SetLinesForContent.
+* unicode: update to unicode 6.0.0.
+* unsafe: add missing case to doc for Pointer.
+</pre>
+
+<h2 id="2011-01-20">2011-01-20</h2>
+
+<pre>
+This release removes the float and complex types from the language.
+
+The default type for a floating point literal is now float64, and
+the default type for a complex literal is now complex128.
+
+Existing code that uses float or complex must be rewritten to
+use explicitly sized types.
+
+The two-argument constructor cmplx is now spelled complex.
+</pre>
+
+<h2 id="2011-01-19">2011-01-19</h2>
+
+<pre>
+The 5g (ARM) compiler now has registerization enabled.  If you discover it
+causes bugs, use 5g -N to disable the registerizer and please let us know.
+
+The xml package now allows the extraction of nested XML tags by specifying
+struct tags of the form "parent>child". See the XML documentation for an
+example: http://golang.org/pkg/xml/
+
+* 5a, 5l, 6a, 6l, 8a, 8l: handle out of memory, large allocations (thanks Jeff R. Allen).
+* 8l: pe changes (thanks Alex Brainman).
+* arm: fixes and improvements.
+* cc: fix vlong condition.
+* cgo: add complex float, complex double (thanks Sebastien Binet),
+        in _cgo_main.c define all provided symbols as functions.
+* codereview: don't mail change lists with no files (thanks Ryan Hitchman).
+* crypto/cipher: add OFB mode.
+* expvar: add Float.
+* fmt: document %X of string, []byte.
+* gc, runtime: make range on channel safe for multiple goroutines.
+* gc: fix typed constant declarations (thanks Anthony Martin).
+* go spec: adjust language for constant typing.
+* go/scanner: Make Init take a *token.File instead of a *token.FileSet.
+* godoc: bring back "indexing in progress" message,
+        don't double HTML-escape search result snippets,
+        enable qualified identifiers ("math.Sin") as query strings again,
+        peephole optimization for generated HTML,
+        remove tab before formatted section.
+* gofmt, go/printer: do not insert extra line breaks where they may break the code.
+* http: fix Content-Range and Content-Length in response (thanks Clement Skau),
+        fix scheme-relative URL parsing; add ParseRequestURL,
+        handle HEAD requests correctly,
+        support for relative URLs.
+* math: handle denormalized numbers in Frexp, Ilogb, Ldexp, and Logb (thanks Eoghan Sherry).
+* net, syscall: return source address in Recvmsg (thanks Albert Strasheim).
+* net: add LookupAddr (thanks Kyle Lemons),
+        add unixpacket (thanks Albert Strasheim),
+        avoid nil dereference if /etc/services can't be opened (thanks Corey Thomasson),
+        implement windows timeout (thanks Wei Guangjing).
+* netchan: do not block sends; implement flow control (thanks Roger Peppe).
+* regexp: reject bare '?'. (thanks Ben Lynn)
+* runtime/cgo: don't define crosscall2 in dummy _cgo_main.c.
+* runtime/debug: new package for printing stack traces from a running goroutine.
+* runtime: add per-pause gc stats,
+        fix arm reflect.call boundary case,
+        print signal information during panic.
+* spec: specify that int and uint have the same size.
+* syscall: correct WSTOPPED on OS X,
+        correct length of GNU/Linux abstract Unix domain sockaddr,
+        correct length of SockaddrUnix.
+* tutorial: make stdin, stdout, stderr work on Windows.
+* windows: implement exception handling (thanks Hector Chu).
+</pre>
+
+<h2 id="2011-01-12">2011-01-12</h2>
+
+<pre>
+The json, gob, and template packages have changed, and code that uses them
+may need to be updated after this release. They will no longer read or write
+unexported struct fields. When marshalling a struct with json or gob the
+unexported fields will be silently ignored. Attempting to unmarshal json or
+gob data into an unexported field will generate an error. Accessing an
+unexported field from a template will cause the Execute function to return
+an error.
+
+Godoc now supports regular expression full text search, and this
+functionality is now available on golang.org.
+
+Other changes:
+* arm: initial cut at arm optimizer.
+* bytes.Buffer: Fix bug in UnreadByte.
+* cgo: export unsafe.Pointer as void*, fix enum const conflict,
+        output alignment fix (thanks Gustavo Niemeyer).
+* crypto/block: mark as deprecated.
+* crypto/openpgp: add error and armor.
+* crypto: add twofish package (thanks Berengar Lehr).
+* doc/spec: remove Maxalign from spec.
+* encoding/line: new package for reading lines from an io.Reader.
+* go/ast: correct end position for Index and TypeAssert expressions.
+* gob: make (en|dec)code(Ui|I)nt methods rather than functions.
+* godefs: better handling of enums.
+* gofmt: don't attempt certain illegal rewrites,
+        rewriter matches apply to expressions only.
+* goinstall: preliminary support for cgo packages (thanks Gustavo Niemeyer).
+* hg: add cgo/_cgo_* to .hgignore.
+* http: fix text displayed in Redirect.
+* ld: fix exported dynamic symbols on Mach-O,
+        permit a Mach-O symbol to be exported in the dynamic symbol table.
+* log: add methods for exit and panic.
+* net: use closesocket api instead of CloseHandle on Windows (thanks Alex Brainman).
+* netchan: make fields exported for gob change.
+* os: add Sync to *File, wraps syscall.Fsync.
+* runtime/cgo: Add callbacks to support SWIG.
+* runtime: Restore scheduler stack position if cgo callback panics.
+* suffixarray: faster creation algorithm (thanks Eric Eisner).
+* syscall: fix mksysnum_linux.sh (thanks Anthony Martin).
+* time.NewTicker: panic for intervals &lt;= 0.
+* time: add AfterFunc to call a function after a duration (thanks Roger Peppe),
+        fix tick accuracy when using multiple Tickers (thanks Eoghan Sherry).</pre>
+
+<h2 id="2011-01-06">2011-01-06</h2>
+
+<pre>
+This release includes several fixes and changes:
+
+* build: Make.pkg: use installed runtime.h for cgo.
+* cgo: disallow use of C.errno.
+* crypto/cipher: fix OCFB,
+        make NewCBCEncrypter return BlockMode.
+* doc: 6l: fix documentation of -L flag,
+        add golanguage.ru to foreign-language doc list,
+        effective go: explain the effect of repanicking better,
+        update Effective Go for template API change,
+        update contribution guidelines to prefix the change description.
+* encoding/binary: reject types with implementation-dependent sizes (thanks Patrick Gavlin).
+* exp/evalsimple fix handling of slices like s[:2] (thanks Sebastien Binet).
+* fmt: made format string handling more efficient,
+        normalize processing of format string.
+* gc: return constant floats for parts of complex constants (thanks Anthony Martin),
+        rewrite complex /= to l = l / r (thanks Patrick Gavlin),
+        fix &amp;^=.
+* go/ast: provide complete node text range info.
+* gob: generate a better error message in one confusing place.
+* godoc: fix godoc -src (thanks Icarus Sparry).
+* goinstall: add -clean flag (thanks Kyle Lemons),
+        add checkout concept (thanks Caine Tighe),
+        fix -u for bzr (thanks Gustavo Niemeyer).
+* http: permit empty Reason-Phrase in response Status-Line.
+* io: fix Copyn EOF handling.
+* net: fix close of Listener (thanks Michael Hoisie).
+* regexp: fix performance bug, make anchored searches fail fast,
+        fix prefix bug.
+* runtime/cgo: fix stackguard on FreeBSD/amd64 (thanks Anthony Martin).
+* strconv: atof: added 'E' as valid token for exponent (thanks Stefan Nilsson),
+        update ftoa comment for 'E' and 'G'.
+* strings: fix description of FieldsFunc (thanks Roger Peppe).
+* syscall: correct Linux Splice definition,
+        make Access second argument consistently uint32.
+</pre>
+
+<h2 id="2010-12-22">2010-12-22</h2>
+
+<pre>
+A small release this week. The most significant change is that some 
+outstanding cgo issues were resolved.
+
+* cgo: handle references to symbols in shared libraries.
+* crypto/elliptic: add serialisation and key pair generation.
+* crypto/hmac: add HMAC-SHA256 (thanks Anthony Martin).
+* crypto/tls: add ECDHE support ("Elliptic Curve Diffie Hellman Ephemeral"),
+        add support code for generating handshake scripts for testing.
+* darwin, freebsd: ignore write failure (during print, panic).
+* exp/draw: remove Border function.
+* expvar: quote StringFunc output, same as String output.
+* hash/crc64: fix typo in Sum.
+* ld: allow relocations pointing at ELF .bss symbols, ignore stab symbols.
+* misc/cgo/life: fix, add to build.
+* regexp: add HasMeta, HasOperator, and String methods to Regexp.
+* suffixarray: implemented FindAllIndex regexp search.
+* test/bench: update numbers for regex-dna after speedup to regexp.
+* time: explain the formats a little better.
+</pre>
+
+<h2 id="2010-12-15">2010-12-15</h2>
+
+<pre>
+Package crypto/cipher has been started, to replace crypto/block.
+As part of the changes, rc4.Cipher's XORKeyStream method signature has changed from
+        XORKeyStream(buf []byte)
+to
+        XORKeyStream(dst, src []byte)
+to implement the cipher.Stream interface.  If you use crypto/block, you'll need
+to switch to crypto/cipher once it is complete.
+
+Package smtp's StartTLS now takes a *tls.Config argument.
+
+Package reflect's ArrayCopy has been renamed to Copy.  There are new functions
+Append and AppendSlice.
+
+The print/println bootstrapping functions now write to standard error.
+To write to standard output, use fmt.Print[ln].
+
+A new tool, govet, has been added to the Go distribution. Govet is a static
+checker for Go programs. At the moment, and for the foreseeable future,
+it only checks arguments to print calls.
+
+The cgo tool for writing Go bindings for C code has changed so that it no
+longer uses stub .so files (like cgo_stdio.so).  Cgo-based packages using the
+standard Makefiles should build without any changes.  Any alternate build
+mechanisms will need to be updated.
+
+The C and Go compilers (6g, 6c, 8g, 8c, 5g, 5c) now align structs according to
+the maximum alignment of the fields they contain; previously they aligned
+structs to word boundaries.  This may break non-cgo-based code that attempts to
+mix C and Go.
+
+NaCl support has been removed. The recent linker changes broke NaCl support
+a month ago, and there are no known users of it.
+If necessary, the NaCl code can be recovered from the repository history.
+
+* 5g/8g, 8l, ld, prof: fix output of 32-bit values (thanks Eoghan Sherry).
+* [68]l and runtime: GDB support for interfaces and goroutines.
+* 6l, 8l: support for linking ELF and Mach-O .o files.
+* all: simplify two-variable ranges with unused second variable (thanks Ryan Hitchman).
+* arm: updated soft float support.
+* codereview: keep quiet when not in use (thanks Eoghan Sherry).
+* compress/flate: implement Flush, equivalent to zlib's Z_SYNC_FLUSH.
+* crypto/tls: use rand.Reader in cert generation example (thanks Anthony Martin).
+* dashboard: fix project tag filter.
+* debug/elf, debug/macho: add ImportedLibraries, ImportedSymbols.
+* doc/go_mem: goroutine exit is not special.
+* event.go: another print glitch from gocheck.
+* gc: bug fixes,
+        syntax error for incomplete chan type (thanks Ryan Hitchman).
+* go/ast: fix ast.Walk.
+* gob: document the byte count used in the encoding of values,
+        fix bug sending zero-length top-level slices and maps,
+        Register should use the original type, not the indirected one.
+* godashboard: support submitting projects with non-ascii names (thanks Ryan Hitchman)
+* godefs: guard against structs with pad fields
+* godoc: added textual search, to enable use -fulltext flag.
+* gofmt: simplify "x, _ = range y" to "x = range y".
+* gopack: allow ELF/Mach-O objects in .a files without clearing allobj.
+* go/token,scanner: fix comments so godoc aligns properly.
+* govet: on error continue to the next file (thanks Christopher Wedgwood).
+* html: improved parsing.
+* http: ServeFile handles Range header for partial requests.
+* json: check for invalid UTF-8.
+* ld: allow .o files with no symbols,
+        reading of ELF object files,
+        reading of Mach-O object files.
+* math: change float64 bias constant from 1022 to 1023 (thanks Eoghan Sherry),
+        rename the MinFloat constant to SmallestNonzeroFloat.
+* nm: silently ignore .o files in .a files.
+* os: fix test of RemoveAll.
+* os/inotify: new package (thanks Balazs Lecz).
+* os: make MkdirAll work with symlinks (thanks Ryan Hitchman).
+* regexp: speed up by about 30%; also simplify code for brackets.
+* runtime/linux/386: set FPU to 64-bit precision.
+* runtime: remove paranoid mapping at 0.
+* suffixarray: add Bytes function.
+* syscall: add network interface constants for linux/386, linux/amd64 (thanks Mikio Hara).
+* syscall/windows: restrict access rights param of OpenProcess(),
+        remove \r and \n from error messages (thanks Alex Brainman).
+* test/bench: fixes to timing.sh (thanks Anthony Martin).
+* time: fix bug in Ticker: shutdown using channel rather than memory.
+* token/position: provide FileSet.File, provide files iterator.
+* xml: disallow invalid Unicode code points (thanks Nigel Kerr).
+</pre>
+
+<h2 id="2010-12-08">2010-12-08</h2>
+
+<pre>
+This release includes some package changes. If you use the crypto/tls or
+go/parser packages your code may require changes.
+
+The crypto/tls package's Dial function now takes an additional *Config
+argument.  Most uses will pass nil to get the same default behavior as before.
+See the documentation for details:
+        http://golang.org/pkg/crypto/tls/#Config
+        http://golang.org/pkg/crypto/tls/#Dial
+
+The go/parser package's ParseFile function now takes a *token.FileSet as its
+first argument. This is a pointer to a data structure used to store
+position information. If you don't care about position information you
+can pass "token.NewFileSet()". See the documentation for details:
+        http://golang.org/pkg/go/parser/#ParseFile
+
+This release also splits the patent grant text out of the LICENSE file into a
+separate PATENTS file and changes it to be more like the WebM grant.
+These clarifications were made at the request of the Fedora project.
+
+Other changes:
+* [68]l: generate debug info for builtin structured types, prettyprinting in gdb.
+* 8l: add dynimport to import table in Windows PE (thanks Wei Guangjing).
+* 8l, runtime: fix Plan 9 386 build (thanks Yuval Pavel Zholkover).
+* all: fix broken calls to Printf etc.
+* bufio: make Reader.Read implement io.Reader semantics (thanks Roger Peppe).
+* build: allow archiver to be specified by HOST_AR (thanks Albert Strasheim).
+* bytes: add Buffer.UnreadRune, Buffer.UnreadByte (thanks Roger Peppe).
+* crypto/tls: fix build of certificate generation example (thanks Christian Himpel).
+* doc/install: describe GOHOSTOS and GOHOSTARCH.
+* errchk: accept multiple source files (thanks Eoghan Sherry).
+* exec.LookPath: return os.PathError instad of os.ENOENT (thanks Michael Hoisie)..
+* flag: fix format error in boolean error report,
+        handle multiple calls to flag.Parse.
+* fmt: add %U format for standard Unicode representation of code point values.
+* gc: fix method offsets of anonymous interfaces (thanks Eoghan Sherry),
+        skip undefined symbols in import . (thanks Eoghan Sherry).
+* go/scanner: remove Tokenize - was only used in tests
+* gobuilder: add buildroot command-line flag (thanks Devon H. O'Dell).
+* html: unescape numeric entities (thanks Ryan Hitchman).
+* http: Add EncodeQuery, helper for constructing query strings.
+* ld: fix dwarf decoding of 64-bit reflect values (thanks Eoghan Sherry).
+* math: improve accuracy of Exp2 (thanks Eoghan Sherry).
+* runtime: add Goroutines (thanks Keith Rarick).
+* sync: small naming fix for armv5 (thanks Dean Prichard).
+* syscall, net: Add Recvmsg and Sendmsg on Linux (thanks Albert Strasheim).
+* time: make After use fewer goroutines and host processes (thanks Roger Peppe).
+</pre>
+
+<h2 id="2010-12-02">2010-12-02</h2>
+
+<pre>
+Several package changes in this release may require you to update your code if
+you use the bytes, template, or utf8 packages. In all cases, any outdated code
+will fail to compile rather than behave erroneously.
+
+The bytes package has changed. Its Add and AddByte functions have been removed,
+as their functionality is provided by the recently-introduced built-in function
+"append". Any code that uses them will need to be changed:
+s = bytes.Add(s, b)    -&gt;    s = append(s, b...)
+s = bytes.AddByte(b, c)    -&gt;    s = append(s, b)
+s = bytes.Add(nil, c)    -&gt;    append([]byte(nil), c)
+
+The template package has changed. Your code will need to be updated if it calls
+the HTMLFormatter or StringFormatter functions, or implements its own formatter
+functions. The function signature for formatter types has changed to:
+        func(wr io.Writer, formatter string, data ...interface{})
+to allow multiple arguments to the formatter.  No templates will need updating.
+See the change for examples:
+        http://code.google.com/p/go/source/detail?r=2c2be793120e
+
+The template change permits the implementation of multi-word variable
+instantiation for formatters. Before one could say
+        {field}
+or
+        {field|formatter}
+Now one can also say
+        {field1 field2 field3}
+or
+        {field1 field2 field3|formatter}
+and the fields are passed as successive arguments to the formatter,
+by analogy to fmt.Print.
+
+The utf8 package has changed. The order of EncodeRune's arguments has been
+reversed to satisfy the convention of "destination first".
+Any code that uses EncodeRune will need to be updated.
+
+Other changes:
+* [68]l: correct dwarf location for globals and ranges for arrays.
+* big: fix (*Rat) SetFrac64(a, b) when b &lt; 0 (thanks Eoghan Sherry).
+* compress/flate: fix typo in comment (thanks Mathieu Lonjaret).
+* crypto/elliptic: use a Jacobian transform for better performance.
+* doc/code.html: fix reference to "gomake build" (thanks Anschel Schaffer-Cohen).
+* doc/roadmap: update gdb status.
+* doc/spec: fixed some omissions and type errors.
+* doc: some typo fixes (thanks Peter Mundy).
+* exp/eval: build fix for parser.ParseFile API change (thanks Anschel Schaffer-Cohen).
+* fmt: Scan accepts Inf and NaN,
+        allow "% X" as well as "% x".
+* go/printer: preserve newlines in func parameter lists (thanks Jamie Gennis).
+* http: consume request body before next request.
+* log: ensure writes are atomic (thanks Roger Peppe).
+* path: Windows support for Split (thanks Benny Siegert).
+* runtime: fix SysFree to really free memory on Windows (thanks Alex Brainman),
+        parallel definitions in Go for all C structs.
+* sort: avoid overflow in pivot calculation,
+        reduced stack depth to lg(n) in quickSort (thanks Stefan Nilsson).
+* strconv: Atof on Infs and NaNs.
+</pre>
+
+<h2 id="2010-11-23">2010-11-23</h2>
+
+<pre>
+This release includes a backwards-incompatible package change to the
+sort.Search function (introduced in the last release).
+See the change for details and examples of how you might change your code:
+        http://code.google.com/p/go/source/detail?r=102866c369
+
+* build: automatically #define _64BIT in 6c.
+* cgo: print required space after parameter name in wrapper function.
+* crypto/cipher: new package to replace crypto/block (thanks Adam Langley).
+* crypto/elliptic: new package, implements elliptic curves over prime fields (thanks Adam Langley).
+* crypto/x509: policy OID support and fixes (thanks Adam Langley).
+* doc: add link to codewalks,
+        fix recover() documentation (thanks Anschel Schaffer-Cohen),
+        explain how to write Makefiles for commands.
+* exec: enable more tests on windows (thanks Alex Brainman).
+* gc: adjustable hash code in typecheck of composite literals
+        (thanks to vskrap, Andrey Mirtchovski, and Eoghan Sherry).
+* gc: better error message for bad type in channel send (thanks Anthony Martin).
+* godoc: bug fix in relativePath,
+        compute search index for all file systems under godoc's observation,
+        use correct time stamp to indicate accuracy of search result.
+* index/suffixarray: use sort.Search.
+* net: add ReadFrom and WriteTo windows version (thanks Wei Guangjing).
+* reflect: remove unnecessary casts in Get methods.
+* rpc: add RegisterName to allow override of default type name.
+* runtime: free memory allocated by windows CommandLineToArgv (thanks Alex Brainman).
+* sort: simplify Search (thanks Roger Peppe).
+* strings: add LastIndexAny (thanks Benny Siegert).
+</pre>
+
+<h2 id="2010-11-10">2010-11-10</h2>
+
+<pre>
+The birthday release includes a new Search capability inside the sort package.
+It takes an unusual but very general and easy-to-use approach to searching
+arbitrary indexable sorted data.  See the documentation for details:
+    http://golang.org/pkg/sort/#Search
+
+The ARM port now uses the hardware floating point unit (VFP).  It still has a
+few bugs, mostly around conversions between unsigned integer and floating-point
+values, but it's stabilizing.
+
+In addition, there have been many smaller fixes and updates: 
+
+* 6l: generate dwarf variable names with disambiguating suffix.
+* container/list: make Remove return Value of removed element.
+    makes it easier to remove first or last item.
+* crypto: add cast5 (default PGP cipher),
+    switch block cipher methods to be destination first.
+* crypto/tls: use pool building for certificate checking
+* go/ast: change embedded token.Position fields to named fields
+    (preparation for a different position representation)
+* net: provide public access to file descriptors (thanks Keith Rarick)
+* os: add Expand function to evaluate environment variables.
+* path: add Glob (thanks Benny Siegert)
+* runtime: memequal optimization (thanks Graham Miller)
+    prefix all external symbols with "runtimeÂ·" to avoid
+    conflicts linking with external C libraries.
+</pre>
+
+<h2 id="2010-11-02">2010-11-02</h2>
+
+<pre>
+This release includes a language change: the new built-in function, append.
+Append makes growing slices much simpler. See the spec for details:
+        http://golang.org/doc/go_spec.html#Appending_and_copying_slices
+
+Other changes:
+* 8l: pe generation fixes (thanks Alex Brainman).
+* doc: Effective Go: append and a few words about "..." args.
+* build: fiddle with make variables.
+* codereview: fix sync and download in Python 2.7 (thanks Fazlul Shahriar).
+* debug/pe, cgo: add windows support (thanks Wei Guangjing).
+* go/ast: add Inspect function for easy AST inspection w/o a visitor.
+* go/printer: do not remove parens around composite literals starting with
+        a type name in control clauses.
+* go/scanner: bug fixes, revisions, and more tests.
+* gob: several fixes and documentation updates.
+* godoc: bug fix (bug introduced with revision 3ee58453e961).
+* gotest: print empty benchmark list in a way that gofmt will leave alone.
+* http server: correctly respond with 304 NotModified (thanks Michael Hoisie).
+* kate: update list of builtins (thanks Evan Shaw).
+* libutf: update to Unicode 5.2.0 to match pkg/unicode (thanks Anthony Martin).
+* misc/bbedit: update list of builtins (thanks Anthony Starks).
+* misc/vim: update list of builtins.
+* mkrunetype: install a Makefile and tweak it slightly so it can be built.
+* netchan: fix locking bug.
+* pidigits: minor improvements (thanks Evan Shaw).
+* rpc: fix client deadlock bug.
+* src: use append where appropriate (often instead of vector).
+* strings: add Contains helper function (thanks Brad Fitzpatrick).
+* syscall: SIO constants for Linux (thanks Albert Strasheim),
+        Stat(path) on windows (thanks Alex Brainman).
+* test/ken/convert.go: add conversion torture test.
+* testing: add Benchmark (thanks Roger Peppe).
+</pre>
+
+<h2 id="2010-10-27">2010-10-27</h2>
+
+<pre>
+*** This release changes the encoding used by package gob. 
+    If you store gobs on disk, see below. ***
+
+The ARM port (5g) now passes all tests. The optimizer is not yet enabled, and
+floating point arithmetic is performed entirely in software. Work is underway
+to address both of these deficiencies.
+
+The syntax for arrays, slices, and maps of composite literals has been
+simplified. Within a composite literal of array, slice, or map type, elements
+that are themselves composite literals may elide the type if it is identical to
+the outer literal's element type. For example, these expressions:
+	[][]int{[]int{1, 2, 3}, []int{4, 5}}
+	map[string]Point{"x": Point{1.5, -3.5}, "y": Point{0, 0}}
+can be simplified to:
+	[][]int{{1, 2, 3}, {4, 5}}
+	map[string]Point{"x": {1.5, -3.5}, "y": {0, 0}}
+Gofmt can make these simplifications mechanically when invoked with the 
+new -s flag.
+
+The built-in copy function can now copy bytes from a string value to a []byte.
+Code like this (for []byte b and string s): 
+	for i := 0; i &lt; len(s); i++ {
+		b[i] = s[i]
+	}
+can be rewritten as:
+	copy(b, s)
+
+The gob package can now encode and decode interface values containing types
+registered ahead of time with the new Register function. These changes required
+a backwards-incompatible change to the wire format.  Data written with the old
+version of the package will not be readable with the new one, and vice versa.
+(Steps were made in this change to make sure this doesn't happen again.) 
+We don't know of anyone using gobs to create permanent data, but if you do this
+and need help converting, please let us know, and do not update to this release
+yet.  We will help you convert your data.
+
+Other changes:
+* 5g, 6g, 8g: generate code for string index instead of calling function.
+* 5l, 6l, 8l: introduce sub-symbols.
+* 6l/8l: global and local variables and type info.
+* Make.inc: delete unnecessary -fno-inline flag to quietgcc.
+* arm: precise float64 software floating point, bug fixes.
+* big: arm assembly, faster software mulWW, divWW.
+* build: only print "You need to add foo to PATH" when needed.
+* container/list: fix Remove bug and use pointer to self as identifier.
+* doc: show page title in browser title bar,
+        update roadmap.
+* encoding/binary: give LittleEndian, BigEndian specific types.
+* go/parser: consume auto-inserted semi when calling ParseExpr().
+* gobuilder: pass GOHOSTOS and GOHOSTARCH to build,
+        write build and benchmarking logs to disk.
+* goinstall: display helpful message when encountering a cgo package,
+        fix test for multiple package names (thanks Fazlul Shahriar).
+* gotest: generate correct gofmt-formatted _testmain.go.
+* image/png: speed up paletted encoding ~25% (thanks Brad Fitzpatrick).
+* misc: update python scripts to specify python2 as python3 is now "python".
+* net: fix comment on Dial to mention unix/unixgram.
+* rpc: expose Server type to allow multiple RPC Server instances.
+* runtime: print unknown types in panic.
+* spec: append built-in (not yet implemented).
+* src: gofmt -s -w src misc.
+        update code to use copy-from-string.
+* test/bench: update numbers.
+* websocket: fix short Read.
+</pre>
+
+<h2 id="2010-10-20">2010-10-20</h2>
+
+<pre>
+This release removes the log package's deprecated functions.
+Code that has not been updated to use the new interface will break.
+See the previous release notes for details:
+	http://golang.org/doc/devel/release.html#2010-10-13
+
+Also included are major improvements to the linker. It is now faster, 
+uses less memory, and more parallelizable (but not yet parallel).
+
+The nntp package has been removed from the standard library.
+Its new home is the nntp-go project at Google Code:
+	http://code.google.com/p/nntp-go
+You can install it with goinstall:
+	goinstall nntp-go.googlecode.com/hg/nntp
+And import it in your code like so:
+	import "nntp-go.googlecode.com/hg/nntp"
+
+Other changes:
+* 6g: avoid too-large immediate constants.
+* 8l, runtime: initial support for Plan 9 (thanks Yuval Pavel Zholkover).
+* 6l, 8l: more improvements on exporting debug information (DWARF).
+* arm: code gen fixes. Most tests now pass, except for floating point code.
+* big: add random number generation (thanks Florian Uekermann).
+* gc: keep track of real actual type of identifiers,
+	report that shift must be unsigned integer,
+	select receive with implicit conversion.
+* goplay: fix to run under windows (thanks Yasuhiro Matsumoto).
+* http: do not close connection after sending HTTP/1.0 request.
+* netchan: add new method Hangup to terminate transmission on a channel.
+* os: change TestForkExec so it can run on windows (thanks Yasuhiro Matsumoto).
+* runtime: don't let select split stack.
+* syscall/arm: correct 64-bit system call arguments.
+</pre>
+
+<h2 id="2010-10-13">2010-10-13</h2>
+
+<pre>
+This release includes changes to the log package, the removal of exp/iterable,
+two new tools (gotry and goplay), one small language change, and many other
+changes and fixes.  If you use the log or iterable packages, you need to make
+changes to your code.
+
+The log package has changed.  Loggers now have only one output, and output to
+standard error by default.  The names have also changed, although the old names
+are still supported.  They will be deleted in the next release, though, so it
+would be good to update now if you can.  For most purposes all you need to do
+is make these substitutions:
+        log.Stderr -&gt; log.Println or log.Print
+        log.Stderrf -&gt; log.Printf
+        log.Crash -&gt; log.Panicln or log.Panic
+        log.Crashf -&gt; log.Panicf
+        log.Exit -&gt; log.Exitln or log.Exit
+        log.Exitf -&gt; log.Exitf (no change)
+Calls to log.New() must drop the second argument.
+Also, custom loggers with exit or panic properties will need to be reworked.
+For full details, see the change description:
+        http://code.google.com/p/go/source/detail?r=d8a3c7563d
+
+The language change is that uses of pointers to interface values no longer
+automatically dereference the pointer.  A pointer to an interface value is more
+often a beginner's bug than correct code.
+
+The package exp/iterable has been removed. It was an interesting experiment,
+but it encourages writing inefficient code and has outlived its utility.
+
+The new tools:
+* gotry: an exercise in reflection and an unusual tool. Run 'gotry' for details.
+* goplay: a stand-alone version of the Go Playground. See misc/goplay.
+
+Other changes:
+* 6l: Mach-O fixes, and fix to work with OS X nm/otool (thanks Jim McGrath).
+* [568]a: correct line numbers for statements.
+* arm: code generation and runtime fixes,
+	adjust recover for new reflect.call,
+	enable 6 more tests after net fix.
+* big: fix panic and round correctly in Rat.FloatString (thanks Anthony Martin).
+* build: Make.cmd: remove $(OFILES) (thanks Eric Clark),
+        Make.pkg: remove .so before installing new one,
+        add GOHOSTOS and GOHOSTARCH environment variables.
+* crypto/tls: better error messages for certificate issues,
+        make SetReadTimeout work.
+* doc: add Sydney University video,
+	add The Expressiveness of Go talk.
+* exp/draw/x11: support X11 vendors other than "The X.Org Foundation".
+* expvar: add (*Int).Set (thanks Sam Thorogood).
+* fmt: add Errorf helper function,
+        allow %d on []byte.
+* gc: O(1) string comparison when lengths differ,
+        various bug fixes.
+* http: return the correct error if a header line is too long.
+* image: add image.Tiled type, the Go equivalent of Plan 9's repl bit.
+* ld: be less picky about bad line number info.
+* misc/cgo/life: fix for new slice rules (thanks Graham Miller).
+* net: allow _ in DNS names.
+* netchan: export before import when testing, and
+        zero out request to ensure correct gob decoding. (thanks Roger Peppe).
+* os: make tests work on windows (thanks Alex Brainman).
+* runtime: bug fix: serialize mcache allocation,
+        correct iteration of large map values,
+        faster strequal, memequal (thanks Graham Miller),
+        fix argument dump in traceback,
+        fix tiny build.
+* smtp: new package (thanks Evan Shaw).
+* syscall: add sockaddr_ll support for linux/386, linux/amd64 (thanks Mikio Hara),
+        add ucred structure for SCM_CREDENTIALS over UNIX sockets. (thanks Albert Strasheim).
+* syscall: implement WaitStatus and Wait4() for windows (thanks Wei Guangjing).
+* time: add After.
+* websocket: enable tests on windows (thanks Alex Brainman).
+</pre>
+
+<h2 id="2010-09-29">2010-09-29</h2>
+
+<pre>
+This release includes some minor language changes and some significant package
+changes. You may need to change your code if you use ...T parameters or the
+http package.
+
+The semantics and syntax of forwarding ...T parameters have changed.
+        func message(f string, s ...interface{}) { fmt.Printf(f, s) }
+Here, s has type []interface{} and contains the parameters passed to message.
+Before this language change, the compiler recognized when a function call
+passed a ... parameter to another ... parameter of the same type, and just
+passed it as though it was a list of arguments.  But this meant that you
+couldn't control whether to pass the slice as a single argument and you
+couldn't pass a regular slice as a ... parameter, which can be handy.  This
+change gives you that control at the cost of a few characters in the call.
+If you want the promotion to ...,  append ... to the argument:
+        func message(f string, s ...interface{}) { fmt.Printf(f, s...) }
+Without the ..., s would be passed to Printf as a single argument of type
+[]interface{}.  The bad news is you might need to fix up some of your code, 
+but the compiler will detect the situation and warn you.
+
+Also, the http.Handler and http.HandlerFunc types have changed. Where http
+handler functions previously accepted an *http.Conn, they now take an interface
+type http.ResponseWriter. ResponseWriter implements the same methods as *Conn,
+so in most cases the only change required will be changing the type signature
+of your handler function's first parameter. See:
+  http://golang.org/pkg/http/#Handler
+
+The utf8 package has a new type, String, that provides efficient indexing 
+into utf8 strings by rune (previously an expensive conversion to []int 
+was required). See:
+  http://golang.org/pkg/utf8/#String
+
+The compiler will now automatically insert a semicolon at the end of a file if
+one is not found. This effect of this is that Go source files are no longer
+required to have a trailing newline.
+
+Other changes:
+* 6prof: more accurate usage message.
+* archive/zip: new package for reading Zip files.
+* arm: fix code generation, 10 more package tests pass.
+* asn1: make interface consistent with json.
+* bufio.UnreadRune: fix bug at EOF.
+* build: clear custom variables like GREP_OPTIONS,
+        silence warnings generated by ubuntu gcc,
+        use full path when compiling libraries.
+* bytes, strings: change lastIndexFunc to use DecodeLastRune (thanks Roger Peppe).
+* doc: add to and consolidate non-english doc references,
+        consolidate FAQs into a single file, go_faq.html,
+        updates for new http interface.
+* fmt/Printf: document and tweak error messages produced for bad formats.
+* gc: allow select case expr = &lt;-c,
+        eliminate duplicates in method table,
+        fix reflect table method receiver,
+        improve error message for x \= 0.
+* go/scanner: treat EOF like a newline for purposes of semicolon insertion.
+* gofmt: stability improvements.
+* gotest: leave _testmain.go for "make clean" to clean up.
+* http: correct escaping of different parts of URL,
+        support HTTP/1.0 Keep-Alive.
+* json: do not write to unexported fields.
+* libcgo: don't build for NaCl,
+        set g, m in thread local storage for windows 386 (thanks Wei Guangjing).
+* math: Fix off-by-one error in Ilogb and Logb.  (thanks Charles L. Dorian).
+* misc/dashboard/builder: remove build files after benchmarking.
+* nacl: update instructions for new SDK.
+* net: enable v4-over-v6 on ip sockets,
+        fix crash in DialIP.
+* os: check for valid arguments in windows Readdir (thanks Peter Mundy).
+* runtime: add mmap of null page just in case,
+        correct stats in SysFree,
+        fix unwindstack crash.
+* syscall: add IPPROTO_IPV6 and IPV6_V6ONLY const to fix nacl and windows build,
+        add inotify on Linux (thanks Balazs Lecz),
+        fix socketpair in syscall_bsd,
+        fix windows value of IPV6_V6ONLY (thanks Alex Brainman),
+        implement windows version of Utimes (thanks Alex Brainman),
+        make mkall.sh work for nacl.
+* test: Add test that causes incorrect error from gccgo.
+* utf8: add DecodeLastRune and DecodeLastRuneInString (thanks Roger Peppe).
+* xml: Allow entities inside CDATA tags (thanks Dan Sinclair).
+</pre>
+
+<h2 id="2010-09-22">2010-09-22</h2>
+
+<pre>
+This release includes new package functionality, and many bug fixes and changes.
+It also improves support for the arm and nacl platforms.
+
+* 5l: avoid fixed buffers in list.
+* 6l, 8l: clean up ELF code, fix NaCl.
+* 6l/8l: emit DWARF frame info.
+* Make.inc: make GOOS detection work on windows (thanks Alex Brainman).
+* build: fixes for native arn build,
+        make all.bash run on Ubuntu ARM.
+* cgo: bug fixes,
+        show preamble gcc errors (thanks Eric Clark).
+* crypto/x509, crypto/tls: improve root matching and observe CA flag.
+* crypto: Fix certificate validation.
+* doc: variable-width layout.
+* env.bash: fix building in directory with spaces in the path (thanks Alex Brainman).
+* exp/4s, exp/nacl/av: sync to recent exp/draw changes.
+* exp/draw/x11: mouse location is a signed integer.
+* exp/nacl/av: update color to max out at 1&lt;&lt;16-1 instead of 1&lt;&lt;32-1.
+* fmt: support '*' for width or precision (thanks Anthony Martin).
+* gc: improvements to static initialization,
+        make sure path names are canonical.
+* gob: make robust when decoding a struct with non-struct data.
+* gobuilder: add -cmd for user-specified build command,
+        add -rev= flag to build specific revision and exit,
+        fix bug that caused old revisions to be rebuilt.
+* godoc: change default filter file name to "",
+        don't use quadratic algorithm to filter paths,
+        show "Last update" info for directory listings.
+* http: new redirect test,
+        URLEscape now escapes all reserved characters as per the RFC.
+* nacl: fix zero-length writes.
+* net/dict: parse response correctly (thanks Fazlul Shahriar).
+* netchan: add a cross-connect test,
+        handle closing of channels,
+        provide a method (Importer.Errors()) to recover protocol errors.
+* os: make Open() O_APPEND flag work on windows (thanks Alex Brainman),
+        make RemoveAll() work on windows (thanks Alex Brainman).
+* pkg/Makefile: disable netchan test to fix windows build (thanks Alex Brainman).
+* regexp: delete Iter methods.
+* runtime: better panic for send to nil channel.
+* strings: fix minor bug in LastIndexFunc (thanks Roger Peppe).
+* suffixarray: a package for creating suffixarray-based indexes.
+* syscall: Use vsyscall for syscall.Gettimeofday and .Time on linux amd64.
+* test: fix NaCl build.
+* windows: fix netchan test by using 127.0.0.1.
+</pre>
+
+<h2 id="2010-09-15">2010-09-15</h2>
+
+<pre>
+This release includes a language change: the lower bound of a subslice may
+now be omitted, in which case the value will default to 0.
+For example, s[0:10] may now be written as s[:10], and s[0:] as s[:].
+
+The release also includes important bug fixes for the ARM architecture,
+as well as the following fixes and changes:
+
+* 5g: register allocation bugs
+* 6c, 8c: show line numbers in -S output
+* 6g, 6l, 8g, 8l: move read-only data to text segment
+* 6l, 8l: make etext accurate; introduce rodata, erodata.
+* arm: fix build bugs.
+        make libcgo build during OS X cross-compile
+        remove reference to deleted file syntax/slice.go
+        use the correct stat syscalls
+        work around reg allocator bug in 5g
+* bufio: add UnreadRune.
+* build: avoid bad environment interactions
+        fix build for tiny
+        generate, clean .exe files on Windows (thanks Joe Poirier)
+        test for _WIN32, not _MINGW32 (thanks Joe Poirier)
+        work with GNU Make 3.82 (thanks Jukka-Pekka Kekkonen)
+* cgo: add typedef for uintptr in generated headers
+        silence warning for C call returning const pointer
+* codereview: convert email address to lower case before checking CONTRIBUTORS
+* crypto/tls: don't return an error from Close()
+* doc/tutorial: update for slice changes.
+* exec: separate LookPath implementations for unix/windows (thanks Joe Poirier)
+* exp/draw/x11: allow clean shutdown when the user closes the window.
+* exp/draw: clip destination rectangle to the image bounds.
+        fast path for drawing overlapping image.RGBAs.
+        fix double-counting of pt.Min for the src and mask points.
+        reintroduce the MouseEvent.Nsec timestamp.
+        rename Context to Window, and add a Close method.
+* exp/debug: preliminary support for 'copy' function (thanks Sebastien Binet)
+* fmt.Fscan: use UnreadRune to preserve data across calls.
+* gc: better printing of named constants, func literals in errors
+        many bug fixes
+        fix line number printing with //line directives
+        fix symbol table generation on windows (thanks Alex Brainman)
+        implement comparison rule from spec change 33abb649cb63
+        implement new slice spec (thanks Scott Lawrence)
+        make string x + y + z + ... + w efficient
+        more accurate line numbers for ATEXT
+        remove &amp;[10]int -&gt; []int conversion
+* go-mode.el: fix highlighting for 'chan' type (thanks Scott Lawrence)
+* godoc: better support for directory trees for user-supplied paths
+        use correct delay time (bug fix)
+* gofmt, go/printer: update internal estimated position correctly
+* goinstall: warn when package name starts with http:// (thanks Scott Lawrence)
+* http: check https certificate against host name
+        do not cache CanonicalHeaderKey (thanks Jukka-Pekka Kekkonen)
+* image: change a ColorImage's minimum point from (0, 0) to (-1e9, -1e9).
+        introduce Intersect and Union rectangle methods.
+* ld: handle quoted spaces in package path (thanks Dan Sinclair)
+* libcgo: fix NaCl build.
+* libmach: fix build on arm host
+        fix new thread race with Linux
+* math: make portable Tan(Pi/2) return NaN
+* misc/dashboard/builder: gobuilder, a continuous build client
+* net: disable tests for functions not available on windows (thanks Alex Brainman)
+* netchan: make -1 unlimited, as advertised.
+* os, exec: rename argv0 to name
+* path: add IsAbs (thanks Ivan Krasin)
+* runtime: fix bug in tracebacks
+        fix crash trace on amd64
+        fix windows build (thanks Alex Brainman)
+        use manual stack for garbage collection
+* spec: add examples for slices with omitted index expressions.
+        allow omission of low slice bound (thanks Scott Lawrence)
+* syscall: fix windows Gettimeofday (thanks Alex Brainman)
+* test(arm): disable zerodivide.go because compilation fails.
+* test(windows): disable tests that cause the build to fail (thanks Joe Poirier)
+* test/garbage/parser: sync with recent parser changes
+* test: Add test for //line
+        Make gccgo believe that the variables can change.
+        Recognize gccgo error messages.
+        Reduce race conditions in chan/nonblock.go.
+        Run garbage collector before testing malloc numbers.
+* websocket: Add support for secure WebSockets (thanks Jukka-Pekka Kekkonen)
+* windows: disable unimplemented tests (thanks Joe Poirier)
+</pre>
+
+<h2 id="2010-09-06">2010-09-06</h2>
+
+<pre>
+This release includes the syntactic modernization of more than 100 files in /test,
+and these additions, changes, and fixes: 
+* 6l/8l: emit DWARF in macho.
+* 8g: use FCHS, not FMUL, for minus float.
+* 8l: emit DWARF in ELF,
+        suppress emitting DWARF in Windows PE (thanks Alex Brainman).
+* big: added RatString, some simplifications.
+* build: create bin and pkg directories as needed; drop from hg,
+        delete Make.386 Make.amd64 Make.arm (obsoleted by Make.inc),
+        fix cgo with -j2,
+        let pkg/Makefile coordinate building of Go commands,
+        never use quietgcc in Make.pkg,
+        remove more references to GOBIN and GOROOT (thanks Christian Himpel).
+* codereview: Fix uploading for Mercurial 1.6.3 (thanks Evan Shaw),
+        consistent indent, cut dead code,
+        fix hang on standard hg commands,
+        print status when tasks take longer than 30 seconds,
+        really disable codereview when not available,
+        upload files in parallel (5x improvement on large CLs).
+* crypto/hmac: make Sum idempotent (thanks Jukka-Pekka Kekkonen).
+* doc: add links to more German docs,
+        add round-robin flag to io2010 balance example,
+        fix a bug in the example in Constants subsection (thanks James Fysh),
+        various changes for validating HTML (thanks Scott Lawrence).
+* fmt: delete erroneous sentence about return value for Sprint*.
+* gc: appease bison version running on FreeBSD builder,
+        fix spurious syntax error.
+* go/doc: use correct escaper for URL.
+* go/printer: align ImportPaths in ImportDecls (thanks Scott Lawrence).
+* go/typechecker: 2nd step towards augmenting AST with full type information.
+* gofmt: permit omission of first index in slice expression.
+* goinstall: added -a flag to mean "all remote packages" (thanks Scott Lawrence),
+        assume go binaries are in path (following new convention),
+        use https for Google Code checkouts.
+* gotest: allow make test of cgo packages (without make install).
+* http: add Date to server, Last-Modified and If-Modified-Since to file server,
+        add PostForm function to post url-encoded key/value data,
+        obscure passwords in return value of URL.String (thanks Scott Lawrence).
+* image: introduce Config type and DecodeConfig function.
+* libcgo: update Makefile to use Make.inc.
+* list: update comment to state that the zero value is ready to use.
+* math: amd64 version of Sincos (thanks Charles L. Dorian).
+* misc/bash: add *.go completion for gofmt (thanks Scott Lawrence).
+* misc/emacs: make _ a word symbol (thanks Scott Lawrence).
+* misc: add zsh completion (using compctl),
+        syntax highlighting for Fraise.app (OS X) (thanks Vincent Ambo).
+* net/textproto: Handle multi-line responses (thanks Evan Shaw).
+* net: add LookupMX (thanks Corey Thomasson).
+* netchan: Fix race condition in test,
+        rather than 0, make -1 mean infinite (a la strings.Split et al),
+        use acknowledgements on export send.
+        new methods Sync and Drain for clean teardown.
+* regexp: interpret all Go characer escapes \a \b \f \n \r \t \v.
+* rpc: fix bug that caused private methods to attempt to be registered.
+* runtime: Correct commonType.kind values to match compiler,
+        add GOOS, GOARCH; fix FuncLine,
+        special case copy, equal for one-word interface values (thanks Kyle Consalus).
+* scanner: fix incorrect reporting of error in Next (thanks Kyle Consalus).
+* spec: clarify that arrays must be addressable to be sliceable.
+* template: fix space handling around actions.
+* test/solitaire: an exercise in backtracking and string conversions.
+* test: Recognize gccgo error messages and other fixes.
+* time: do not crash in String on nil Time.
+* tutorial: regenerate HTML to pick up change to progs/file.go.
+* websocket: fix missing Sec-WebSocket-Protocol on server response (thanks Jukka-Pekka Kekkonen).
+</pre>
+
+<h2 id="2010-08-25">2010-08-25</h2>
+
+<pre>
+This release includes changes to the build system that will likely require you
+to make changes to your environment variables and Makefiles.
+
+All environment variables are now optional:
+ - $GOOS and $GOARCH are now optional; their values should now be inferred 
+   automatically by the build system,
+ - $GOROOT is now optional, but if you choose not to set it you must run
+   'gomake' instead of 'make' or 'gmake' when developing Go programs
+   using the conventional Makefiles,
+ - $GOBIN remains optional and now defaults to $GOROOT/bin;
+   if you wish to use this new default, make sure it is in your $PATH
+   and that you have removed the existing binaries from $HOME/bin.
+
+As a result of these changes, the Go Makefiles have changed. If your Makefiles
+inherit from the Go Makefiles, you must change this line:
+    include ../../Make.$(GOARCH)
+to this:
+    include ../../Make.inc
+
+This release also removes the deprecated functions in regexp and the 
+once package. Any code that still uses them will break.
+See the notes from the last release for details:
+    http://golang.org/doc/devel/release.html#2010-08-11
+
+Other changes:
+* 6g: better registerization for slices, strings, interface values
+* 6l: line number information in DWARF format
+* build: $GOBIN defaults to $GOROOT/bin,
+        no required environment variables
+* cgo: add C.GoStringN (thanks Eric Clark).
+* codereview: fix issues with leading tabs in CL descriptions,
+        do not send "Abandoned" mail if the CL has not been mailed.
+* crypto/ocsp: add missing Makefile.
+* crypto/tls: client certificate support (thanks Mikkel Krautz).
+* doc: update gccgo information for recent changes.
+        fix errors in Effective Go.
+* fmt/print: give %p priority, analogous to %T,
+        honor Formatter in Print, Println.
+* gc: fix parenthesization check.
+* go/ast: facility for printing AST nodes,
+        first step towards augmenting AST with full type information.
+* go/printer: do not modify tabwriter.Escape'd text.
+* gofmt: do not modify multi-line string literals,
+        print AST nodes by setting -ast flag.
+* http: fix typo in http.Request documentation (thanks Scott Lawrence)
+        parse query string always, not just in GET
+* image/png: support 16-bit color.
+* io: ReadAtLeast now errors if min > len(buf).
+* jsonrpc: use `error: null` for success, not `error: ""`.
+* libmach: implement register fetch for 32-bit x86 kernel.
+* net: make IPv6 String method standards-compliant (thanks Mikio Hara).
+* os: FileInfo.Permission() now returns uint32 (thanks Scott Lawrence),
+        implement env using native Windows API (thanks Alex Brainman).
+* reflect: allow PtrValue.PointTo(nil).
+* runtime: correct line numbers for .goc files,
+        fix another stack split bug,
+        fix freebsd/386 mmap.
+* syscall: regenerate syscall/z* files for linux/386, linux/amd64, linux/arm.
+* tabwriter: Introduce a new flag StripEscape.
+* template: fix handling of space around actions,
+        vars preceded by white space parse correctly (thanks Roger Peppe).
+* test: add test case that crashes gccgo.
+* time: parse no longer requires minutes for time zone (thanks Jan H. Hosang)
+* yacc: fix bounds check in error recovery.
+</pre>
+
+<h2 id="2010-08-11">2010-08-11</h2>
+
+<pre>
+This release introduces some package changes. You may need to change your
+code if you use the once, regexp, image, or exp/draw packages.
+
+The type Once has been added to the sync package. The new sync.Once will
+supersede the functionality provided by the once package. We intend to remove
+the once package after this release. See:
+    http://golang.org/pkg/sync/#Once
+All instances of once in the standard library have been replaced with
+sync.Once. Reviewing these changes may help you modify your existing code. 
+The relevant changeset:
+    http://code.google.com/p/go/source/detail?r=fa2c43595119
+
+A new set of methods has been added to the regular expression package, regexp.
+These provide a uniformly named approach to discovering the matches of an
+expression within a piece of text; see the package documentation for details: 
+    http://golang.org/pkg/regexp/
+These new methods will, in a later release, replace the old methods for
+matching substrings.  The following methods are deprecated:
+    Execute (use FindSubmatchIndex)
+    ExecuteString (use FindStringSubmatchIndex)
+    MatchStrings(use FindStringSubmatch)
+    MatchSlices (use FindSubmatch)
+    AllMatches (use FindAll; note that n&lt;0 means 'all matches'; was n&lt;=0)
+    AllMatchesString (use FindAllString; note that n&lt;0 means 'all matches'; was n&lt;=0)
+(Plus there are ten new methods you didn't know you wanted.) 
+Please update your code to use the new routines before the next release.
+
+An image.Image now has a Bounds rectangle, where previously it ranged 
+from (0, 0) to (Width, Height). Loops that previously looked like:
+    for y := 0; y &lt; img.Height(); y++ {
+        for x := 0; x &lt; img.Width(); x++ {
+            // Do something with img.At(x, y)
+        }
+    }
+should instead be:
+    b := img.Bounds()
+    for y := b.Min.Y; y &lt; b.Max.Y; y++ {
+        for x := b.Min.X; x &lt; b.Max.X; x++ {
+            // Do something with img.At(x, y)
+        }
+    }
+The Point and Rectangle types have also moved from exp/draw to image.
+
+Other changes:
+* arm: bugfixes and syscall (thanks Kai Backman).
+* asn1: fix incorrect encoding of signed integers (thanks Nicholas Waples).
+* big: fixes to bitwise functions (thanks Evan Shaw).
+* bytes: add IndexRune, FieldsFunc and To*Special (thanks Christian Himpel).
+* encoding/binary: add complex (thanks Roger Peppe).
+* exp/iterable: add UintArray (thanks Anschel Schaffer-Cohen).
+* godoc: report Status 404 if a pkg or file is not found.
+* gofmt: better reporting for unexpected semicolon errors.
+* html: new package, an HTML tokenizer.
+* image: change image representation from slice-of-slices to linear buffer,
+        introduce Decode and RegisterFormat,
+        introduce Transparent and Opaque,
+        replace Width and Height by Bounds, add the Point and Rect types.
+* libbio: fix Bprint to address 6g issues with large data structures.
+* math: fix amd64 Hypot (thanks Charles L. Dorian).
+* net/textproto: new package, with example net/dict.
+* os: fix ForkExec() handling of envv == nil (thanks Alex Brainman).
+* png: grayscale support (thanks Mathieu Lonjaret).
+* regexp: document that backslashes are the escape character.
+* rpc: catch errors from ReadResponseBody.
+* runtime: memory free fix (thanks Alex Brainman).
+* template: add ParseFile method to template.Template.
+* test/peano: use directly recursive type def.
+</pre>
+
+<h2 id="2010-08-04">2010-08-04</h2>
+
+<pre>
+This release includes a change to os.Open (and co.). The file permission
+argument has been changed to a uint32. Your code may require changes - a simple
+conversion operation at most.
+
+Other changes:
+* amd64: use segment memory for thread-local storage.
+* arm: add gdb support to android launcher script,
+        bugfixes (stack clobbering, indices),
+        disable another flaky test,
+        remove old qemu dependency from gotest.
+* bufio: introduce Peek.
+* bytes: added test case for explode with blank string (thanks Scott Lawrence).
+* cgo: correct multiple return value function invocations (thanks Christian Himpel).
+* crypto/x509: unwrap Subject Key Identifier (thanks Adam Langley).
+* gc: index bounds tests and other fixes.
+* gofmt/go/parser: strengthen syntax checks.
+* goinstall: check for error from exec.*Cmd.Wait() (thanks Alex Brainman).
+* image/png: use image-specific methods for checking opacity.
+* image: introduce Gray and Gray16 types,
+        remove the named colors except for Black and White.
+* json: object members must have a value (thanks Anthony Martin).
+* misc/vim: highlight misspelled words only in comments (thanks Christian Himpel).
+* os: Null device (thanks Peter Mundy).
+* runtime: do not fall through in SIGBUS/SIGSEGV.
+* strings: fix Split("", "", -1) (thanks Scott Lawrence).
+* syscall: make go errors not clash with windows errors (thanks Alex Brainman).
+* test/run: diff old new,
+* websocket: correct challenge response (thanks Tarmigan Casebolt),
+        fix bug involving spaces in header keys (thanks Bill Neubauer). 
+</pre>
+
+<h2 id="2010-07-29">2010-07-29</h2>
+
+<pre>
+* 5g: more soft float support and several bugfixes.
+* asn1: Enumerated, Flag and GeneralizedTime support.
+* build: clean.bash to check that GOOS and GOARCH are set.
+* bytes: add IndexFunc and LastIndexFunc (thanks Fazlul Shahriar),
+	add Title.
+* cgo: If CC is set in environment, use it rather than "gcc",
+	use new command line syntax: -- separates cgo flags from gcc flags.
+* codereview: avoid crash if no config,
+	don't run gofmt with an empty file list,
+	make 'hg submit' work with Mercurial 1.6.
+* crypto/ocsp: add package to parse OCSP responses.
+* crypto/tls: add client-side SNI support and PeerCertificates.
+* exp/bignum: delete package - functionality subsumed by package big.
+* fmt.Print: fix bug in placement of spaces introduced when ...T went in.
+* fmt.Scanf: handle trailing spaces.
+* gc: fix smaller-than-pointer-sized receivers in interfaces,
+	floating point precision/normalization fixes,
+	graceful exit on seg fault,
+	import dot shadowing bug,
+	many fixes including better handling of invalid input,
+	print error detail about failure to open import.
+* gccgo_install.html: add description of the port to RTEMS (thanks Vinu Rajashekhar).
+* gobs: fix bug in singleton arrays.
+* godoc: display synopses for all packages that have some kind of documentation..
+* gofmt: fix some linebreak issues.
+* http: add https client support (thanks Fazlul Shahriar),
+	write body when content length unknown (thanks James Whitehead).
+* io: MultiReader and MultiWriter (thanks Brad Fitzpatrick),
+	fix another race condition in Pipes.
+* ld: many fixes including better handling of invalid input.
+* libmach: correct handling of .5 files with D_REGREG addresses.
+* linux/386: use Xen-friendly ELF TLS instruction sequence.
+* mime: add AddExtensionType (thanks Yuusei Kuwana).
+* misc/vim: syntax file recognizes constants like 1e9 (thanks Petar Maymounkov).
+* net: TCPConn.SetNoDelay, back by popular demand.
+* net(windows): fix crashing Read/Write when passed empty slice on (thanks Alex Brainman),
+	implement LookupHost/Port/SRV (thanks Wei Guangjing),
+	properly handle EOF in (*netFD).Read() (thanks Alex Brainman).
+* runtime: fix bug introduced in revision 4a01b8d28570 (thanks Alex Brainman),
+	rename cgo2c, *.cgo to goc2c, *.goc (thanks Peter Mundy).
+* scanner: better comment.
+* strings: add Title.
+* syscall: add ForkExec, Syscall12 on Windows (thanks Daniel Theophanes),
+	improve windows errno handling (thanks Alex Brainman).
+* syscall(windows): fix FormatMessage (thanks Peter Mundy),
+	implement Pipe() (thanks Wei Guangjing).
+* time: fix parsing of minutes in time zones.
+* utf16(windows): fix cyclic dependency when testing (thanks Peter Mundy).
+</pre>
+
+<h2 id="2010-07-14">2010-07-14</h2>
+
+<pre>
+This release includes a package change. In container/vector, the Iter method
+has been removed from the Vector, IntVector, and StringVector types. Also, the
+Data method has been renamed to Copy to better express its actual behavior.
+Now that Vector is just a slice, any for loops ranging over v.Iter() or
+v.Data() can be changed to range over v instead.
+
+Other changes:
+* big: Improvements to Rat.SetString (thanks Evan Shaw),
+        add sign, abs, Rat.IsInt.
+* cgo: various bug fixes.
+* codereview: Fix for Mercurial >= 1.6 (thanks Evan Shaw).
+* crypto/rand: add Windows implementation (thanks Peter Mundy).
+* crypto/tls: make HTTPS servers easier,
+        add client OCSP stapling support.
+* exp/eval: converted from bignum to big (thanks Evan Shaw).
+* gc: implement new len spec, range bug fix, optimization.
+* go/parser: require that '...' parameters are followed by a type.
+* http: fix ParseURL to handle //relative_path properly.
+* io: fix SectionReader Seek to seek backwards (thanks Peter Mundy).
+* json: Add HTMLEscape (thanks Micah Stetson).
+* ld: bug fixes.
+* math: amd64 version of log (thanks Charles L. Dorian).
+* mime/multipart: new package to parse multipart MIME messages
+        and HTTP multipart/form-data support.
+* os: use TempFile with default TempDir for test files (thanks Peter Mundy).
+* runtime/tiny: add docs for additional VMs, fix build (thanks Markus Duft).
+* runtime: better error for send/recv on nil channel.
+* spec: clarification of channel close(),
+        lock down some details about channels and select,
+        restrict when len(x) is constant,
+        specify len/cap for nil slices, maps, and channels.
+* windows: append .exe to binary names (thanks Joe Poirier).
+</pre>
+
+<h2 id="2010-07-01">2010-07-01</h2>
+
+<pre>
+This release includes some package changes that may require changes to 
+client code.
+
+The Split function in the bytes and strings packages has been changed.
+The count argument, which limits the size of the return, previously treated
+zero as unbounded. It now treats 0 as 0, and will return an empty slice.  
+To request unbounded results, use -1 (or some other negative value).
+The new Replace functions in bytes and strings share this behavior.
+This may require you change your existing code.
+
+The gob package now allows the transmission of non-struct values at the
+top-level. As a result, the rpc and netchan packages have fewer restrictions
+on the types they can handle.  For example, netchan can now share a chan int.
+
+The release also includes a Code Walk: "Share Memory By Communicating".
+It describes an idiomatic Go program that uses goroutines and channels:
+	http://golang.org/doc/codewalk/sharemem/
+
+There is now a Projects page on the Go Dashboard that lists Go programs, 
+tools, and libraries:
+	http://godashboard.appspot.com/project
+
+Other changes:
+* 6a, 6l: bug fixes.
+* bytes, strings: add Replace.
+* cgo: use slash-free relative paths for .so references.
+* cmath: correct IsNaN for argument cmplx(Inf, NaN) (thanks Charles L. Dorian).
+* codereview: allow multiple email addresses in CONTRIBUTORS.
+* doc/codewalk: add Share Memory By Communicating.
+* exp/draw/x11: implement the mapping from keycodes to keysyms.
+* fmt: Printf: fix bug in handling of %#v, allow other verbs for slices
+        Scan: fix handling of EOFs.
+* gc: bug fixes and optimizations.
+* gob: add DecodeValue and EncodeValue,
+        add support for complex numbers.
+* goinstall: support for Bazaar+Launchpad (thanks Gustavo Niemeyer).
+* io/ioutil: add TempFile for Windows (thanks Peter Mundy).
+* ld: add -u flag to check safe bits; discard old -u, -x flags.
+* math: amd64 versions of Exp and Fabs (thanks Charles L. Dorian).
+* misc/vim: always override filetype detection for .go files.
+* net: add support for DNS SRV requests (thanks Kirklin McDonald),
+        initial attempt to implement Windows version (thanks Alex Brainman).
+* netchan: allow chan of basic types now that gob can handle such,
+        eliminate the need for a pointer value in Import and Export.
+* os/signal: only catch all signals if os/signal package imported.
+* regexp: bug fix: need to track whether match begins with fixed prefix.
+* rpc: allow non-struct args and reply (they must still be pointers).
+* runtime: bug fixes and reorganization.
+* strconv: fix bugs in floating-point and base 2 conversions
+* syscall: add syscall_bsd.go to zsycall_freebsd_386.go (thanks Peter Mundy),
+        add socketpair (thanks Ivan Krasin).
+* time: implement time zones for Windows (thanks Alex Brainman).
+* x509: support non-self-signed certs. 
+</pre>
+
+<h2 id="2010-06-21">2010-06-21</h2>
+
+<pre>
+This release includes a language change. The "..." function parameter form is
+gone; "...T" remains. Typically, "...interface{}" can be used instead of "...".
+
+The implementation of Printf has changed in a way that subtly affects its
+handling of the fmt.Stringer interface. You may need to make changes to your
+code. For details, see:
+        https://groups.google.com/group/golang-nuts/msg/6fffba90a3e3dc06
+
+The reflect package has been changed. If you have code that uses reflect, 
+it will need to be updated. For details, see:
+        https://groups.google.com/group/golang-nuts/msg/7a93d07c590e7beb
+
+Other changes:
+* 8l: correct test for sp == top of stack in 8l -K code.
+* asn1: allow '*' in PrintableString.
+* bytes.Buffer.ReadFrom: fix bug.
+* codereview: avoid exception in match (thanks Paolo Giarrusso).
+* complex divide: match C99 implementation.
+* exp/draw: small draw.drawGlyphOver optimization.
+* fmt: Print*: reimplement to switch on type first,
+        Scanf: improve error message when input does not match format.
+* gc: better error messages for interface failures, conversions, undefined symbols.
+* go/scanner: report illegal escape sequences.
+* gob: substitute slice for map.
+* goinstall: process dependencies for package main (thanks Roger Peppe).
+* gopack: add S flag to force marking a package as safe,
+        simplify go metadata code.
+* html: sync testdata/webkit to match WebKit tip.
+* http: reply to Expect 100-continue requests automatically (thanks Brad Fitzpatrick).
+* image: add an Alpha16 type.
+* ld: pad Go symbol table out to page boundary (fixes cgo crash).
+* misc/vim: reorganize plugin to be easier to use (thanks James Whitehead).
+* path: add Base, analogous to Unix basename.
+* pkg/Makefile: allow DISABLE_NET_TESTS=1 to disable network tests.
+* reflect: add Kind, Type.Bits, remove Int8Type, Int8Value, etc.
+* runtime: additional Windows support (thanks Alex Brainman),
+        correct fault for 16-bit divide on Leopard,
+        fix 386 signal handler bug.
+* strconv: add AtofN, FtoaN.
+* string: add IndexFunc and LastIndexFunc (thanks Roger Peppe).
+* syslog: use local network for tests. 
+</pre>
+
+<h2 id="2010-06-09">2010-06-09</h2>
+
+<pre>
+This release contains many fixes and improvements, including several
+clarifications and consolidations to the Language Specification.
+
+The type checking rules around assignments and conversions are simpler but more
+restrictive: assignments no longer convert implicitly from *[10]int to []int
+(write x[0:] instead of &amp;x), and conversions can no longer change the names of
+types inside composite types.
+
+The fmt package now includes flexible type-driven (fmt.Scan) and 
+format-driven (fmt.Scanf) scanners for all basic types.
+
+* big: bug fix for Quo aliasing problem.
+* bufio: change ReadSlice to match description.
+* cgo: bug fixes.
+* doc: add Google I/O talk and programs,
+        codereview + Mercurial Queues info (thanks Peter Williams).
+* exp/draw: Draw fast paths for the Over operator,
+        add Rectangle.Eq and Point.In, fix Rectangle.Clip (thanks Roger Peppe).
+* fmt: Scan fixes and improvements.
+* gc: backslash newline is not a legal escape sequence in strings,
+        better error message when ~ operator is found,
+        fix export of complex types,
+        new typechecking rules.
+* go/parser: correct position of empty statement ';'.
+* gofmt: fix test script.
+* goinstall: use 'git pull' instead of 'git checkout' (thanks Michael Hoisie).
+* http: add Head function for making HTTP HEAD requests,
+        handle status 304 correctly.
+* image: add Opaque method to the image types.
+        make Color.RGBA return 16 bit color instead of 32 bit color.
+* io/ioutil: add TempFile.
+* math: Pow special cases and additional tests (thanks Charles L. Dorian).
+* netchan: improve closing and shutdown.
+* os: implement os.FileInfo.*time_ns for windows (thanks Alex Brainman).
+* os/signal: correct the regexp for finding Unix signal names (thanks Vinu Rajashekhar).
+* regexp: optimizations (thanks Kyle Consalus).
+* runtime: fix printing -Inf (thanks Evan Shaw),
+        finish pchw -&gt; tiny, added gettime for tiny (thanks Daniel Theophanes).
+* spec: clean-ups and consolidation.
+* syscall: additional Windows compatibility fixes (thanks Alex Brainman).
+* test/bench: added regex-dna-parallel.go (thanks Kyle Consalus).
+* vector: type-specific Do functions now take f(type) (thanks Michael Hoisie). 
+</pre>
+
+<h2 id="2010-05-27">2010-05-27</h2>
+
+<pre>
+A sizeable release, including standard library improvements and a slew of
+compiler bug fixes. The three-week interval was largely caused by the team
+preparing for Google I/O. 
+
+* big: add Rat type (thanks Evan Shaw),
+        new features, much performance tuning, cleanups, and more tests.
+* bignum: deprecate by moving into exp directory.
+* build: allow MAKEFLAGS to be set outside the build scripts (thanks Christopher Wedgwood).
+* bytes: add Trim, TrimLeft, TrimRight, and generic functions (thanks Michael Hoisie).
+* cgo: fix to permit cgo callbacks from init code.
+* cmath: update range of Phase and Polar due to signed zero (thanks Charles L. Dorian).
+* codereview: work better with mq (thanks Peter Williams).
+* compress: renamings
+	NewDeflater -&gt; NewWriter
+	NewInflater -&gt; NewReader
+	Deflater -&gt; Compressor
+	Inflater -&gt; Decompressor
+* exp/draw/x11: respect $XAUTHORITY,
+        treat $DISPLAY the same way x-go-bindings does.
+* exp/draw: fast path for glyph images, other optimizations,
+        fix Rectangle.Canon (thanks Roger Peppe).
+* fmt: Scan, Scanln: Start of a simple scanning API in the fmt package,
+        fix Printf crash when given an extra nil argument (thanks Roger Peppe).
+* gc: better error when computing remainder of non-int (thanks Evan Shaw),
+        disallow middot in Go programs,
+        distinguish array, slice literal in error messages,
+        fix shift/reduce conflict in go.y export syntax,
+        fix unsafe.Sizeof on ideal constants,
+        handle use of builtin function outside function call,
+        many other bug fixes.
+* gob: add support for maps,
+        add test for indirect maps, slices, arrays.
+* godoc: collect package comments from all package files.
+* gofmt: don't lose mandatory semicolons,
+        exclude test w/ illegal syntax from test cases,
+        fix printing of labels.
+* http: prevent crash if remote server is not responding with "HTTP/".
+* json: accept escaped slash in string scanner (thanks Michael Hoisie),
+        fix array -&gt; non-array decoding.
+* libmach: skip __nl_symbol_ptr section on OS X.
+* math: amd64 versions of Fdim, Fmax, Fmin,
+        signed zero Sqrt special case (thanks Charles L. Dorian).
+* misc/kate: convert isn't a built in function (thanks Evan Shaw).
+* net: implement BindToDevice,
+        implement raw sockets (thanks Christopher Wedgwood).
+* netFD: fix race between Close and Read/Write (thanks Michael Hoisie).
+* os: add Chtimes function (thanks Brad Fitzpatrick).
+* pkg/Makefile: add netchan to standard package list.
+* runtime: GOMAXPROCS returns previous value,
+        allow large map values,
+        avoid allocation for fixed strings,
+        correct tracebacks for nascent goroutines, even closures,
+        free old hashmap pieces during resizing.
+* spec: added imaginary literal to semicolon rules (was missing),
+        fix and clarify syntax of conversions,
+        simplify section on channel types,
+        other minor tweaks.
+* strconv: Btoui64 optimizations (thanks Kyle Consalus).
+* strings: use copy instead of for loop in Map (thanks Kyle Consalus).
+* syscall: implement BindToDevice (thanks Christopher Wedgwood),
+        add Utimes on Darwin/FreeBSD, add Futimes everywhere,
+        regenerate syscalls for some platforms.
+* template: regularize name lookups of interfaces, pointers, and methods.
+</pre>
+
+<h2 id="2010-05-04">2010-05-04</h2>
+
+<pre>
+In this release we renamed the Windows OS target from 'mingw' to 'windows'.
+If you are currently building for 'mingw' you should set GOOS=windows instead.
+
+* 5l, 6l, 8l, runtime: make -s binaries work.
+* 5l, 6l, 8l: change ELF header so that strip doesn't destroy binary.
+* 8l: fix absolute path detection on Windows.
+* big: new functions, optimizations, and cleanups,
+	add bitwise methods for Int (thanks Evan Shaw).
+* bytes: Change IndexAny to look for UTF-8 encoded characters.
+* darwin: bsdthread_create can fail; print good error.
+* fmt: %T missing print &lt;nil&gt; for nil (thanks Christopher Wedgwood).
+* gc: many fixes.
+* misc/cgo/gmp: fix bug in SetString.
+* net: fix resolv.conf EOF without newline bug (thanks Christopher Wedgwood).
+* spec: some small clarifications (no language changes).
+* syscall: add EWOULDBLOCK to sycall_nacl.go,
+	force O_LARGEFILE in Linux open system call,
+	handle EOF on pipe - special case on Windows (thanks Alex Brainman),
+	mingw Sleep (thanks Joe Poirier).
+* test/bench: import new fasta C reference, update Go, optimizations.
+* test: test of static initialization (fails).
+* vector: use correct capacity in call to make.
+* xml: allow text segments to end at EOF.
+</pre>
+
+<h2 id="2010-04-27">2010-04-27</h2>
+
+<pre>
+This release includes a new Codelab that illustrates the construction of a
+simple wiki web application: 
+	http://golang.org/doc/codelab/wiki/
+
+It also includes a Codewalk framework for documenting code. See:
+	http://golang.org/doc/codewalk/
+
+Other changes:
+* 6g: fix need for parens around array index expression.
+* 6l, 8l: include ELF header in PT_LOAD mapping for text segment.
+* arm: add android runner script,
+	support for printing floats.
+* big: implemented Karatsuba multiplication,
+	many fixes and improvements (thanks Evan Shaw).
+* bytes: add Next method to Buffer, simplify Read,
+	shuffle implementation, making WriteByte 50% faster.
+* crypto/tls: simpler implementation of record layer.
+* exp/eval: fixes (thanks Evan Shaw).
+* flag: eliminate unnecessary structs.
+* gc: better windows support,
+	cmplx typecheck bug fix,
+	more specific error for statements at top level.
+* go/parser: don't require unnecessary parens.
+* godoc: exclude duplicate entries (thanks Andrei Vieru),
+	use int64 for timestamps (thanks Christopher Wedgwood).
+* gofmt: fine-tune stripping of parentheses,
+* json: Marshal, Unmarshal using new scanner,
+	preserve field name case by default,
+	scanner, Compact, Indent, and tests,
+	support for streaming.
+* libmach: disassemble MOVLQZX correctly.
+* math: more special cases for signed zero (thanks Charles L. Dorian).
+* net: add Pipe,
+	fix bugs in packStructValue (thanks Michael Hoisie),
+	introduce net.Error interface.
+* os: FileInfo: regularize the types of some fields,
+	create sys_bsd.go (thanks Giles Lean),
+	mingw bug fixes (thanks Alex Brainman).
+* reflect: add FieldByNameFunc (thanks Raif S. Naffah),
+	implement Set(nil), SetValue(nil) for PtrValue and MapValue.
+* regexp: allow escaping of any punctuation.
+* rpc/jsonrpc: support for jsonrpc wire encoding.
+* rpc: abstract client and server encodings,
+	add Close() method to rpc.Client.
+* runtime: closures, defer bug fix for Native Client,
+	rename cgo2c, *.cgo to goc2c, *.goc to avoid confusion with real cgo.
+	several other fixes.
+* scanner: implement Peek() to look at the next char w/o advancing.
+* strings: add ReadRune to Reader, add FieldsFunc (thanks Kyle Consalus).
+* syscall: match linux Setsid function signature to darwin,
+	mingw bug fixes (thanks Alex Brainman).
+* template: fix handling of pointer inside interface.
+* test/bench: add fannkuch-parallel.go (thanks Kyle Consalus),
+	pidigits ~10% performance win by using adds instead of shifts.
+* time: remove incorrect time.ISO8601 and add time.RFC3339 (thanks Micah Stetson).
+* utf16: add DecodeRune, EncodeRune.
+* xml: add support for XML marshalling embedded structs (thanks Raif S. Naffah),
+	new "innerxml" tag to collect inner XML.
+</pre>
+
+<h2 id="2010-04-13">2010-04-13</h2>
+
+<pre>
+This release contains many changes:
+
+* 8l: add DOS stub to PE binaries (thanks Evan Shaw).
+* cgo: add //export.
+* cmath: new complex math library (thanks Charles L. Dorian).
+* docs: update to match current coding style (thanks Christopher Wedgwood).
+* exp/eval: fix example and add target to Makefile (thanks Evan Shaw).
+* fmt: change behaviour of format verb %b to match %x when negative (thanks Andrei Vieru).
+* gc: compile s == "" as len(s) == 0,
+	distinguish fatal compiler bug from error+exit,
+	fix alignment on non-amd64,
+	good syntax error for defer func() {} - missing fina (),
+	implement panic and recover,
+	zero unnamed return values on entry if func has defer.
+* goyacc: change to be reentrant (thanks Roger Peppe).
+* io/ioutil: fix bug in ReadFile when Open succeeds but Stat fails.
+* kate: update for recent language changes (thanks Evan Shaw).
+* libcgo: initial mingw port work - builds but untested (thanks Joe Poirier).
+* math: new functions and special cases (thanks Charles L. Dorian) 
+* net: use chan bool instead of chan *netFD to avoid cycle.
+* netchan: allow client to send as well as receive.
+* nntp: new package, NNTP client (thanks Conrad Meyer).
+* os: rename os.Dir to os.FileInfo.
+* rpc: don't log normal EOF,
+	fix ServeConn to block as documented.
+* runtime: many bug fixes, better ARM support.
+* strings: add IndexRune, Trim, TrimLeft, TrimRight, etc (thanks Michael Hoisie).
+* syscall: implement some mingw syscalls required by os (thanks Alex Brainman).
+* test/bench: add k-nucleotide-parallel (thanks Kyle Consalus).
+* Unicode: add support for Turkish case mapping.
+* xgb: move from the main repository to http://code.google.com/p/x-go-binding/
+</pre>
+
+<h2 id="2010-03-30">2010-03-30</h2>
+
+<pre>
+This release contains three language changes:
+
+1. Accessing a non-existent key in a map is no longer a run-time error.  
+It now evaluates to the zero value for that type.  For example:
+        x := myMap[i]   is now equivalent to:   x, _ := myMap[i]
+
+2. It is now legal to take the address of a function's return value.  
+The return values are copied back to the caller only after deferred
+functions have run.
+
+3. The functions panic and recover, intended for reporting and recovering from
+failure, have been added to the spec:
+	http://golang.org/doc/go_spec.html#Handling_panics 
+In a related change, panicln is gone, and panic is now a single-argument
+function.  Panic and recover are recognized by the gc compilers but the new
+behavior is not yet implemented.
+
+The ARM build is broken in this release; ARM users should stay at release.2010-03-22.
+
+Other changes:
+* bytes, strings: add IndexAny.
+* cc/ld: Add support for #pragma dynexport,
+        Rename dynld to dynimport throughout. Cgo users will need to rerun cgo.
+* expvar: default publishings for cmdline, memstats
+* flag: add user-defined flag types.
+* gc: usual bug fixes
+* go/ast: generalized ast filtering.
+* go/printer: avoid reflect in print.
+* godefs: fix handling of negative constants.
+* godoc: export pprof debug information, exported variables,
+        support for filtering of command-line output in -src mode,
+        use http GET for remote search instead of rpc.
+* gofmt: don't convert multi-line functions into one-liners,
+        preserve newlines in multiline selector expressions (thanks Risto Jaakko Saarelma).
+* goinstall: include command name in error reporting (thanks Andrey Mirtchovski)
+* http: add HandleFunc as shortcut to Handle(path, HandlerFunc(func))
+* make: use actual dependency for install
+* math: add J1, Y1, Jn, Yn, J0, Y0 (Bessel functions) (thanks Charles L. Dorian)
+* prof: add pprof from google-perftools
+* regexp: don't return non-nil *Regexp if there is an error.
+* runtime: add Callers,
+        add malloc sampling, pprof interface,
+        add memory profiling, more statistics to runtime.MemStats,
+        implement missing destroylock() (thanks Alex Brainman),
+        more malloc statistics,
+        run all finalizers in a single goroutine,
+        Goexit runs deferred calls.
+* strconv: add Atob and Btoa,
+        Unquote could wrongly return a nil error on error (thanks Roger Peppe).
+* syscall: add IPV6 constants,
+        add syscall_bsd.go for Darwin and other *BSDs (thanks Giles Lean),
+        implement SetsockoptString (thanks Christopher Wedgwood).
+* websocket: implement new protocol (thanks Fumitoshi Ukai).
+* xgb: fix request length and request size (thanks Firmansyah Adiputra).
+* xml: add CopyToken (thanks Kyle Consalus),
+        add line numbers to syntax errors (thanks Kyle Consalus),
+        use io.ReadByter in place of local readByter (thanks Raif S. Naffah). 
+</pre>
+
+<h2 id="2010-03-22">2010-03-22</h2>
+
+<pre>
+With this release we announce the launch of the Go Blog:
+	http://blog.golang.org/
+The first post is a brief update covering what has happened since the launch.
+
+This release contains some new packages and functionality, and many fixes:
+* 6g/8g: fix issues with complex data types, other bug fixes.
+* Makefiles: refactored to make writing external Makefiles easier.
+* crypto/rand: new package.
+* godoc: implemented command-line search via RPC,
+	improved comment formatting: recognize URLs.
+* gofmt: more consistent formatting of const/var decls.
+* http: add Error helper function,
+	add ParseQuery (thanks Petar Maymounkov),
+	change RawPath to mean raw path, not raw everything-after-scheme.
+* image/jpeg: fix typos.
+* json: add MarshalIndent (accepts user-specified indent string).
+* math: add Gamma function (thanks Charles L. Dorian).
+* misc/bbedit: support for cmplx, real, imag (thanks Anthony Starks).
+* misc/vim: add new complex types, functions and literals.
+* net: fix IPMask.String not to crash on all-0xff mask.
+* os: drop File finalizer after normal Close.
+* runtime: add GOROOT and Version,
+	lock finalizer table accesses.
+* sha512: add sha384 (truncated version) (thanks Conrad Meyer).
+* syscall: add const ARCH, analogous to OS.
+* syscall: further additions to mingw port (thanks Alex Brainman).
+* template: fixed html formatter []byte input bug.
+* utf16: new package.
+* version.bash: cope with ancient Mercurial.
+* websocket: use URL.RawPath to construct WebSocket-Location: header.
+</pre>
+
+<h2 id="2010-03-15">2010-03-15</h2>
+
+<pre>
+This release includes a language change: support for complex numbers.
+	http://golang.org/doc/go_spec.html#Imaginary_literals
+	http://golang.org/doc/go_spec.html#Complex_numbers
+There is no library support as yet.
+
+This release also includes the goinstall command-line tool. 
+	http://golang.org/cmd/goinstall/
+	http://groups.google.com/group/golang-nuts/t/f091704771128e32
+
+* 5g/6g/8g: fix double function call in slice.
+* arm: cleanup build warnings. (thanks Dean Prichard)
+* big: fix mistakes with probablyPrime.
+* bufio: add WriteRune.
+* bytes: add ReadRune and WriteRune to bytes.Buffer.
+* cc: stack split bug fix.
+* crypto: add SHA-224 to sha256, add sha512 package. (thanks Conrad Meyer)
+* crypto/ripemd160: new package. (thanks Raif S. Naffah)
+* crypto/rsa: don't use safe primes.
+* gc: avoid fixed length buffer cleanbuf. (thanks Dean Prichard)
+	better compilation of floating point +=
+	fix crash on complicated arg to make slice.
+	remove duplicate errors, give better error for I.(T)
+* godoc: support for multiple packages in a directory, other fixes.
+* gofmt: bug fixes.
+* hash: add Sum64 interface.
+* hash/crc32: add Update function.
+* hash/crc64: new package implementing 64-bit CRC.
+* math: add ilogb, logb, remainder. (thanks Charles L. Dorian) 
+* regexp: add ReplaceAllFunc, ReplaceAllStringFunc.
+* runtime: clock garbage collection on bytes allocated, not pages in use.
+* strings: make Split(s, "", n) faster. (thanks Spring Mc)
+* syscall: minimal mingw version of syscall. (thanks Alex Brainman)
+* template: add ParseFile, MustParseFile.
+</pre>
+
+<h2 id="2010-03-04">2010-03-04</h2>
+
+<pre>
+There is one language change: the ability to convert a string to []byte or 
+[]int.  This deprecates the strings.Bytes and strings.Runes functions.
+You can convert your existing sources using these gofmt commands:
+	gofmt -r 'strings.Bytes(x) -&gt; []byte(x)' -w file-or-directory-list
+	gofmt -r 'strings.Runes(x) -&gt; []int(x)' -w file-or-directory-list
+After running these you might need to delete unused imports of the "strings" 
+package.
+
+Other changes and fixes:
+* 6l/8l/5l: add -r option
+* 8g: make a[byte(x)] truncate x
+* codereview.py: fix for compatibility with hg >=1.4.3
+* crypto/blowfish: new package (thanks Raif S. Naffah)
+* dashboard: more performance tuning
+* fmt: use String method in %q to get the value to quote.
+* gofmt: several cosmetic changes
+* http: fix handling of Connection: close, bug in http.Post
+* net: correct DNS configuration,
+	fix network timeout boundary condition,
+	put [ ] around IPv6 addresses for Dial.
+* path: add Match,
+	fix bug in Match with non-greedy stars (thanks Kevin Ballard)
+* strings: delete Bytes, Runes (see above)
+* tests: an Eratosthenesque concurrent prime sieve (thanks Anh Hai Trinh) 
+</pre>
+
+<h2 id="2010-02-23">2010-02-23</h2>
+
+<pre>
+This release is mainly bug fixes and a little new code.
+There are no language changes.
+
+6g/5g/8g: bug fixes
+8a/8l: Added FCMOVcc instructions (thanks Evan Shaw and Charles Dorian)
+crypto/x509: support certificate creation
+dashboard: caching to avoid datastore queries
+exec: add dir argument to Run
+godoc: bug fixes and code cleanups
+http: continued implementation and bug fixes (thanks Petar Maymounkov)
+json: fix quoted strings in Marshal (thanks Sergei Skorobogatov)
+math: more functions, test cases, and benchmarks (thanks Charles L. Dorian)
+misc/bbedit: treat predeclared identifiers as "keywords" (thanks Anthony Starks)
+net: disable UDP server test (flaky on various architectures)
+runtime: work around Linux kernel bug in futex,
+	pchw is now tiny
+sync: fix to work on armv5 (thanks Dean Prichard)
+websocket: fix binary frame size decoding (thanks Timo Savola)
+xml: allow unquoted attribute values in non-Strict mode (thanks Amrut Joshi)
+	treat bool as value in Unmarshal (thanks Michael Hoisie) 
+</pre>
+
+<h2 id="2010-02-17">2010-02-17</h2>
+
+<pre>
+There are two small language changes:
+* NUL bytes may be rejected in souce files, and the tools do reject them.
+* Conversions from string to []int and []byte are defined but not yet implemented.
+
+Other changes and fixes:
+* 5a/6a/8a/5c/6c/8c: remove fixed-size arrays for -I and -D options (thanks Dean Prichard)
+* 5c/6c/8c/5l/6l/8l: add -V flag to display version number
+* 5c/6c/8c: use "cpp" not "/bin/cpp" for external preprocessor (thanks Giles Lean)
+* 8a/8l: Added CMOVcc instructions (thanks Evan Shaw)
+* 8l: pe executable building code changed to include import table for kernel32.dll functions (thanks Alex Brainman)
+* 5g/6g/8g: bug fixes
+* asn1: bug fixes and additions (incl marshalling)
+* build: fix build for Native Client, Linux/ARM
+* dashboard: show benchmarks, add garbage collector benchmarks
+* encoding/pem: add marshalling support
+* exp/draw: fast paths for a nil mask
+* godoc: support for directories outside $GOROOT
+* http: sort header keys when writing Response or Request to wire (thanks Petar Maymounkov)
+* math: special cases and new functions (thanks Charles Dorian)
+* mime: new package, used in http (thanks Michael Hoisie)
+* net: dns bug fix - use random request id
+* os: finalize File, to close fd.
+* path: make Join variadic (thanks Stephen Weinberg)
+* regexp: optimization bug fix
+* runtime: misc fixes and optimizations
+* syscall: make signature of Umask on OS X, FreeBSD match Linux. (thanks Giles Lean)
+</pre>
+
+<h2 id="2010-02-04">2010-02-04</h2>
+
+<pre>
+There is one language change: support for ...T parameters:
+	http://golang.org/doc/go_spec.html#Function_types
+
+You can now check build status on various platforms at the Go Dashboard: 
+	http://godashboard.appspot.com
+
+* 5l/6l/8l: several minor fixes
+* 5a/6a/8a/5l/6l/8l: avoid overflow of symb buffer (thanks Dean Prichard)
+* compress/gzip: gzip deflater (i.e., writer)
+* debug/proc: add mingw specific build stubs (thanks Joe Poirier)
+* exp/draw: separate the source-point and mask-point in Draw
+* fmt: handle nils safely in Printf
+* gccgo: error messages now match those of gc
+* godoc: several fixes
+* http: bug fixes, revision of Request/Response (thanks Petar Maymounkov)
+* image: new image.A type to represent anti-aliased font glyphs
+	add named colors (e.g. image.Blue), suitable for exp/draw
+* io: fixed bugs in Pipe
+* malloc: merge into package runtime
+* math: fix tests on FreeBSD (thanks Devon H. O'Dell)
+	add functions; update tests and special cases (thanks Charles L. Dorian)
+* os/signal: send SIGCHLDs to Incoming (thanks Chris Wedgwood)
+* reflect: add StringHeader to reflect
+* runtime: add SetFinalizer
+* time: Sleep through interruptions (thanks Chris Wedgwood)
+	add RFC822 formats
+	experimental implemenation of Ticker using two goroutines for all tickers
+* xml: allow underscores in XML element names (thanks Michael Hoisie)
+	allow any scalar type in xml.Unmarshal
+</pre>
+
+<h2 id="2010-01-27">2010-01-27</h2>
+
+<pre>
+There are two small language changes: the meaning of chan &lt;- chan int
+is now defined, and functions returning functions do not need to 
+parenthesize the result type.
+
+There is one significant implementation change: the compilers can
+handle multiple packages using the same name in a single binary.
+In the gc compilers, this comes at the cost of ensuring that you
+always import a particular package using a consistent import path.
+In the gccgo compiler, the cost is that you must use the -fgo-prefix
+flag to pass a unique prefix (like the eventual import path).
+
+5a/6a/8a: avoid use of fixed-size buffers (thanks Dean Prichard)
+5g, 6g, 8g: many minor bug fixes
+bufio: give Writer.WriteString same signature as bytes.Buffer.WriteString.
+container/list: PushFrontList, PushBackList (thanks Jan Hosang)
+godoc: trim spaces from search query (thanks Christopher Wedgwood)
+hash: document that Sum does not change state, fix crypto hashes
+http: bug fixes, revision of Request/Response (thanks Petar Maymounkov)
+math: more handling of IEEE 754 special cases (thanks Charles Dorian)
+misc/dashboard: new build dashboard
+net: allow UDP broadcast,
+	use /etc/hosts to resolve names (thanks Yves Junqueira, Michael Hoisie)
+netchan: beginnings of new package for connecting channels across a network
+os: allow FQDN in Hostname test (thanks Icarus Sparry)
+reflect: garbage collection bug in Call
+runtime: demo of Go on raw (emulated) hw in runtime/pchw,
+	performance fix on OS X
+spec: clarify meaning of chan &lt;- chan int,
+	func() func() int is allowed now,
+	define ... T (not yet implemented)
+template: can use interface values
+time: fix for +0000 time zone,
+	more robust tick.Stop.
+xgb: support for authenticated connections (thanks Firmansyah Adiputra)
+xml: add Escape (thanks Stephen Weinberg)
+</pre>
+
+<h2 id="2010-01-13">2010-01-13</h2>
+
+<pre>
+This release is mainly bug fixes with a little new code.
+There are no language changes.
+
+build: $GOBIN should no longer be required in $PATH (thanks Devon H. O'Dell),
+	new package target "make bench" to run benchmarks
+8g: faster float -&gt; uint64 conversion (thanks Evan Shaw)
+5g, 6g, 8g:
+	clean opnames.h to avoid stale errors (thanks Yongjian Xu),
+	a handful of small compiler fixes
+5g, 6g, 8g, 5l, 6l, 8l: ignore $GOARCH, which is implied by name of tool
+6prof: support for writing input files for google-perftools's pprof
+asn1: fix a few structure-handling bugs
+cgo: many bug fixes (thanks Devon H. O'Dell)
+codereview: repeated "hg mail" sends "please take another look"
+gob: reserve ids for future expansion
+godoc: distinguish HTML generation from plain text HTML escaping (thanks Roger Peppe)
+gofmt: minor bug fixes, removed -oldprinter flag
+http: add CanonicalPath (thanks Ivan Krasin),
+	avoid header duplication in Response.Write,
+	correctly escape/unescape URL sections
+io: new interface ReadByter
+json: better error, pointer handling in Marshal (thanks Ivan Krasin)
+libmach: disassembly of FUCOMI, etc (thanks Evan Shaw)
+math: special cases for most functions and 386 hardware Sqrt (thanks Charles Dorian)
+misc/dashboard: beginning of a build dashboard at godashboard.appspot.com.
+misc/emacs: handling of new semicolon rules (thanks Austin Clements),
+	empty buffer bug fix (thanks Kevin Ballard)
+misc/kate: highlighting improvements (tahnks Evan Shaw)
+os/signal: add signal names: signal.SIGHUP, etc (thanks David Symonds)
+runtime: preliminary Windows support (thanks Hector Chu),
+	preemption polling to reduce garbage collector pauses
+scanner: new lightweight scanner package
+template: bug fix involving spaces before a delimited block
+test/bench: updated timings
+time: new Format, Parse functions
+</pre>
+
+<h2 id="2010-01-05">2010-01-05</h2>
+
+<pre>
+This release is mainly bug fixes.  There are no language changes.
+
+6prof: now works on 386
+8a, 8l: add FCOMI, FCOMIP, FUCOMI, and FUCOMIP (thanks Evan Shaw)
+big: fix ProbablyPrime on small numbers
+container/vector: faster []-based implementation (thanks Jan Mercl)
+crypto/tls: extensions and Next Protocol Negotiation
+gob: one encoding bug fix, one decoding bug fix
+image/jpeg: support for RST markers
+image/png: support for transparent paletted images
+misc/xcode: improved support (thanks Ken Friedenbach)
+net: return nil Conn on error from Dial (thanks Roger Peppe)
+regexp: add Regexp.NumSubexp (thanks Peter Froehlich)
+syscall: add Nanosleep on FreeBSD (thanks Devon H. O'Dell)
+template: can use map in .repeated section
+
+There is now a public road map, in the repository and online
+at <a href="http://golang.org/doc/devel/roadmap.html">http://golang.org/doc/devel/roadmap.html</a>.
+</pre>
+
+<h2 id="2009-12-22">2009-12-22</h2>
+
+<pre>
+Since the last release there has been one large syntactic change to
+the language, already discussed extensively on this list: semicolons
+are now implied between statement-ending tokens and newline characters.
+See http://groups.google.com/group/golang-nuts/t/5ee32b588d10f2e9 for
+details.
+
+By default, gofmt now parses and prints the new lighter weight syntax.
+To convert programs written in the old syntax, you can use:
+
+	gofmt -oldparser -w *.go
+
+Since everything was being reformatted anyway, we took the opportunity to
+change the way gofmt does alignment.  Now gofmt uses tabs at the start
+of a line for basic code alignment, but it uses spaces for alignment of
+interior columns.  Thus, in an editor with a fixed-width font, you can
+choose your own tab size to change the indentation, and no matter what
+tab size you choose, columns will be aligned properly.
+
+
+In addition to the syntax and formatting changes, there have been many
+smaller fixes and updates:
+
+6g,8g,5g: many bug fixes, better registerization,
+   build process fix involving mkbuiltin (thanks Yongjian Xu),
+   method expressions for concrete types
+8l: support for Windows PE files (thanks Hector Chu)
+bytes: more efficient Buffer handling
+bytes, strings: new function Fields (thanks Andrey Mirtchovski)
+cgo: handling of enums (thanks Moriyoshi Koizumi),
+    handling of structs with bit fields, multiple files (thanks Devon H. O'Dell),
+    installation of .so to non-standard locations
+crypto/sha256: new package for SHA 256 (thanks Andy Davis)
+encoding/binary: support for slices of fixed-size values (thanks Maxim Ushakov)
+exp/vector: experimental alternate vector representation (thanks Jan Mercl)
+fmt: %p for chan, map, slice types
+gob: a couple more bug fixes
+http: support for basic authentication (thanks Ivan Krasin)
+image/jpeg: basic JPEG decoder
+math: correct handling of Inf and NaN in Pow (thanks Charles Dorian)
+misc/bash: completion file for bash (thanks Alex Ray)
+os/signal: support for handling Unix signals (thanks David Symonds)
+rand: Zipf-distributed random values (thanks William Josephson)
+syscall: correct error return bug on 32-bit machines (thanks Christopher Wedgwood)
+syslog: new package for writing to Unix syslog daemon (thanks Yves Junqueira)
+template: will automatically invoke niladic methods
+time: new ISO8601 format generator (thanks Ben Olive)
+xgb: converted generator to new syntax (thanks Tor Andersson)
+xml: better mapping of tag names to Go identifiers (thanks Kei Son),
+    better handling of unexpected EOF (thanks Arvindh Rajesh Tamilmani)
+</pre>
+
+<h2 id="2009-12-09">2009-12-09</h2>
+
+<pre>
+Since the last release there are two changes to the language: 
+
+* new builtin copy(dst, src) copies n = min(len(dst), len(src)) 
+  elements to dst from src and returns n.  It works correctly 
+  even if dst and src overlap.  bytes.Copy is gone. 
+  Convert your programs using: 
+      gofmt -w -r 'bytes.Copy(d, s) -&gt; copy(d, s)' *.go 
+
+* new syntax x[lo:] is shorthand for x[lo:len(x)]. 
+  Convert your programs using: 
+      gofmt -w -r 'a[b:len(a)] -&gt; a[b:]' *.go 
+
+In addition, there have been many smaller fixes and updates: 
+
+* 6g/8g/5g: many bug fixes 
+* 8g: fix 386 floating point stack bug (thanks Charles Dorian) 
+* all.bash: now works even when $GOROOT has spaces (thanks Sergio Luis O. B. Correia), 
+    starting to make build work with mingw (thanks Hector Chu), 
+    FreeBSD support (thanks Devon O'Dell) 
+* big: much faster on 386. 
+* bytes: new function IndexByte, implemented in assembly 
+    new function Runes (thanks Peter Froehlich), 
+    performance tuning in bytes.Buffer. 
+* codereview: various bugs fixed 
+* container/vector: New is gone; just declare a Vector instead. 
+    call Resize to set len and cap. 
+* cgo: many bug fixes (thanks Eden Li) 
+* crypto: added MD4 (thanks Chris Lennert), 
+    added XTEA (thanks Adrian O'Grady). 
+* crypto/tls: basic client 
+* exp/iterable: new functions (thanks Michael Elkins) 
+* exp/nacl: native client tree builds again 
+* fmt: preliminary performance tuning 
+* go/ast: more powerful Visitor (thanks Roger Peppe) 
+* gob: a few bug fixes 
+* gofmt: better handling of standard input, error reporting (thanks Fazlul Shahriar) 
+    new -r flag for rewriting programs 
+* gotest: support for Benchmark functions (thanks Trevor Strohman) 
+* io: ReadFile, WriteFile, ReadDir now in separate package io/ioutil. 
+* json: new Marshal function (thanks Michael Hoisie), 
+    better white space handling (thanks Andrew Skiba), 
+    decoding into native data structures (thanks Sergey Gromov), 
+    handling of nil interface values (thanks Ross Light). 
+* math: correct handling of sin/cos of large angles 
+* net: better handling of Close (thanks Devon O'Dell and Christopher Wedgwood) 
+    support for UDP broadcast (thanks Jonathan Wills), 
+    support for empty packets 
+* rand: top-level functions now safe to call from multiple goroutines 
+(thanks Roger Peppe). 
+* regexp: a few easy optimizations 
+* rpc: better error handling, a few bug fixes 
+* runtime: better signal handling on OS X, malloc fixes, 
+    global channel lock is gone. 
+* sync: RWMutex now allows concurrent readers (thanks PÃ©ter SzabÃ³) 
+* template: can use maps as data (thanks James Meneghello) 
+* unicode: updated to Unicode 5.2. 
+* websocket: new package (thanks Fumitoshi Ukai) 
+* xgb: preliminary X Go Bindings (thanks Tor Andersson) 
+* xml: fixed crash (thanks Vish Subramanian) 
+* misc: bbedit config (thanks Anthony Starks), 
+    kate config (thanks Evan Shaw) 
+</pre>
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                               root/go1.4/doc/docs.html                                                                            0100644 0000000 0000000 00000017753 12600426225 013457  0                                                                                                    ustar 00                                                                0000000 0000000                                                                                                                                                                        <!--{
+	"Title": "Documentation",
+	"Path": "/doc/"
+}-->
+
+<p>
+The Go programming language is an open source project to make programmers more
+productive.
+</p>
+
+<p>
+Go is expressive, concise, clean, and efficient. Its concurrency
+mechanisms make it easy to write programs that get the most out of multicore
+and networked machines, while its novel type system enables flexible and
+modular program construction. Go compiles quickly to machine code yet has the
+convenience of garbage collection and the power of run-time reflection. It's a
+fast, statically typed, compiled language that feels like a dynamically typed,
+interpreted language.
+</p>
+
+<div id="manual-nav"></div>
+
+<h2>Installing Go</h2>
+
+<h3><a href="/doc/install">Getting Started</a></h3>
+<p>
+Instructions for downloading and installing the Go compilers, tools, and
+libraries.
+</p>
+
+
+<h2 id="learning">Learning Go</h2>
+
+<img class="gopher" src="/doc/gopher/doc.png"/>
+
+<h3 id="go_tour"><a href="//tour.golang.org/">A Tour of Go</a></h3>
+<p>
+An interactive introduction to Go in three sections.
+The first section covers basic syntax and data structures; the second discusses
+methods and interfaces; and the third introduces Go's concurrency primitives.
+Each section concludes with a few exercises so you can practice what you've
+learned. You can <a href="//tour.golang.org/">take the tour online</a> or
+<a href="//code.google.com/p/go-tour/">install it locally</a>.
+</p>
+
+<h3 id="code"><a href="code.html">How to write Go code</a></h3>
+<p>
+Also available as a
+<a href="//www.youtube.com/watch?v=XCsL89YtqCs">screencast</a>, this doc
+explains how to use the <a href="/cmd/go/">go command</a> to fetch, build, and
+install packages, commands, and run tests.
+</p>
+
+<h3 id="effective_go"><a href="effective_go.html">Effective Go</a></h3>
+<p>
+A document that gives tips for writing clear, idiomatic Go code.
+A must read for any new Go programmer. It augments the tour and
+the language specification, both of which should be read first.
+</p>
+
+<h3 id="faq"><a href="/doc/faq">Frequently Asked Questions (FAQ)</a></h3>
+<p>
+Answers to common questions about Go.
+</p>
+
+<h3 id="wiki"><a href="/wiki">The Go Wiki</a></h3>
+<p>A wiki maintained by the Go community.</p>
+
+<h4 id="learn_more">More</h4>
+<p>
+See the <a href="/wiki/Learn">Learn</a> page at the <a href="/wiki">Wiki</a>
+for more Go learning resources.
+</p>
+
+
+<h2 id="references">References</h2>
+
+<h3 id="pkg"><a href="/pkg/">Package Documentation</a></h3>
+<p>
+The documentation for the Go standard library.
+</p>
+
+<h3 id="cmd"><a href="/doc/cmd">Command Documentation</a></h3>
+<p>
+The documentation for the Go tools.
+</p>
+
+<h3 id="spec"><a href="/ref/spec">Language Specification</a></h3>
+<p>
+The official Go Language specification.
+</p>
+
+<h3 id="go_mem"><a href="/ref/mem">The Go Memory Model</a></h3>
+<p>
+A document that specifies the conditions under which reads of a variable in
+one goroutine can be guaranteed to observe values produced by writes to the
+same variable in a different goroutine.
+</p>
+
+<h3 id="release"><a href="/doc/devel/release.html">Release History</a></h3>
+<p>A summary of the changes between Go releases.</p>
+
+
+<h2 id="articles">Articles</h2>
+
+<h3 id="blog"><a href="//blog.golang.org/">The Go Blog</a></h3>
+<p>The official blog of the Go project, featuring news and in-depth articles by
+the Go team and guests.</p>
+
+<h4>Codewalks</h4>
+<p>
+Guided tours of Go programs.
+</p>
+<ul>
+<li><a href="/doc/codewalk/functions">First-Class Functions in Go</a></li>
+<li><a href="/doc/codewalk/markov">Generating arbitrary text: a Markov chain algorithm</a></li>
+<li><a href="/doc/codewalk/sharemem">Share Memory by Communicating</a></li>
+<li><a href="/doc/articles/wiki/">Writing Web Applications</a> - building a simple web application.</li>
+</ul>
+
+<h4>Language</h4>
+<ul>
+<li><a href="/blog/json-rpc-tale-of-interfaces">JSON-RPC: a tale of interfaces</a></li>
+<li><a href="/blog/gos-declaration-syntax">Go's Declaration Syntax</a></li>
+<li><a href="/blog/defer-panic-and-recover">Defer, Panic, and Recover</a></li>
+<li><a href="/blog/go-concurrency-patterns-timing-out-and">Go Concurrency Patterns: Timing out, moving on</a></li>
+<li><a href="/blog/go-slices-usage-and-internals">Go Slices: usage and internals</a></li>
+<li><a href="/blog/gif-decoder-exercise-in-go-interfaces">A GIF decoder: an exercise in Go interfaces</a></li>
+<li><a href="/blog/error-handling-and-go">Error Handling and Go</a></li>
+<li><a href="/blog/organizing-go-code">Organizing Go code</a></li>
+</ul>
+
+<h4>Packages</h4>
+<ul>
+<li><a href="/blog/json-and-go">JSON and Go</a> - using the <a href="/pkg/encoding/json/">json</a> package.</li>
+<li><a href="/blog/gobs-of-data">Gobs of data</a> - the design and use of the <a href="/pkg/encoding/gob/">gob</a> package.</li>
+<li><a href="/blog/laws-of-reflection">The Laws of Reflection</a> - the fundamentals of the <a href="/pkg/reflect/">reflect</a> package.</li>
+<li><a href="/blog/go-image-package">The Go image package</a> - the fundamentals of the <a href="/pkg/image/">image</a> package.</li>
+<li><a href="/blog/go-imagedraw-package">The Go image/draw package</a> - the fundamentals of the <a href="/pkg/image/draw/">image/draw</a> package.</li>
+</ul>
+
+<h4>Tools</h4>
+<ul>
+<li><a href="/doc/articles/go_command.html">About the Go command</a> - why we wrote it, what it is, what it's not, and how to use it.</li>
+<li><a href="/blog/c-go-cgo">C? Go? Cgo!</a> - linking against C code with <a href="/cmd/cgo/">cgo</a>.</li>
+<li><a href="/doc/gdb">Debugging Go Code with GDB</a></li>
+<li><a href="/blog/godoc-documenting-go-code">Godoc: documenting Go code</a> - writing good documentation for <a href="/cmd/godoc/">godoc</a>.</li>
+<li><a href="/blog/profiling-go-programs">Profiling Go Programs</a></li>
+<li><a href="/doc/articles/race_detector.html">Data Race Detector</a> - a manual for the data race detector.</li>
+<li><a href="/blog/race-detector">Introducing the Go Race Detector</a> - an introduction to the race detector.</li>
+<li><a href="/doc/asm">A Quick Guide to Go's Assembler</a> - an introduction to the assembler used by Go.</li>
+</ul>
+
+<h4 id="articles_more">More</h4>
+<p>
+See the <a href="/wiki/Articles">Articles page</a> at the
+<a href="/wiki">Wiki</a> for more Go articles.
+</p>
+
+
+<h2 id="talks">Talks</h2>
+
+<img class="gopher" src="/doc/gopher/talks.png"/>
+
+<h3 id="video_tour_of_go"><a href="http://research.swtch.com/gotour">A Video Tour of Go</a></h3>
+<p>
+Three things that make Go fast, fun, and productive:
+interfaces, reflection, and concurrency. Builds a toy web crawler to
+demonstrate these.
+</p>
+
+<h3 id="go_code_that_grows"><a href="//vimeo.com/53221560">Code that grows with grace</a></h3>
+<p>
+One of Go's key design goals is code adaptability; that it should be easy to take a simple design and build upon it in a clean and natural way. In this talk Andrew Gerrand describes a simple "chat roulette" server that matches pairs of incoming TCP connections, and then use Go's concurrency mechanisms, interfaces, and standard library to extend it with a web interface and other features. While the function of the program changes dramatically, Go's flexibility preserves the original design as it grows.
+</p>
+
+<h3 id="go_concurrency_patterns"><a href="//www.youtube.com/watch?v=f6kdp27TYZs">Go Concurrency Patterns</a></h3>
+<p>
+Concurrency is the key to designing high performance network services. Go's concurrency primitives (goroutines and channels) provide a simple and efficient means of expressing concurrent execution. In this talk we see how tricky concurrency problems can be solved gracefully with simple Go code.
+</p>
+
+<h3 id="advanced_go_concurrency_patterns"><a href="//www.youtube.com/watch?v=QDDwwePbDtw">Advanced Go Concurrency Patterns</a></h3>
+<p>
+This talk expands on the <i>Go Concurrency Patterns</i> talk to dive deeper into Go's concurrency primitives.
+</p>
+
+<h4 id="talks_more">More</h4>
+<p>
+See the <a href="/talks">Go Talks site</a> and <a href="/wiki/GoTalks">wiki page</a> for more Go talks.
+</p>
+
+
+<h2 id="nonenglish">Non-English Documentation</h2>
+
+<p>
+See the <a href="/wiki/NonEnglish">NonEnglish</a> page
+at the <a href="/wiki">Wiki</a> for localized
+documentation.
+</p>
+                     root/go1.4/doc/effective_go.html                                                                    0100644 0000000 0000000 00000343601 12600426225 015146  0                                                                                                    ustar 00                                                                0000000 0000000                                                                                                                                                                        <!--{
+	"Title": "Effective Go",
+	"Template": true
+}-->
+
+<h2 id="introduction">Introduction</h2>
+
+<p>
+Go is a new language.  Although it borrows ideas from
+existing languages,
+it has unusual properties that make effective Go programs
+different in character from programs written in its relatives.
+A straightforward translation of a C++ or Java program into Go
+is unlikely to produce a satisfactory result&mdash;Java programs
+are written in Java, not Go.
+On the other hand, thinking about the problem from a Go
+perspective could produce a successful but quite different
+program.
+In other words,
+to write Go well, it's important to understand its properties
+and idioms.
+It's also important to know the established conventions for
+programming in Go, such as naming, formatting, program
+construction, and so on, so that programs you write
+will be easy for other Go programmers to understand.
+</p>
+
+<p>
+This document gives tips for writing clear, idiomatic Go code.
+It augments the <a href="/ref/spec">language specification</a>,
+the <a href="//tour.golang.org/">Tour of Go</a>,
+and <a href="/doc/code.html">How to Write Go Code</a>,
+all of which you
+should read first.
+</p>
+
+<h3 id="examples">Examples</h3>
+
+<p>
+The <a href="/src/">Go package sources</a>
+are intended to serve not
+only as the core library but also as examples of how to
+use the language.
+Moreover, many of the packages contain working, self-contained
+executable examples you can run directly from the
+<a href="//golang.org">golang.org</a> web site, such as
+<a href="//golang.org/pkg/strings/#example_Map">this one</a> (if
+necessary, click on the word "Example" to open it up).
+If you have a question about how to approach a problem or how something
+might be implemented, the documentation, code and examples in the
+library can provide answers, ideas and
+background.
+</p>
+
+
+<h2 id="formatting">Formatting</h2>
+
+<p>
+Formatting issues are the most contentious
+but the least consequential.
+People can adapt to different formatting styles
+but it's better if they don't have to, and
+less time is devoted to the topic
+if everyone adheres to the same style.
+The problem is how to approach this Utopia without a long
+prescriptive style guide.
+</p>
+
+<p>
+With Go we take an unusual
+approach and let the machine
+take care of most formatting issues.
+The <code>gofmt</code> program
+(also available as <code>go fmt</code>, which
+operates at the package level rather than source file level)
+reads a Go program
+and emits the source in a standard style of indentation
+and vertical alignment, retaining and if necessary
+reformatting comments.
+If you want to know how to handle some new layout
+situation, run <code>gofmt</code>; if the answer doesn't
+seem right, rearrange your program (or file a bug about <code>gofmt</code>),
+don't work around it.
+</p>
+
+<p>
+As an example, there's no need to spend time lining up
+the comments on the fields of a structure.
+<code>Gofmt</code> will do that for you.  Given the
+declaration
+</p>
+
+<pre>
+type T struct {
+    name string // name of the object
+    value int // its value
+}
+</pre>
+
+<p>
+<code>gofmt</code> will line up the columns:
+</p>
+
+<pre>
+type T struct {
+    name    string // name of the object
+    value   int    // its value
+}
+</pre>
+
+<p>
+All Go code in the standard packages has been formatted with <code>gofmt</code>.
+</p>
+
+
+<p>
+Some formatting details remain.  Very briefly:
+</p>
+
+<dl>
+    <dt>Indentation</dt>
+    <dd>We use tabs for indentation and <code>gofmt</code> emits them by default.
+    Use spaces only if you must.
+    </dd>
+    <dt>Line length</dt>
+    <dd>
+    Go has no line length limit.  Don't worry about overflowing a punched card.
+    If a line feels too long, wrap it and indent with an extra tab.
+    </dd>
+    <dt>Parentheses</dt>
+    <dd>
+    Go needs fewer parentheses than C and Java: control structures (<code>if</code>,
+    <code>for</code>, <code>switch</code>) do not have parentheses in
+    their syntax.
+    Also, the operator precedence hierarchy is shorter and clearer, so
+<pre>
+x&lt;&lt;8 + y&lt;&lt;16
+</pre>
+    means what the spacing implies, unlike in the other languages.
+    </dd>
+</dl>
+
+<h2 id="commentary">Commentary</h2>
+
+<p>
+Go provides C-style <code>/* */</code> block comments
+and C++-style <code>//</code> line comments.
+Line comments are the norm;
+block comments appear mostly as package comments, but
+are useful within an expression or to disable large swaths of code.
+</p>
+
+<p>
+The programâ€”and web serverâ€”<code>godoc</code> processes
+Go source files to extract documentation about the contents of the
+package.
+Comments that appear before top-level declarations, with no intervening newlines,
+are extracted along with the declaration to serve as explanatory text for the item.
+The nature and style of these comments determines the
+quality of the documentation <code>godoc</code> produces.
+</p>
+
+<p>
+Every package should have a <i>package comment</i>, a block
+comment preceding the package clause.
+For multi-file packages, the package comment only needs to be
+present in one file, and any one will do.
+The package comment should introduce the package and
+provide information relevant to the package as a whole.
+It will appear first on the <code>godoc</code> page and
+should set up the detailed documentation that follows.
+</p>
+
+<pre>
+/*
+Package regexp implements a simple library for regular expressions.
+
+The syntax of the regular expressions accepted is:
+
+    regexp:
+        concatenation { '|' concatenation }
+    concatenation:
+        { closure }
+    closure:
+        term [ '*' | '+' | '?' ]
+    term:
+        '^'
+        '$'
+        '.'
+        character
+        '[' [ '^' ] character-ranges ']'
+        '(' regexp ')'
+*/
+package regexp
+</pre>
+
+<p>
+If the package is simple, the package comment can be brief.
+</p>
+
+<pre>
+// Package path implements utility routines for
+// manipulating slash-separated filename paths.
+</pre>
+
+<p>
+Comments do not need extra formatting such as banners of stars.
+The generated output may not even be presented in a fixed-width font, so don't depend
+on spacing for alignment&mdash;<code>godoc</code>, like <code>gofmt</code>,
+takes care of that.
+The comments are uninterpreted plain text, so HTML and other
+annotations such as <code>_this_</code> will reproduce <i>verbatim</i> and should
+not be used.
+One adjustment <code>godoc</code> does do is to display indented
+text in a fixed-width font, suitable for program snippets.
+The package comment for the
+<a href="/pkg/fmt/"><code>fmt</code> package</a> uses this to good effect.
+</p>
+
+<p>
+Depending on the context, <code>godoc</code> might not even
+reformat comments, so make sure they look good straight up:
+use correct spelling, punctuation, and sentence structure,
+fold long lines, and so on.
+</p>
+
+<p>
+Inside a package, any comment immediately preceding a top-level declaration
+serves as a <i>doc comment</i> for that declaration.
+Every exported (capitalized) name in a program should
+have a doc comment.
+</p>
+
+<p>
+Doc comments work best as complete sentences, which allow
+a wide variety of automated presentations.
+The first sentence should be a one-sentence summary that
+starts with the name being declared.
+</p>
+
+<pre>
+// Compile parses a regular expression and returns, if successful, a Regexp
+// object that can be used to match against text.
+func Compile(str string) (regexp *Regexp, err error) {
+</pre>
+
+<p>
+If the name always begins the comment, the output of <code>godoc</code>
+can usefully be run through <code>grep</code>.
+Imagine you couldn't remember the name "Compile" but were looking for
+the parsing function for regular expressions, so you ran
+the command,
+</p>
+
+<pre>
+$ godoc regexp | grep parse
+</pre>
+
+<p>
+If all the doc comments in the package began, "This function...", <code>grep</code>
+wouldn't help you remember the name. But because the package starts each
+doc comment with the name, you'd see something like this,
+which recalls the word you're looking for.
+</p>
+
+<pre>
+$ godoc regexp | grep parse
+    Compile parses a regular expression and returns, if successful, a Regexp
+    parsed. It simplifies safe initialization of global variables holding
+    cannot be parsed. It simplifies safe initialization of global variables
+$
+</pre>
+
+<p>
+Go's declaration syntax allows grouping of declarations.
+A single doc comment can introduce a group of related constants or variables.
+Since the whole declaration is presented, such a comment can often be perfunctory.
+</p>
+
+<pre>
+// Error codes returned by failures to parse an expression.
+var (
+    ErrInternal      = errors.New("regexp: internal error")
+    ErrUnmatchedLpar = errors.New("regexp: unmatched '('")
+    ErrUnmatchedRpar = errors.New("regexp: unmatched ')'")
+    ...
+)
+</pre>
+
+<p>
+Grouping can also indicate relationships between items,
+such as the fact that a set of variables is protected by a mutex.
+</p>
+
+<pre>
+var (
+    countLock   sync.Mutex
+    inputCount  uint32
+    outputCount uint32
+    errorCount  uint32
+)
+</pre>
+
+<h2 id="names">Names</h2>
+
+<p>
+Names are as important in Go as in any other language.
+They even have semantic effect:
+the visibility of a name outside a package is determined by whether its
+first character is upper case.
+It's therefore worth spending a little time talking about naming conventions
+in Go programs.
+</p>
+
+
+<h3 id="package-names">Package names</h3>
+
+<p>
+When a package is imported, the package name becomes an accessor for the
+contents.  After
+</p>
+
+<pre>
+import "bytes"
+</pre>
+
+<p>
+the importing package can talk about <code>bytes.Buffer</code>.  It's
+helpful if everyone using the package can use the same name to refer to
+its contents, which implies that the package name should be good:
+short, concise, evocative.  By convention, packages are given
+lower case, single-word names; there should be no need for underscores
+or mixedCaps.
+Err on the side of brevity, since everyone using your
+package will be typing that name.
+And don't worry about collisions <i>a priori</i>.
+The package name is only the default name for imports; it need not be unique
+across all source code, and in the rare case of a collision the
+importing package can choose a different name to use locally.
+In any case, confusion is rare because the file name in the import
+determines just which package is being used.
+</p>
+
+<p>
+Another convention is that the package name is the base name of
+its source directory;
+the package in <code>src/encoding/base64</code>
+is imported as <code>"encoding/base64"</code> but has name <code>base64</code>,
+not <code>encoding_base64</code> and not <code>encodingBase64</code>.
+</p>
+
+<p>
+The importer of a package will use the name to refer to its contents,
+so exported names in the package can use that fact
+to avoid stutter.
+(Don't use the <code>import .</code> notation, which can simplify
+tests that must run outside the package they are testing, but should otherwise be avoided.)
+For instance, the buffered reader type in the <code>bufio</code> package is called <code>Reader</code>,
+not <code>BufReader</code>, because users see it as <code>bufio.Reader</code>,
+which is a clear, concise name.
+Moreover,
+because imported entities are always addressed with their package name, <code>bufio.Reader</code>
+does not conflict with <code>io.Reader</code>.
+Similarly, the function to make new instances of <code>ring.Ring</code>&mdash;which
+is the definition of a <em>constructor</em> in Go&mdash;would
+normally be called <code>NewRing</code>, but since
+<code>Ring</code> is the only type exported by the package, and since the
+package is called <code>ring</code>, it's called just <code>New</code>,
+which clients of the package see as <code>ring.New</code>.
+Use the package structure to help you choose good names.
+</p>
+
+<p>
+Another short example is <code>once.Do</code>;
+<code>once.Do(setup)</code> reads well and would not be improved by
+writing <code>once.DoOrWaitUntilDone(setup)</code>.
+Long names don't automatically make things more readable.
+A helpful doc comment can often be more valuable than an extra long name.
+</p>
+
+<h3 id="Getters">Getters</h3>
+
+<p>
+Go doesn't provide automatic support for getters and setters.
+There's nothing wrong with providing getters and setters yourself,
+and it's often appropriate to do so, but it's neither idiomatic nor necessary
+to put <code>Get</code> into the getter's name.  If you have a field called
+<code>owner</code> (lower case, unexported), the getter method should be
+called <code>Owner</code> (upper case, exported), not <code>GetOwner</code>.
+The use of upper-case names for export provides the hook to discriminate
+the field from the method.
+A setter function, if needed, will likely be called <code>SetOwner</code>.
+Both names read well in practice:
+</p>
+<pre>
+owner := obj.Owner()
+if owner != user {
+    obj.SetOwner(user)
+}
+</pre>
+
+<h3 id="interface-names">Interface names</h3>
+
+<p>
+By convention, one-method interfaces are named by
+the method name plus an -er suffix or similar modification
+to construct an agent noun: <code>Reader</code>,
+<code>Writer</code>, <code>Formatter</code>,
+<code>CloseNotifier</code> etc.
+</p>
+
+<p>
+There are a number of such names and it's productive to honor them and the function
+names they capture.
+<code>Read</code>, <code>Write</code>, <code>Close</code>, <code>Flush</code>,
+<code>String</code> and so on have
+canonical signatures and meanings.  To avoid confusion,
+don't give your method one of those names unless it
+has the same signature and meaning.
+Conversely, if your type implements a method with the
+same meaning as a method on a well-known type,
+give it the same name and signature;
+call your string-converter method <code>String</code> not <code>ToString</code>.
+</p>
+
+<h3 id="mixed-caps">MixedCaps</h3>
+
+<p>
+Finally, the convention in Go is to use <code>MixedCaps</code>
+or <code>mixedCaps</code> rather than underscores to write
+multiword names.
+</p>
+
+<h2 id="semicolons">Semicolons</h2>
+
+<p>
+Like C, Go's formal grammar uses semicolons to terminate statements,
+but unlike in C, those semicolons do not appear in the source.
+Instead the lexer uses a simple rule to insert semicolons automatically
+as it scans, so the input text is mostly free of them.
+</p>
+
+<p>
+The rule is this. If the last token before a newline is an identifier
+(which includes words like <code>int</code> and <code>float64</code>),
+a basic literal such as a number or string constant, or one of the
+tokens
+</p>
+<pre>
+break continue fallthrough return ++ -- ) }
+</pre>
+<p>
+the lexer always inserts a semicolon after the token.
+This could be summarized as, &ldquo;if the newline comes
+after a token that could end a statement, insert a semicolon&rdquo;.
+</p>
+
+<p>
+A semicolon can also be omitted immediately before a closing brace,
+so a statement such as
+</p>
+<pre>
+    go func() { for { dst &lt;- &lt;-src } }()
+</pre>
+<p>
+needs no semicolons.
+Idiomatic Go programs have semicolons only in places such as
+<code>for</code> loop clauses, to separate the initializer, condition, and
+continuation elements.  They are also necessary to separate multiple
+statements on a line, should you write code that way.
+</p>
+
+<p>
+One consequence of the semicolon insertion rules
+is that you cannot put the opening brace of a
+control structure (<code>if</code>, <code>for</code>, <code>switch</code>,
+or <code>select</code>) on the next line.  If you do, a semicolon
+will be inserted before the brace, which could cause unwanted
+effects.  Write them like this
+</p>
+
+<pre>
+if i &lt; f() {
+    g()
+}
+</pre>
+<p>
+not like this
+</p>
+<pre>
+if i &lt; f()  // wrong!
+{           // wrong!
+    g()
+}
+</pre>
+
+
+<h2 id="control-structures">Control structures</h2>
+
+<p>
+The control structures of Go are related to those of C but differ
+in important ways.
+There is no <code>do</code> or <code>while</code> loop, only a
+slightly generalized
+<code>for</code>;
+<code>switch</code> is more flexible;
+<code>if</code> and <code>switch</code> accept an optional
+initialization statement like that of <code>for</code>;
+<code>break</code> and <code>continue</code> statements
+take an optional label to identify what to break or continue;
+and there are new control structures including a type switch and a
+multiway communications multiplexer, <code>select</code>.
+The syntax is also slightly different:
+there are no parentheses
+and the bodies must always be brace-delimited.
+</p>
+
+<h3 id="if">If</h3>
+
+<p>
+In Go a simple <code>if</code> looks like this:
+</p>
+<pre>
+if x &gt; 0 {
+    return y
+}
+</pre>
+
+<p>
+Mandatory braces encourage writing simple <code>if</code> statements
+on multiple lines.  It's good style to do so anyway,
+especially when the body contains a control statement such as a
+<code>return</code> or <code>break</code>.
+</p>
+
+<p>
+Since <code>if</code> and <code>switch</code> accept an initialization
+statement, it's common to see one used to set up a local variable.
+</p>
+
+<pre>
+if err := file.Chmod(0664); err != nil {
+    log.Print(err)
+    return err
+}
+</pre>
+
+<p id="else">
+In the Go libraries, you'll find that
+when an <code>if</code> statement doesn't flow into the next statementâ€”that is,
+the body ends in <code>break</code>, <code>continue</code>,
+<code>goto</code>, or <code>return</code>â€”the unnecessary
+<code>else</code> is omitted.
+</p>
+
+<pre>
+f, err := os.Open(name)
+if err != nil {
+    return err
+}
+codeUsing(f)
+</pre>
+
+<p>
+This is an example of a common situation where code must guard against a
+sequence of error conditions.  The code reads well if the
+successful flow of control runs down the page, eliminating error cases
+as they arise.  Since error cases tend to end in <code>return</code>
+statements, the resulting code needs no <code>else</code> statements.
+</p>
+
+<pre>
+f, err := os.Open(name)
+if err != nil {
+    return err
+}
+d, err := f.Stat()
+if err != nil {
+    f.Close()
+    return err
+}
+codeUsing(f, d)
+</pre>
+
+
+<h3 id="redeclaration">Redeclaration and reassignment</h3>
+
+<p>
+An aside: The last example in the previous section demonstrates a detail of how the
+<code>:=</code> short declaration form works.
+The declaration that calls <code>os.Open</code> reads,
+</p>
+
+<pre>
+f, err := os.Open(name)
+</pre>
+
+<p>
+This statement declares two variables, <code>f</code> and <code>err</code>.
+A few lines later, the call to <code>f.Stat</code> reads,
+</p>
+
+<pre>
+d, err := f.Stat()
+</pre>
+
+<p>
+which looks as if it declares <code>d</code> and <code>err</code>.
+Notice, though, that <code>err</code> appears in both statements.
+This duplication is legal: <code>err</code> is declared by the first statement,
+but only <em>re-assigned</em> in the second.
+This means that the call to <code>f.Stat</code> uses the existing
+<code>err</code> variable declared above, and just gives it a new value.
+</p>
+
+<p>
+In a <code>:=</code> declaration a variable <code>v</code> may appear even
+if it has already been declared, provided:
+</p>
+
+<ul>
+<li>this declaration is in the same scope as the existing declaration of <code>v</code>
+(if <code>v</code> is already declared in an outer scope, the declaration will create a new variable Â§),</li>
+<li>the corresponding value in the initialization is assignable to <code>v</code>, and</li>
+<li>there is at least one other variable in the declaration that is being declared anew.</li>
+</ul>
+
+<p>
+This unusual property is pure pragmatism,
+making it easy to use a single <code>err</code> value, for example,
+in a long <code>if-else</code> chain.
+You'll see it used often.
+</p>
+
+<p>
+Â§ It's worth noting here that in Go the scope of function parameters and return values
+is the same as the function body, even though they appear lexically outside the braces
+that enclose the body.
+</p>
+
+<h3 id="for">For</h3>
+
+<p>
+The Go <code>for</code> loop is similar to&mdash;but not the same as&mdash;C's.
+It unifies <code>for</code>
+and <code>while</code> and there is no <code>do-while</code>.
+There are three forms, only one of which has semicolons.
+</p>
+<pre>
+// Like a C for
+for init; condition; post { }
+
+// Like a C while
+for condition { }
+
+// Like a C for(;;)
+for { }
+</pre>
+
+<p>
+Short declarations make it easy to declare the index variable right in the loop.
+</p>
+<pre>
+sum := 0
+for i := 0; i &lt; 10; i++ {
+    sum += i
+}
+</pre>
+
+<p>
+If you're looping over an array, slice, string, or map,
+or reading from a channel, a <code>range</code> clause can
+manage the loop.
+</p>
+<pre>
+for key, value := range oldMap {
+    newMap[key] = value
+}
+</pre>
+
+<p>
+If you only need the first item in the range (the key or index), drop the second:
+</p>
+<pre>
+for key := range m {
+    if key.expired() {
+        delete(m, key)
+    }
+}
+</pre>
+
+<p>
+If you only need the second item in the range (the value), use the <em>blank identifier</em>, an underscore, to discard the first:
+</p>
+<pre>
+sum := 0
+for _, value := range array {
+    sum += value
+}
+</pre>
+
+<p>
+The blank identifier has many uses, as described in <a href="#blank">a later section</a>.
+</p>
+
+<p>
+For strings, the <code>range</code> does more work for you, breaking out individual
+Unicode code points by parsing the UTF-8.
+Erroneous encodings consume one byte and produce the
+replacement rune U+FFFD.
+(The name (with associated builtin type) <code>rune</code> is Go terminology for a
+single Unicode code point.
+See <a href="/ref/spec#Rune_literals">the language specification</a>
+for details.)
+The loop
+</p>
+<pre>
+for pos, char := range "æ—¥æœ¬\x80èªž" { // \x80 is an illegal UTF-8 encoding
+    fmt.Printf("character %#U starts at byte position %d\n", char, pos)
+}
+</pre>
+<p>
+prints
+</p>
+<pre>
+character U+65E5 'æ—¥' starts at byte position 0
+character U+672C 'æœ¬' starts at byte position 3
+character U+FFFD 'ï¿½' starts at byte position 6
+character U+8A9E 'èªž' starts at byte position 7
+</pre>
+
+<p>
+Finally, Go has no comma operator and <code>++</code> and <code>--</code>
+are statements not expressions.
+Thus if you want to run multiple variables in a <code>for</code>
+you should use parallel assignment (although that precludes <code>++</code> and <code>--</code>).
+</p>
+<pre>
+// Reverse a
+for i, j := 0, len(a)-1; i &lt; j; i, j = i+1, j-1 {
+    a[i], a[j] = a[j], a[i]
+}
+</pre>
+
+<h3 id="switch">Switch</h3>
+
+<p>
+Go's <code>switch</code> is more general than C's.
+The expressions need not be constants or even integers,
+the cases are evaluated top to bottom until a match is found,
+and if the <code>switch</code> has no expression it switches on
+<code>true</code>.
+It's therefore possible&mdash;and idiomatic&mdash;to write an
+<code>if</code>-<code>else</code>-<code>if</code>-<code>else</code>
+chain as a <code>switch</code>.
+</p>
+
+<pre>
+func unhex(c byte) byte {
+    switch {
+    case '0' &lt;= c &amp;&amp; c &lt;= '9':
+        return c - '0'
+    case 'a' &lt;= c &amp;&amp; c &lt;= 'f':
+        return c - 'a' + 10
+    case 'A' &lt;= c &amp;&amp; c &lt;= 'F':
+        return c - 'A' + 10
+    }
+    return 0
+}
+</pre>
+
+<p>
+There is no automatic fall through, but cases can be presented
+in comma-separated lists.
+</p>
+<pre>
+func shouldEscape(c byte) bool {
+    switch c {
+    case ' ', '?', '&amp;', '=', '#', '+', '%':
+        return true
+    }
+    return false
+}
+</pre>
+
+<p>
+Although they are not nearly as common in Go as some other C-like
+languages, <code>break</code> statements can be used to terminate
+a <code>switch</code> early.
+Sometimes, though, it's necessary to break out of a surrounding loop,
+not the switch, and in Go that can be accomplished by putting a label
+on the loop and "breaking" to that label.
+This example shows both uses.
+</p>
+
+<pre>
+Loop:
+	for n := 0; n &lt; len(src); n += size {
+		switch {
+		case src[n] &lt; sizeOne:
+			if validateOnly {
+				break
+			}
+			size = 1
+			update(src[n])
+
+		case src[n] &lt; sizeTwo:
+			if n+1 &gt;= len(src) {
+				err = errShortInput
+				break Loop
+			}
+			if validateOnly {
+				break
+			}
+			size = 2
+			update(src[n] + src[n+1]&lt;&lt;shift)
+		}
+	}
+</pre>
+
+<p>
+Of course, the <code>continue</code> statement also accepts an optional label
+but it applies only to loops.
+</p>
+
+<p>
+To close this section, here's a comparison routine for byte slices that uses two
+<code>switch</code> statements:
+</p>
+<pre>
+// Compare returns an integer comparing the two byte slices,
+// lexicographically.
+// The result will be 0 if a == b, -1 if a &lt; b, and +1 if a &gt; b
+func Compare(a, b []byte) int {
+    for i := 0; i &lt; len(a) &amp;&amp; i &lt; len(b); i++ {
+        switch {
+        case a[i] &gt; b[i]:
+            return 1
+        case a[i] &lt; b[i]:
+            return -1
+        }
+    }
+    switch {
+    case len(a) &gt; len(b):
+        return 1
+    case len(a) &lt; len(b):
+        return -1
+    }
+    return 0
+}
+</pre>
+
+<h3 id="type_switch">Type switch</h3>
+
+<p>
+A switch can also be used to discover the dynamic type of an interface
+variable.  Such a <em>type switch</em> uses the syntax of a type
+assertion with the keyword <code>type</code> inside the parentheses.
+If the switch declares a variable in the expression, the variable will
+have the corresponding type in each clause.
+It's also idiomatic to reuse the name in such cases, in effect declaring
+a new variable with the same name but a different type in each case.
+</p>
+<pre>
+var t interface{}
+t = functionOfSomeType()
+switch t := t.(type) {
+default:
+    fmt.Printf("unexpected type %T", t)       // %T prints whatever type t has
+case bool:
+    fmt.Printf("boolean %t\n", t)             // t has type bool
+case int:
+    fmt.Printf("integer %d\n", t)             // t has type int
+case *bool:
+    fmt.Printf("pointer to boolean %t\n", *t) // t has type *bool
+case *int:
+    fmt.Printf("pointer to integer %d\n", *t) // t has type *int
+}
+</pre>
+
+<h2 id="functions">Functions</h2>
+
+<h3 id="multiple-returns">Multiple return values</h3>
+
+<p>
+One of Go's unusual features is that functions and methods
+can return multiple values.  This form can be used to
+improve on a couple of clumsy idioms in C programs: in-band
+error returns such as <code>-1</code> for <code>EOF</code>
+and modifying an argument passed by address.
+</p>
+
+<p>
+In C, a write error is signaled by a negative count with the
+error code secreted away in a volatile location.
+In Go, <code>Write</code>
+can return a count <i>and</i> an error: &ldquo;Yes, you wrote some
+bytes but not all of them because you filled the device&rdquo;.
+The signature of the <code>Write</code> method on files from
+package <code>os</code> is:
+</p>
+
+<pre>
+func (file *File) Write(b []byte) (n int, err error)
+</pre>
+
+<p>
+and as the documentation says, it returns the number of bytes
+written and a non-nil <code>error</code> when <code>n</code>
+<code>!=</code> <code>len(b)</code>.
+This is a common style; see the section on error handling for more examples.
+</p>
+
+<p>
+A similar approach obviates the need to pass a pointer to a return
+value to simulate a reference parameter.
+Here's a simple-minded function to
+grab a number from a position in a byte slice, returning the number
+and the next position.
+</p>
+
+<pre>
+func nextInt(b []byte, i int) (int, int) {
+    for ; i &lt; len(b) &amp;&amp; !isDigit(b[i]); i++ {
+    }
+    x := 0
+    for ; i &lt; len(b) &amp;&amp; isDigit(b[i]); i++ {
+        x = x*10 + int(b[i]) - '0'
+    }
+    return x, i
+}
+</pre>
+
+<p>
+You could use it to scan the numbers in an input slice <code>b</code> like this:
+</p>
+
+<pre>
+    for i := 0; i &lt; len(b); {
+        x, i = nextInt(b, i)
+        fmt.Println(x)
+    }
+</pre>
+
+<h3 id="named-results">Named result parameters</h3>
+
+<p>
+The return or result "parameters" of a Go function can be given names and
+used as regular variables, just like the incoming parameters.
+When named, they are initialized to the zero values for their types when
+the function begins; if the function executes a <code>return</code> statement
+with no arguments, the current values of the result parameters are
+used as the returned values.
+</p>
+
+<p>
+The names are not mandatory but they can make code shorter and clearer:
+they're documentation.
+If we name the results of <code>nextInt</code> it becomes
+obvious which returned <code>int</code>
+is which.
+</p>
+
+<pre>
+func nextInt(b []byte, pos int) (value, nextPos int) {
+</pre>
+
+<p>
+Because named results are initialized and tied to an unadorned return, they can simplify
+as well as clarify.  Here's a version
+of <code>io.ReadFull</code> that uses them well:
+</p>
+
+<pre>
+func ReadFull(r Reader, buf []byte) (n int, err error) {
+    for len(buf) &gt; 0 &amp;&amp; err == nil {
+        var nr int
+        nr, err = r.Read(buf)
+        n += nr
+        buf = buf[nr:]
+    }
+    return
+}
+</pre>
+
+<h3 id="defer">Defer</h3>
+
+<p>
+Go's <code>defer</code> statement schedules a function call (the
+<i>deferred</i> function) to be run immediately before the function
+executing the <code>defer</code> returns.  It's an unusual but
+effective way to deal with situations such as resources that must be
+released regardless of which path a function takes to return.  The
+canonical examples are unlocking a mutex or closing a file.
+</p>
+
+<pre>
+// Contents returns the file's contents as a string.
+func Contents(filename string) (string, error) {
+    f, err := os.Open(filename)
+    if err != nil {
+        return "", err
+    }
+    defer f.Close()  // f.Close will run when we're finished.
+
+    var result []byte
+    buf := make([]byte, 100)
+    for {
+        n, err := f.Read(buf[0:])
+        result = append(result, buf[0:n]...) // append is discussed later.
+        if err != nil {
+            if err == io.EOF {
+                break
+            }
+            return "", err  // f will be closed if we return here.
+        }
+    }
+    return string(result), nil // f will be closed if we return here.
+}
+</pre>
+
+<p>
+Deferring a call to a function such as <code>Close</code> has two advantages.  First, it
+guarantees that you will never forget to close the file, a mistake
+that's easy to make if you later edit the function to add a new return
+path.  Second, it means that the close sits near the open,
+which is much clearer than placing it at the end of the function.
+</p>
+
+<p>
+The arguments to the deferred function (which include the receiver if
+the function is a method) are evaluated when the <i>defer</i>
+executes, not when the <i>call</i> executes.  Besides avoiding worries
+about variables changing values as the function executes, this means
+that a single deferred call site can defer multiple function
+executions.  Here's a silly example.
+</p>
+
+<pre>
+for i := 0; i &lt; 5; i++ {
+    defer fmt.Printf("%d ", i)
+}
+</pre>
+
+<p>
+Deferred functions are executed in LIFO order, so this code will cause
+<code>4 3 2 1 0</code> to be printed when the function returns.  A
+more plausible example is a simple way to trace function execution
+through the program.  We could write a couple of simple tracing
+routines like this:
+</p>
+
+<pre>
+func trace(s string)   { fmt.Println("entering:", s) }
+func untrace(s string) { fmt.Println("leaving:", s) }
+
+// Use them like this:
+func a() {
+    trace("a")
+    defer untrace("a")
+    // do something....
+}
+</pre>
+
+<p>
+We can do better by exploiting the fact that arguments to deferred
+functions are evaluated when the <code>defer</code> executes.  The
+tracing routine can set up the argument to the untracing routine.
+This example:
+</p>
+
+<pre>
+func trace(s string) string {
+    fmt.Println("entering:", s)
+    return s
+}
+
+func un(s string) {
+    fmt.Println("leaving:", s)
+}
+
+func a() {
+    defer un(trace("a"))
+    fmt.Println("in a")
+}
+
+func b() {
+    defer un(trace("b"))
+    fmt.Println("in b")
+    a()
+}
+
+func main() {
+    b()
+}
+</pre>
+
+<p>
+prints
+</p>
+
+<pre>
+entering: b
+in b
+entering: a
+in a
+leaving: a
+leaving: b
+</pre>
+
+<p>
+For programmers accustomed to block-level resource management from
+other languages, <code>defer</code> may seem peculiar, but its most
+interesting and powerful applications come precisely from the fact
+that it's not block-based but function-based.  In the section on
+<code>panic</code> and <code>recover</code> we'll see another
+example of its possibilities.
+</p>
+
+<h2 id="data">Data</h2>
+
+<h3 id="allocation_new">Allocation with <code>new</code></h3>
+
+<p>
+Go has two allocation primitives, the built-in functions
+<code>new</code> and <code>make</code>.
+They do different things and apply to different types, which can be confusing,
+but the rules are simple.
+Let's talk about <code>new</code> first.
+It's a built-in function that allocates memory, but unlike its namesakes
+in some other languages it does not <em>initialize</em> the memory,
+it only <em>zeros</em> it.
+That is,
+<code>new(T)</code> allocates zeroed storage for a new item of type
+<code>T</code> and returns its address, a value of type <code>*T</code>.
+In Go terminology, it returns a pointer to a newly allocated zero value of type
+<code>T</code>.
+</p>
+
+<p>
+Since the memory returned by <code>new</code> is zeroed, it's helpful to arrange
+when designing your data structures that the
+zero value of each type can be used without further initialization.  This means a user of
+the data structure can create one with <code>new</code> and get right to
+work.
+For example, the documentation for <code>bytes.Buffer</code> states that
+"the zero value for <code>Buffer</code> is an empty buffer ready to use."
+Similarly, <code>sync.Mutex</code> does not
+have an explicit constructor or <code>Init</code> method.
+Instead, the zero value for a <code>sync.Mutex</code>
+is defined to be an unlocked mutex.
+</p>
+
+<p>
+The zero-value-is-useful property works transitively. Consider this type declaration.
+</p>
+
+<pre>
+type SyncedBuffer struct {
+    lock    sync.Mutex
+    buffer  bytes.Buffer
+}
+</pre>
+
+<p>
+Values of type <code>SyncedBuffer</code> are also ready to use immediately upon allocation
+or just declaration.  In the next snippet, both <code>p</code> and <code>v</code> will work
+correctly without further arrangement.
+</p>
+
+<pre>
+p := new(SyncedBuffer)  // type *SyncedBuffer
+var v SyncedBuffer      // type  SyncedBuffer
+</pre>
+
+<h3 id="composite_literals">Constructors and composite literals</h3>
+
+<p>
+Sometimes the zero value isn't good enough and an initializing
+constructor is necessary, as in this example derived from
+package <code>os</code>.
+</p>
+
+<pre>
+func NewFile(fd int, name string) *File {
+    if fd &lt; 0 {
+        return nil
+    }
+    f := new(File)
+    f.fd = fd
+    f.name = name
+    f.dirinfo = nil
+    f.nepipe = 0
+    return f
+}
+</pre>
+
+<p>
+There's a lot of boiler plate in there.  We can simplify it
+using a <i>composite literal</i>, which is
+an expression that creates a
+new instance each time it is evaluated.
+</p>
+
+<pre>
+func NewFile(fd int, name string) *File {
+    if fd &lt; 0 {
+        return nil
+    }
+    f := File{fd, name, nil, 0}
+    return &amp;f
+}
+</pre>
+
+<p>
+Note that, unlike in C, it's perfectly OK to return the address of a local variable;
+the storage associated with the variable survives after the function
+returns.
+In fact, taking the address of a composite literal
+allocates a fresh instance each time it is evaluated,
+so we can combine these last two lines.
+</p>
+
+<pre>
+    return &amp;File{fd, name, nil, 0}
+</pre>
+
+<p>
+The fields of a composite literal are laid out in order and must all be present.
+However, by labeling the elements explicitly as <i>field</i><code>:</code><i>value</i>
+pairs, the initializers can appear in any
+order, with the missing ones left as their respective zero values.  Thus we could say
+</p>
+
+<pre>
+    return &amp;File{fd: fd, name: name}
+</pre>
+
+<p>
+As a limiting case, if a composite literal contains no fields at all, it creates
+a zero value for the type.  The expressions <code>new(File)</code> and <code>&amp;File{}</code> are equivalent.
+</p>
+
+<p>
+Composite literals can also be created for arrays, slices, and maps,
+with the field labels being indices or map keys as appropriate.
+In these examples, the initializations work regardless of the values of <code>Enone</code>,
+<code>Eio</code>, and <code>Einval</code>, as long as they are distinct.
+</p>
+
+<pre>
+a := [...]string   {Enone: "no error", Eio: "Eio", Einval: "invalid argument"}
+s := []string      {Enone: "no error", Eio: "Eio", Einval: "invalid argument"}
+m := map[int]string{Enone: "no error", Eio: "Eio", Einval: "invalid argument"}
+</pre>
+
+<h3 id="allocation_make">Allocation with <code>make</code></h3>
+
+<p>
+Back to allocation.
+The built-in function <code>make(T, </code><i>args</i><code>)</code> serves
+a purpose different from <code>new(T)</code>.
+It creates slices, maps, and channels only, and it returns an <em>initialized</em>
+(not <em>zeroed</em>)
+value of type <code>T</code> (not <code>*T</code>).
+The reason for the distinction
+is that these three types represent, under the covers, references to data structures that
+must be initialized before use.
+A slice, for example, is a three-item descriptor
+containing a pointer to the data (inside an array), the length, and the
+capacity, and until those items are initialized, the slice is <code>nil</code>.
+For slices, maps, and channels,
+<code>make</code> initializes the internal data structure and prepares
+the value for use.
+For instance,
+</p>
+
+<pre>
+make([]int, 10, 100)
+</pre>
+
+<p>
+allocates an array of 100 ints and then creates a slice
+structure with length 10 and a capacity of 100 pointing at the first
+10 elements of the array.
+(When making a slice, the capacity can be omitted; see the section on slices
+for more information.)
+In contrast, <code>new([]int)</code> returns a pointer to a newly allocated, zeroed slice
+structure, that is, a pointer to a <code>nil</code> slice value.
+</p>
+
+<p>
+These examples illustrate the difference between <code>new</code> and
+<code>make</code>.
+</p>
+
+<pre>
+var p *[]int = new([]int)       // allocates slice structure; *p == nil; rarely useful
+var v  []int = make([]int, 100) // the slice v now refers to a new array of 100 ints
+
+// Unnecessarily complex:
+var p *[]int = new([]int)
+*p = make([]int, 100, 100)
+
+// Idiomatic:
+v := make([]int, 100)
+</pre>
+
+<p>
+Remember that <code>make</code> applies only to maps, slices and channels
+and does not return a pointer.
+To obtain an explicit pointer allocate with <code>new</code> or take the address
+of a variable explicitly.
+</p>
+
+<h3 id="arrays">Arrays</h3>
+
+<p>
+Arrays are useful when planning the detailed layout of memory and sometimes
+can help avoid allocation, but primarily
+they are a building block for slices, the subject of the next section.
+To lay the foundation for that topic, here are a few words about arrays.
+</p>
+
+<p>
+There are major differences between the ways arrays work in Go and C.
+In Go,
+</p>
+<ul>
+<li>
+Arrays are values. Assigning one array to another copies all the elements.
+</li>
+<li>
+In particular, if you pass an array to a function, it
+will receive a <i>copy</i> of the array, not a pointer to it.
+<li>
+The size of an array is part of its type.  The types <code>[10]int</code>
+and <code>[20]int</code> are distinct.
+</li>
+</ul>
+
+<p>
+The value property can be useful but also expensive; if you want C-like behavior and efficiency,
+you can pass a pointer to the array.
+</p>
+
+<pre>
+func Sum(a *[3]float64) (sum float64) {
+    for _, v := range *a {
+        sum += v
+    }
+    return
+}
+
+array := [...]float64{7.0, 8.5, 9.1}
+x := Sum(&amp;array)  // Note the explicit address-of operator
+</pre>
+
+<p>
+But even this style isn't idiomatic Go.
+Use slices instead.
+</p>
+
+<h3 id="slices">Slices</h3>
+
+<p>
+Slices wrap arrays to give a more general, powerful, and convenient
+interface to sequences of data.  Except for items with explicit
+dimension such as transformation matrices, most array programming in
+Go is done with slices rather than simple arrays.
+</p>
+<p>
+Slices hold references to an underlying array, and if you assign one
+slice to another, both refer to the same array.
+If a function takes a slice argument, changes it makes to
+the elements of the slice will be visible to the caller, analogous to
+passing a pointer to the underlying array.  A <code>Read</code>
+function can therefore accept a slice argument rather than a pointer
+and a count; the length within the slice sets an upper
+limit of how much data to read.  Here is the signature of the
+<code>Read</code> method of the <code>File</code> type in package
+<code>os</code>:
+</p>
+<pre>
+func (file *File) Read(buf []byte) (n int, err error)
+</pre>
+<p>
+The method returns the number of bytes read and an error value, if
+any.
+To read into the first 32 bytes of a larger buffer
+<code>buf</code>, <i>slice</i> (here used as a verb) the buffer.
+</p>
+<pre>
+    n, err := f.Read(buf[0:32])
+</pre>
+<p>
+Such slicing is common and efficient.  In fact, leaving efficiency aside for
+the moment, the following snippet would also read the first 32 bytes of the buffer.
+</p>
+<pre>
+    var n int
+    var err error
+    for i := 0; i &lt; 32; i++ {
+        nbytes, e := f.Read(buf[i:i+1])  // Read one byte.
+        if nbytes == 0 || e != nil {
+            err = e
+            break
+        }
+        n += nbytes
+    }
+</pre>
+<p>
+The length of a slice may be changed as long as it still fits within
+the limits of the underlying array; just assign it to a slice of
+itself.  The <i>capacity</i> of a slice, accessible by the built-in
+function <code>cap</code>, reports the maximum length the slice may
+assume.  Here is a function to append data to a slice.  If the data
+exceeds the capacity, the slice is reallocated.  The
+resulting slice is returned.  The function uses the fact that
+<code>len</code> and <code>cap</code> are legal when applied to the
+<code>nil</code> slice, and return 0.
+</p>
+<pre>
+func Append(slice, data[]byte) []byte {
+    l := len(slice)
+    if l + len(data) &gt; cap(slice) {  // reallocate
+        // Allocate double what's needed, for future growth.
+        newSlice := make([]byte, (l+len(data))*2)
+        // The copy function is predeclared and works for any slice type.
+        copy(newSlice, slice)
+        slice = newSlice
+    }
+    slice = slice[0:l+len(data)]
+    for i, c := range data {
+        slice[l+i] = c
+    }
+    return slice
+}
+</pre>
+<p>
+We must return the slice afterwards because, although <code>Append</code>
+can modify the elements of <code>slice</code>, the slice itself (the run-time data
+structure holding the pointer, length, and capacity) is passed by value.
+</p>
+
+<p>
+The idea of appending to a slice is so useful it's captured by the
+<code>append</code> built-in function.  To understand that function's
+design, though, we need a little more information, so we'll return
+to it later.
+</p>
+
+<h3 id="two_dimensional_slices">Two-dimensional slices</h3>
+
+<p>
+Go's arrays and slices are one-dimensional.
+To create the equivalent of a 2D array or slice, it is necessary to define an array-of-arrays
+or slice-of-slices, like this:
+</p>
+
+<pre>
+type Transform [3][3]float64  // A 3x3 array, really an array of arrays.
+type LinesOfText [][]byte     // A slice of byte slices.
+</pre>
+
+<p>
+Because slices are variable-length, it is possible to have each inner
+slice be a different length.
+That can be a common situation, as in our <code>LinesOfText</code>
+example: each line has an independent length.
+</p>
+
+<pre>
+text := LinesOfText{
+	[]byte("Now is the time"),
+	[]byte("for all good gophers"),
+	[]byte("to bring some fun to the party."),
+}
+</pre>
+
+<p>
+Sometimes it's necessary to allocate a 2D slice, a situation that can arise when
+processing scan lines of pixels, for instance.
+There are two ways to achieve this.
+One is to allocate each slice independently; the other
+is to allocate a single array and point the individual slices into it.
+Which to use depends on your application.
+If the slices might grow or shrink, they should be allocated independently
+to avoid overwriting the next line; if not, it can be more efficient to construct
+the object with a single allocation.
+For reference, here are sketches of the two methods.
+First, a line at a time:
+</p>
+
+<pre>
+// Allocate the top-level slice.
+picture := make([][]uint8, YSize) // One row per unit of y.
+// Loop over the rows, allocating the slice for each row.
+for i := range picture {
+	picture[i] = make([]uint8, XSize)
+}
+</pre>
+
+<p>
+And now as one allocation, sliced into lines:
+</p>
+
+<pre>
+// Allocate the top-level slice, the same as before.
+picture := make([][]uint8, YSize) // One row per unit of y.
+// Allocate one large slice to hold all the pixels.
+pixels := make([]uint8, XSize*YSize) // Has type []uint8 even though picture is [][]uint8.
+// Loop over the rows, slicing each row from the front of the remaining pixels slice.
+for i := range picture {
+	picture[i], pixels = pixels[:XSize], pixels[XSize:]
+}
+</pre>
+
+<h3 id="maps">Maps</h3>
+
+<p>
+Maps are a convenient and powerful built-in data structure that associate
+values of one type (the <em>key</em>) with values of another type
+(the <em>element</em> or <em>value</em>)
+The key can be of any type for which the equality operator is defined,
+such as integers,
+floating point and complex numbers,
+strings, pointers, interfaces (as long as the dynamic type
+supports equality), structs and arrays.
+Slices cannot be used as map keys,
+because equality is not defined on them.
+Like slices, maps hold references to an underlying data structure.
+If you pass a map to a function
+that changes the contents of the map, the changes will be visible
+in the caller.
+</p>
+<p>
+Maps can be constructed using the usual composite literal syntax
+with colon-separated key-value pairs,
+so it's easy to build them during initialization.
+</p>
+<pre>
+var timeZone = map[string]int{
+    "UTC":  0*60*60,
+    "EST": -5*60*60,
+    "CST": -6*60*60,
+    "MST": -7*60*60,
+    "PST": -8*60*60,
+}
+</pre>
+<p>
+Assigning and fetching map values looks syntactically just like
+doing the same for arrays and slices except that the index doesn't
+need to be an integer.
+</p>
+<pre>
+offset := timeZone["EST"]
+</pre>
+<p>
+An attempt to fetch a map value with a key that
+is not present in the map will return the zero value for the type
+of the entries
+in the map.  For instance, if the map contains integers, looking
+up a non-existent key will return <code>0</code>.
+A set can be implemented as a map with value type <code>bool</code>.
+Set the map entry to <code>true</code> to put the value in the set, and then
+test it by simple indexing.
+</p>
+<pre>
+attended := map[string]bool{
+    "Ann": true,
+    "Joe": true,
+    ...
+}
+
+if attended[person] { // will be false if person is not in the map
+    fmt.Println(person, "was at the meeting")
+}
+</pre>
+<p>
+Sometimes you need to distinguish a missing entry from
+a zero value.  Is there an entry for <code>"UTC"</code>
+or is that the empty string because it's not in the map at all?
+You can discriminate with a form of multiple assignment.
+</p>
+<pre>
+var seconds int
+var ok bool
+seconds, ok = timeZone[tz]
+</pre>
+<p>
+For obvious reasons this is called the &ldquo;comma ok&rdquo; idiom.
+In this example, if <code>tz</code> is present, <code>seconds</code>
+will be set appropriately and <code>ok</code> will be true; if not,
+<code>seconds</code> will be set to zero and <code>ok</code> will
+be false.
+Here's a function that puts it together with a nice error report:
+</p>
+<pre>
+func offset(tz string) int {
+    if seconds, ok := timeZone[tz]; ok {
+        return seconds
+    }
+    log.Println("unknown time zone:", tz)
+    return 0
+}
+</pre>
+<p>
+To test for presence in the map without worrying about the actual value,
+you can use the <a href="#blank">blank identifier</a> (<code>_</code>)
+in place of the usual variable for the value.
+</p>
+<pre>
+_, present := timeZone[tz]
+</pre>
+<p>
+To delete a map entry, use the <code>delete</code>
+built-in function, whose arguments are the map and the key to be deleted.
+It's safe to do this even if the key is already absent
+from the map.
+</p>
+<pre>
+delete(timeZone, "PDT")  // Now on Standard Time
+</pre>
+
+<h3 id="printing">Printing</h3>
+
+<p>
+Formatted printing in Go uses a style similar to C's <code>printf</code>
+family but is richer and more general. The functions live in the <code>fmt</code>
+package and have capitalized names: <code>fmt.Printf</code>, <code>fmt.Fprintf</code>,
+<code>fmt.Sprintf</code> and so on.  The string functions (<code>Sprintf</code> etc.)
+return a string rather than filling in a provided buffer.
+</p>
+<p>
+You don't need to provide a format string.  For each of <code>Printf</code>,
+<code>Fprintf</code> and <code>Sprintf</code> there is another pair
+of functions, for instance <code>Print</code> and <code>Println</code>.
+These functions do not take a format string but instead generate a default
+format for each argument. The <code>Println</code> versions also insert a blank
+between arguments and append a newline to the output while
+the <code>Print</code> versions add blanks only if the operand on neither side is a string.
+In this example each line produces the same output.
+</p>
+<pre>
+fmt.Printf("Hello %d\n", 23)
+fmt.Fprint(os.Stdout, "Hello ", 23, "\n")
+fmt.Println("Hello", 23)
+fmt.Println(fmt.Sprint("Hello ", 23))
+</pre>
+<p>
+The formatted print functions <code>fmt.Fprint</code>
+and friends take as a first argument any object
+that implements the <code>io.Writer</code> interface; the variables <code>os.Stdout</code>
+and <code>os.Stderr</code> are familiar instances.
+</p>
+<p>
+Here things start to diverge from C.  First, the numeric formats such as <code>%d</code>
+do not take flags for signedness or size; instead, the printing routines use the
+type of the argument to decide these properties.
+</p>
+<pre>
+var x uint64 = 1&lt;&lt;64 - 1
+fmt.Printf("%d %x; %d %x\n", x, x, int64(x), int64(x))
+</pre>
+<p>
+prints
+</p>
+<pre>
+18446744073709551615 ffffffffffffffff; -1 -1
+</pre>
+<p>
+If you just want the default conversion, such as decimal for integers, you can use
+the catchall format <code>%v</code> (for &ldquo;value&rdquo;); the result is exactly
+what <code>Print</code> and <code>Println</code> would produce.
+Moreover, that format can print <em>any</em> value, even arrays, slices, structs, and
+maps.  Here is a print statement for the time zone map defined in the previous section.
+</p>
+<pre>
+fmt.Printf("%v\n", timeZone)  // or just fmt.Println(timeZone)
+</pre>
+<p>
+which gives output
+</p>
+<pre>
+map[CST:-21600 PST:-28800 EST:-18000 UTC:0 MST:-25200]
+</pre>
+<p>
+For maps the keys may be output in any order, of course.
+When printing a struct, the modified format <code>%+v</code> annotates the
+fields of the structure with their names, and for any value the alternate
+format <code>%#v</code> prints the value in full Go syntax.
+</p>
+<pre>
+type T struct {
+    a int
+    b float64
+    c string
+}
+t := &amp;T{ 7, -2.35, "abc\tdef" }
+fmt.Printf("%v\n", t)
+fmt.Printf("%+v\n", t)
+fmt.Printf("%#v\n", t)
+fmt.Printf("%#v\n", timeZone)
+</pre>
+<p>
+prints
+</p>
+<pre>
+&amp;{7 -2.35 abc   def}
+&amp;{a:7 b:-2.35 c:abc     def}
+&amp;main.T{a:7, b:-2.35, c:"abc\tdef"}
+map[string] int{"CST":-21600, "PST":-28800, "EST":-18000, "UTC":0, "MST":-25200}
+</pre>
+<p>
+(Note the ampersands.)
+That quoted string format is also available through <code>%q</code> when
+applied to a value of type <code>string</code> or <code>[]byte</code>.
+The alternate format <code>%#q</code> will use backquotes instead if possible.
+(The <code>%q</code> format also applies to integers and runes, producing a
+single-quoted rune constant.)
+Also, <code>%x</code> works on strings, byte arrays and byte slices as well as
+on integers, generating a long hexadecimal string, and with
+a space in the format (<code>%&nbsp;x</code>) it puts spaces between the bytes.
+</p>
+<p>
+Another handy format is <code>%T</code>, which prints the <em>type</em> of a value.
+</p>
+<pre>
+fmt.Printf(&quot;%T\n&quot;, timeZone)
+</pre>
+<p>
+prints
+</p>
+<pre>
+map[string] int
+</pre>
+<p>
+If you want to control the default format for a custom type, all that's required is to define
+a method with the signature <code>String() string</code> on the type.
+For our simple type <code>T</code>, that might look like this.
+</p>
+<pre>
+func (t *T) String() string {
+    return fmt.Sprintf("%d/%g/%q", t.a, t.b, t.c)
+}
+fmt.Printf("%v\n", t)
+</pre>
+<p>
+to print in the format
+</p>
+<pre>
+7/-2.35/"abc\tdef"
+</pre>
+<p>
+(If you need to print <em>values</em> of type <code>T</code> as well as pointers to <code>T</code>,
+the receiver for <code>String</code> must be of value type; this example used a pointer because
+that's more efficient and idiomatic for struct types.
+See the section below on <a href="#pointers_vs_values">pointers vs. value receivers</a> for more information.)
+</p>
+
+<p>
+Our <code>String</code> method is able to call <code>Sprintf</code> because the
+print routines are fully reentrant and can be wrapped this way.
+There is one important detail to understand about this approach,
+however: don't construct a <code>String</code> method by calling
+<code>Sprintf</code> in a way that will recur into your <code>String</code>
+method indefinitely.  This can happen if the <code>Sprintf</code>
+call attempts to print the receiver directly as a string, which in
+turn will invoke the method again.  It's a common and easy mistake
+to make, as this example shows.
+</p>
+
+<pre>
+type MyString string
+
+func (m MyString) String() string {
+    return fmt.Sprintf("MyString=%s", m) // Error: will recur forever.
+}
+</pre>
+
+<p>
+It's also easy to fix: convert the argument to the basic string type, which does not have the
+method.
+</p>
+
+<pre>
+type MyString string
+func (m MyString) String() string {
+    return fmt.Sprintf("MyString=%s", string(m)) // OK: note conversion.
+}
+</pre>
+
+<p>
+In the <a href="#initialization">initialization section</a> we'll see another technique that avoids this recursion.
+</p>
+
+<p>
+Another printing technique is to pass a print routine's arguments directly to another such routine.
+The signature of <code>Printf</code> uses the type <code>...interface{}</code>
+for its final argument to specify that an arbitrary number of parameters (of arbitrary type)
+can appear after the format.
+</p>
+<pre>
+func Printf(format string, v ...interface{}) (n int, err error) {
+</pre>
+<p>
+Within the function <code>Printf</code>, <code>v</code> acts like a variable of type
+<code>[]interface{}</code> but if it is passed to another variadic function, it acts like
+a regular list of arguments.
+Here is the implementation of the
+function <code>log.Println</code> we used above. It passes its arguments directly to
+<code>fmt.Sprintln</code> for the actual formatting.
+</p>
+<pre>
+// Println prints to the standard logger in the manner of fmt.Println.
+func Println(v ...interface{}) {
+    std.Output(2, fmt.Sprintln(v...))  // Output takes parameters (int, string)
+}
+</pre>
+<p>
+We write <code>...</code> after <code>v</code> in the nested call to <code>Sprintln</code> to tell the
+compiler to treat <code>v</code> as a list of arguments; otherwise it would just pass
+<code>v</code> as a single slice argument.
+</p>
+<p>
+There's even more to printing than we've covered here.  See the <code>godoc</code> documentation
+for package <code>fmt</code> for the details.
+</p>
+<p>
+By the way, a <code>...</code> parameter can be of a specific type, for instance <code>...int</code>
+for a min function that chooses the least of a list of integers:
+</p>
+<pre>
+func Min(a ...int) int {
+    min := int(^uint(0) >> 1)  // largest int
+    for _, i := range a {
+        if i &lt; min {
+            min = i
+        }
+    }
+    return min
+}
+</pre>
+
+<h3 id="append">Append</h3>
+<p>
+Now we have the missing piece we needed to explain the design of
+the <code>append</code> built-in function.  The signature of <code>append</code>
+is different from our custom <code>Append</code> function above.
+Schematically, it's like this:
+</p>
+<pre>
+func append(slice []<i>T</i>, elements ...<i>T</i>) []<i>T</i>
+</pre>
+<p>
+where <i>T</i> is a placeholder for any given type.  You can't
+actually write a function in Go where the type <code>T</code>
+is determined by the caller.
+That's why <code>append</code> is built in: it needs support from the
+compiler.
+</p>
+<p>
+What <code>append</code> does is append the elements to the end of
+the slice and return the result.  The result needs to be returned
+because, as with our hand-written <code>Append</code>, the underlying
+array may change.  This simple example
+</p>
+<pre>
+x := []int{1,2,3}
+x = append(x, 4, 5, 6)
+fmt.Println(x)
+</pre>
+<p>
+prints <code>[1 2 3 4 5 6]</code>.  So <code>append</code> works a
+little like <code>Printf</code>, collecting an arbitrary number of
+arguments.
+</p>
+<p>
+But what if we wanted to do what our <code>Append</code> does and
+append a slice to a slice?  Easy: use <code>...</code> at the call
+site, just as we did in the call to <code>Output</code> above.  This
+snippet produces identical output to the one above.
+</p>
+<pre>
+x := []int{1,2,3}
+y := []int{4,5,6}
+x = append(x, y...)
+fmt.Println(x)
+</pre>
+<p>
+Without that <code>...</code>, it wouldn't compile because the types
+would be wrong; <code>y</code> is not of type <code>int</code>.
+</p>
+
+<h2 id="initialization">Initialization</h2>
+
+<p>
+Although it doesn't look superficially very different from
+initialization in C or C++, initialization in Go is more powerful.
+Complex structures can be built during initialization and the ordering
+issues among initialized objects, even among different packages, are handled
+correctly.
+</p>
+
+<h3 id="constants">Constants</h3>
+
+<p>
+Constants in Go are just that&mdash;constant.
+They are created at compile time, even when defined as
+locals in functions,
+and can only be numbers, characters (runes), strings or booleans.
+Because of the compile-time restriction, the expressions
+that define them must be constant expressions,
+evaluatable by the compiler.  For instance,
+<code>1&lt;&lt;3</code> is a constant expression, while
+<code>math.Sin(math.Pi/4)</code> is not because
+the function call to <code>math.Sin</code> needs
+to happen at run time.
+</p>
+
+<p>
+In Go, enumerated constants are created using the <code>iota</code>
+enumerator.  Since <code>iota</code> can be part of an expression and
+expressions can be implicitly repeated, it is easy to build intricate
+sets of values.
+</p>
+{{code "/doc/progs/eff_bytesize.go" `/^type ByteSize/` `/^\)/`}}
+<p>
+The ability to attach a method such as <code>String</code> to any
+user-defined type makes it possible for arbitrary values to format themselves
+automatically for printing.
+Although you'll see it most often applied to structs, this technique is also useful for
+scalar types such as floating-point types like <code>ByteSize</code>.
+</p>
+{{code "/doc/progs/eff_bytesize.go" `/^func.*ByteSize.*String/` `/^}/`}}
+<p>
+The expression <code>YB</code> prints as <code>1.00YB</code>,
+while <code>ByteSize(1e13)</code> prints as <code>9.09TB</code>.
+</p>
+
+<p>
+The use here of <code>Sprintf</code>
+to implement <code>ByteSize</code>'s <code>String</code> method is safe
+(avoids recurring indefinitely) not because of a conversion but
+because it calls <code>Sprintf</code> with <code>%f</code>,
+which is not a string format: <code>Sprintf</code> will only call
+the <code>String</code> method when it wants a string, and <code>%f</code>
+wants a floating-point value.
+</p>
+
+<h3 id="variables">Variables</h3>
+
+<p>
+Variables can be initialized just like constants but the
+initializer can be a general expression computed at run time.
+</p>
+<pre>
+var (
+    home   = os.Getenv("HOME")
+    user   = os.Getenv("USER")
+    gopath = os.Getenv("GOPATH")
+)
+</pre>
+
+<h3 id="init">The init function</h3>
+
+<p>
+Finally, each source file can define its own niladic <code>init</code> function to
+set up whatever state is required.  (Actually each file can have multiple
+<code>init</code> functions.)
+And finally means finally: <code>init</code> is called after all the
+variable declarations in the package have evaluated their initializers,
+and those are evaluated only after all the imported packages have been
+initialized.
+</p>
+<p>
+Besides initializations that cannot be expressed as declarations,
+a common use of <code>init</code> functions is to verify or repair
+correctness of the program state before real execution begins.
+</p>
+
+<pre>
+func init() {
+    if user == "" {
+        log.Fatal("$USER not set")
+    }
+    if home == "" {
+        home = "/home/" + user
+    }
+    if gopath == "" {
+        gopath = home + "/go"
+    }
+    // gopath may be overridden by --gopath flag on command line.
+    flag.StringVar(&amp;gopath, "gopath", gopath, "override default GOPATH")
+}
+</pre>
+
+<h2 id="methods">Methods</h2>
+
+<h3 id="pointers_vs_values">Pointers vs. Values</h3>
+<p>
+As we saw with <code>ByteSize</code>,
+methods can be defined for any named type (except a pointer or an interface);
+the receiver does not have to be a struct.
+</p>
+<p>
+In the discussion of slices above, we wrote an <code>Append</code>
+function.  We can define it as a method on slices instead.  To do
+this, we first declare a named type to which we can bind the method, and
+then make the receiver for the method a value of that type.
+</p>
+<pre>
+type ByteSlice []byte
+
+func (slice ByteSlice) Append(data []byte) []byte {
+    // Body exactly the same as above
+}
+</pre>
+<p>
+This still requires the method to return the updated slice.  We can
+eliminate that clumsiness by redefining the method to take a
+<i>pointer</i> to a <code>ByteSlice</code> as its receiver, so the
+method can overwrite the caller's slice.
+</p>
+<pre>
+func (p *ByteSlice) Append(data []byte) {
+    slice := *p
+    // Body as above, without the return.
+    *p = slice
+}
+</pre>
+<p>
+In fact, we can do even better.  If we modify our function so it looks
+like a standard <code>Write</code> method, like this,
+</p>
+<pre>
+func (p *ByteSlice) Write(data []byte) (n int, err error) {
+    slice := *p
+    // Again as above.
+    *p = slice
+    return len(data), nil
+}
+</pre>
+<p>
+then the type <code>*ByteSlice</code> satisfies the standard interface
+<code>io.Writer</code>, which is handy.  For instance, we can
+print into one.
+</p>
+<pre>
+    var b ByteSlice
+    fmt.Fprintf(&amp;b, "This hour has %d days\n", 7)
+</pre>
+<p>
+We pass the address of a <code>ByteSlice</code>
+because only <code>*ByteSlice</code> satisfies <code>io.Writer</code>.
+The rule about pointers vs. values for receivers is that value methods
+can be invoked on pointers and values, but pointer methods can only be
+invoked on pointers.
+</p>
+
+<p>
+This rule arises because pointer methods can modify the receiver; invoking
+them on a value would cause the method to receive a copy of the value, so
+any modifications would be discarded.
+The language therefore disallows this mistake.
+There is a handy exception, though. When the value is addressable, the
+language takes care of the common case of invoking a pointer method on a
+value by inserting the address operator automatically.
+In our example, the variable <code>b</code> is addressable, so we can call
+its <code>Write</code> method with just <code>b.Write</code>. The compiler
+will rewrite that to <code>(&amp;b).Write</code> for us.
+</p>
+
+<p>
+By the way, the idea of using <code>Write</code> on a slice of bytes
+is central to the implementation of <code>bytes.Buffer</code>.
+</p>
+
+<h2 id="interfaces_and_types">Interfaces and other types</h2>
+
+<h3 id="interfaces">Interfaces</h3>
+<p>
+Interfaces in Go provide a way to specify the behavior of an
+object: if something can do <em>this</em>, then it can be used
+<em>here</em>.  We've seen a couple of simple examples already;
+custom printers can be implemented by a <code>String</code> method
+while <code>Fprintf</code> can generate output to anything
+with a <code>Write</code> method.
+Interfaces with only one or two methods are common in Go code, and are
+usually given a name derived from the method, such as <code>io.Writer</code>
+for something that implements <code>Write</code>.
+</p>
+<p>
+A type can implement multiple interfaces.
+For instance, a collection can be sorted
+by the routines in package <code>sort</code> if it implements
+<code>sort.Interface</code>, which contains <code>Len()</code>,
+<code>Less(i, j int) bool</code>, and <code>Swap(i, j int)</code>,
+and it could also have a custom formatter.
+In this contrived example <code>Sequence</code> satisfies both.
+</p>
+{{code "/doc/progs/eff_sequence.go" `/^type/` "$"}}
+
+<h3 id="conversions">Conversions</h3>
+
+<p>
+The <code>String</code> method of <code>Sequence</code> is recreating the
+work that <code>Sprint</code> already does for slices.  We can share the
+effort if we convert the <code>Sequence</code> to a plain
+<code>[]int</code> before calling <code>Sprint</code>.
+</p>
+<pre>
+func (s Sequence) String() string {
+    sort.Sort(s)
+    return fmt.Sprint([]int(s))
+}
+</pre>
+<p>
+This method is another example of the conversion technique for calling
+<code>Sprintf</code> safely from a <code>String</code> method.
+Because the two types (<code>Sequence</code> and <code>[]int</code>)
+are the same if we ignore the type name, it's legal to convert between them.
+The conversion doesn't create a new value, it just temporarily acts
+as though the existing value has a new type.
+(There are other legal conversions, such as from integer to floating point, that
+do create a new value.)
+</p>
+<p>
+It's an idiom in Go programs to convert the
+type of an expression to access a different
+set of methods. As an example, we could use the existing
+type <code>sort.IntSlice</code> to reduce the entire example
+to this:
+</p>
+<pre>
+type Sequence []int
+
+// Method for printing - sorts the elements before printing
+func (s Sequence) String() string {
+    sort.IntSlice(s).Sort()
+    return fmt.Sprint([]int(s))
+}
+</pre>
+<p>
+Now, instead of having <code>Sequence</code> implement multiple
+interfaces (sorting and printing), we're using the ability of a data item to be
+converted to multiple types (<code>Sequence</code>, <code>sort.IntSlice</code>
+and <code>[]int</code>), each of which does some part of the job.
+That's more unusual in practice but can be effective.
+</p>
+
+<h3 id="interface_conversions">Interface conversions and type assertions</h3>
+
+<p>
+<a href="#type_switch">Type switches</a> are a form of conversion: they take an interface and, for
+each case in the switch, in a sense convert it to the type of that case.
+Here's a simplified version of how the code under <code>fmt.Printf</code> turns a value into
+a string using a type switch.
+If it's already a string, we want the actual string value held by the interface, while if it has a
+<code>String</code> method we want the result of calling the method.
+</p>
+
+<pre>
+type Stringer interface {
+    String() string
+}
+
+var value interface{} // Value provided by caller.
+switch str := value.(type) {
+case string:
+    return str
+case Stringer:
+    return str.String()
+}
+</pre>
+
+<p>
+The first case finds a concrete value; the second converts the interface into another interface.
+It's perfectly fine to mix types this way.
+</p>
+
+<p>
+What if there's only one type we care about? If we know the value holds a <code>string</code>
+and we just want to extract it?
+A one-case type switch would do, but so would a <em>type assertion</em>.
+A type assertion takes an interface value and extracts from it a value of the specified explicit type.
+The syntax borrows from the clause opening a type switch, but with an explicit
+type rather than the <code>type</code> keyword:
+</p>
+
+<pre>
+value.(typeName)
+</pre>
+
+<p>
+and the result is a new value with the static type <code>typeName</code>.
+That type must either be the concrete type held by the interface, or a second interface
+type that the value can be converted to.
+To extract the string we know is in the value, we could write:
+</p>
+
+<pre>
+str := value.(string)
+</pre>
+
+<p>
+But if it turns out that the value does not contain a string, the program will crash with a run-time error.
+To guard against that, use the "comma, ok" idiom to test, safely, whether the value is a string:
+</p>
+
+<pre>
+str, ok := value.(string)
+if ok {
+    fmt.Printf("string value is: %q\n", str)
+} else {
+    fmt.Printf("value is not a string\n")
+}
+</pre>
+
+<p>
+If the type assertion fails, <code>str</code> will still exist and be of type string, but it will have
+the zero value, an empty string.
+</p>
+
+<p>
+As an illustration of the capability, here's an <code>if</code>-<code>else</code>
+statement that's equivalent to the type switch that opened this section.
+</p>
+
+<pre>
+if str, ok := value.(string); ok {
+    return str
+} else if str, ok := value.(Stringer); ok {
+    return str.String()
+}
+</pre>
+
+<h3 id="generality">Generality</h3>
+<p>
+If a type exists only to implement an interface
+and has no exported methods beyond that interface,
+there is no need to export the type itself.
+Exporting just the interface makes it clear that
+it's the behavior that matters, not the implementation,
+and that other implementations with different properties
+can mirror the behavior of the original type.
+It also avoids the need to repeat the documentation
+on every instance of a common method.
+</p>
+<p>
+In such cases, the constructor should return an interface value
+rather than the implementing type.
+As an example, in the hash libraries
+both <code>crc32.NewIEEE</code> and <code>adler32.New</code>
+return the interface type <code>hash.Hash32</code>.
+Substituting the CRC-32 algorithm for Adler-32 in a Go program
+requires only changing the constructor call;
+the rest of the code is unaffected by the change of algorithm.
+</p>
+<p>
+A similar approach allows the streaming cipher algorithms
+in the various <code>crypto</code> packages to be
+separated from the block ciphers they chain together.
+The <code>Block</code> interface
+in the <code>crypto/cipher</code> package specifies the
+behavior of a block cipher, which provides encryption
+of a single block of data.
+Then, by analogy with the <code>bufio</code> package,
+cipher packages that implement this interface
+can be used to construct streaming ciphers, represented
+by the <code>Stream</code> interface, without
+knowing the details of the block encryption.
+</p>
+<p>
+The  <code>crypto/cipher</code> interfaces look like this:
+</p>
+<pre>
+type Block interface {
+    BlockSize() int
+    Encrypt(src, dst []byte)
+    Decrypt(src, dst []byte)
+}
+
+type Stream interface {
+    XORKeyStream(dst, src []byte)
+}
+</pre>
+
+<p>
+Here's the definition of the counter mode (CTR) stream,
+which turns a block cipher into a streaming cipher; notice
+that the block cipher's details are abstracted away:
+</p>
+
+<pre>
+// NewCTR returns a Stream that encrypts/decrypts using the given Block in
+// counter mode. The length of iv must be the same as the Block's block size.
+func NewCTR(block Block, iv []byte) Stream
+</pre>
+<p>
+<code>NewCTR</code> applies not
+just to one specific encryption algorithm and data source but to any
+implementation of the <code>Block</code> interface and any
+<code>Stream</code>.  Because they return
+interface values, replacing CTR
+encryption with other encryption modes is a localized change.  The constructor
+calls must be edited, but because the surrounding code must treat the result only
+as a <code>Stream</code>, it won't notice the difference.
+</p>
+
+<h3 id="interface_methods">Interfaces and methods</h3>
+<p>
+Since almost anything can have methods attached, almost anything can
+satisfy an interface.  One illustrative example is in the <code>http</code>
+package, which defines the <code>Handler</code> interface.  Any object
+that implements <code>Handler</code> can serve HTTP requests.
+</p>
+<pre>
+type Handler interface {
+    ServeHTTP(ResponseWriter, *Request)
+}
+</pre>
+<p>
+<code>ResponseWriter</code> is itself an interface that provides access
+to the methods needed to return the response to the client.
+Those methods include the standard <code>Write</code> method, so an
+<code>http.ResponseWriter</code> can be used wherever an <code>io.Writer</code>
+can be used.
+<code>Request</code> is a struct containing a parsed representation
+of the request from the client.
+</p>
+<p>
+For brevity, let's ignore POSTs and assume HTTP requests are always
+GETs; that simplification does not affect the way the handlers are
+set up.  Here's a trivial but complete implementation of a handler to
+count the number of times the
+page is visited.
+</p>
+<pre>
+// Simple counter server.
+type Counter struct {
+    n int
+}
+
+func (ctr *Counter) ServeHTTP(w http.ResponseWriter, req *http.Request) {
+    ctr.n++
+    fmt.Fprintf(w, "counter = %d\n", ctr.n)
+}
+</pre>
+<p>
+(Keeping with our theme, note how <code>Fprintf</code> can print to an
+<code>http.ResponseWriter</code>.)
+For reference, here's how to attach such a server to a node on the URL tree.
+</p>
+<pre>
+import "net/http"
+...
+ctr := new(Counter)
+http.Handle("/counter", ctr)
+</pre>
+<p>
+But why make <code>Counter</code> a struct?  An integer is all that's needed.
+(The receiver needs to be a pointer so the increment is visible to the caller.)
+</p>
+<pre>
+// Simpler counter server.
+type Counter int
+
+func (ctr *Counter) ServeHTTP(w http.ResponseWriter, req *http.Request) {
+    *ctr++
+    fmt.Fprintf(w, "counter = %d\n", *ctr)
+}
+</pre>
+<p>
+What if your program has some internal state that needs to be notified that a page
+has been visited?  Tie a channel to the web page.
+</p>
+<pre>
+// A channel that sends a notification on each visit.
+// (Probably want the channel to be buffered.)
+type Chan chan *http.Request
+
+func (ch Chan) ServeHTTP(w http.ResponseWriter, req *http.Request) {
+    ch &lt;- req
+    fmt.Fprint(w, "notification sent")
+}
+</pre>
+<p>
+Finally, let's say we wanted to present on <code>/args</code> the arguments
+used when invoking the server binary.
+It's easy to write a function to print the arguments.
+</p>
+<pre>
+func ArgServer() {
+    fmt.Println(os.Args)
+}
+</pre>
+<p>
+How do we turn that into an HTTP server?  We could make <code>ArgServer</code>
+a method of some type whose value we ignore, but there's a cleaner way.
+Since we can define a method for any type except pointers and interfaces,
+we can write a method for a function.
+The <code>http</code> package contains this code:
+</p>
+<pre>
+// The HandlerFunc type is an adapter to allow the use of
+// ordinary functions as HTTP handlers.  If f is a function
+// with the appropriate signature, HandlerFunc(f) is a
+// Handler object that calls f.
+type HandlerFunc func(ResponseWriter, *Request)
+
+// ServeHTTP calls f(c, req).
+func (f HandlerFunc) ServeHTTP(w ResponseWriter, req *Request) {
+    f(w, req)
+}
+</pre>
+<p>
+<code>HandlerFunc</code> is a type with a method, <code>ServeHTTP</code>,
+so values of that type can serve HTTP requests.  Look at the implementation
+of the method: the receiver is a function, <code>f</code>, and the method
+calls <code>f</code>.  That may seem odd but it's not that different from, say,
+the receiver being a channel and the method sending on the channel.
+</p>
+<p>
+To make <code>ArgServer</code> into an HTTP server, we first modify it
+to have the right signature.
+</p>
+<pre>
+// Argument server.
+func ArgServer(w http.ResponseWriter, req *http.Request) {
+    fmt.Fprintln(w, os.Args)
+}
+</pre>
+<p>
+<code>ArgServer</code> now has same signature as <code>HandlerFunc</code>,
+so it can be converted to that type to access its methods,
+just as we converted <code>Sequence</code> to <code>IntSlice</code>
+to access <code>IntSlice.Sort</code>.
+The code to set it up is concise:
+</p>
+<pre>
+http.Handle("/args", http.HandlerFunc(ArgServer))
+</pre>
+<p>
+When someone visits the page <code>/args</code>,
+the handler installed at that page has value <code>ArgServer</code>
+and type <code>HandlerFunc</code>.
+The HTTP server will invoke the method <code>ServeHTTP</code>
+of that type, with <code>ArgServer</code> as the receiver, which will in turn call
+<code>ArgServer</code> (via the invocation <code>f(c, req)</code>
+inside <code>HandlerFunc.ServeHTTP</code>).
+The arguments will then be displayed.
+</p>
+<p>
+In this section we have made an HTTP server from a struct, an integer,
+a channel, and a function, all because interfaces are just sets of
+methods, which can be defined for (almost) any type.
+</p>
+
+<h2 id="blank">The blank identifier</h2>
+
+<p>
+We've mentioned the blank identifier a couple of times now, in the context of
+<a href="#for"><code>for</code> <code>range</code> loops</a>
+and <a href="#maps">maps</a>.
+The blank identifier can be assigned or declared with any value of any type, with the
+value discarded harmlessly.
+It's a bit like writing to the Unix <code>/dev/null</code> file:
+it represents a write-only value
+to be used as a place-holder
+where a variable is needed but the actual value is irrelevant.
+It has uses beyond those we've seen already.
+</p>
+
+<h3 id="blank_assign">The blank identifier in multiple assignment</h3>
+
+<p>
+The use of a blank identifier in a <code>for</code> <code>range</code> loop is a
+special case of a general situation: multiple assignment.
+</p>
+
+<p>
+If an assignment requires multiple values on the left side,
+but one of the values will not be used by the program,
+a blank identifier on the left-hand-side of
+the assignment avoids the need
+to create a dummy variable and makes it clear that the
+value is to be discarded.
+For instance, when calling a function that returns
+a value and an error, but only the error is important,
+use the blank identifier to discard the irrelevant value.
+</p>
+
+<pre>
+if _, err := os.Stat(path); os.IsNotExist(err) {
+	fmt.Printf("%s does not exist\n", path)
+}
+</pre>
+
+<p>
+Occasionally you'll see code that discards the error value in order
+to ignore the error; this is terrible practice. Always check error returns;
+they're provided for a reason.
+</p>
+
+<pre>
+// Bad! This code will crash if path does not exist.
+fi, _ := os.Stat(path)
+if fi.IsDir() {
+    fmt.Printf("%s is a directory\n", path)
+}
+</pre>
+
+<h3 id="blank_unused">Unused imports and variables</h3>
+
+<p>
+It is an error to import a package or to declare a variable without using it.
+Unused imports bloat the program and slow compilation,
+while a variable that is initialized but not used is at least
+a wasted computation and perhaps indicative of a
+larger bug.
+When a program is under active development, however,
+unused imports and variables often arise and it can
+be annoying to delete them just to have the compilation proceed,
+only to have them be needed again later.
+The blank identifier provides a workaround.
+</p>
+<p>
+This half-written program has two unused imports
+(<code>fmt</code> and <code>io</code>)
+and an unused variable (<code>fd</code>),
+so it will not compile, but it would be nice to see if the
+code so far is correct.
+</p>
+{{code "/doc/progs/eff_unused1.go" `/package/` `$`}}
+<p>
+To silence complaints about the unused imports, use a
+blank identifier to refer to a symbol from the imported package.
+Similarly, assigning the unused variable <code>fd</code>
+to the blank identifier will silence the unused variable error.
+This version of the program does compile.
+</p>
+{{code "/doc/progs/eff_unused2.go" `/package/` `$`}}
+
+<p>
+By convention, the global declarations to silence import errors
+should come right after the imports and be commented,
+both to make them easy to find and as a reminder to clean things up later.
+</p>
+
+<h3 id="blank_import">Import for side effect</h3>
+
+<p>
+An unused import like <code>fmt</code> or <code>io</code> in the
+previous example should eventually be used or removed:
+blank assignments identify code as a work in progress.
+But sometimes it is useful to import a package only for its
+side effects, without any explicit use.
+For example, during its <code>init</code> function,
+the <code><a href="/pkg/net/http/pprof/">net/http/pprof</a></code>
+package registers HTTP handlers that provide
+debugging information. It has an exported API, but
+most clients need only the handler registration and
+access the data through a web page.
+To import the package only for its side effects, rename the package
+to the blank identifier:
+</p>
+<pre>
+import _ "net/http/pprof"
+</pre>
+<p>
+This form of import makes clear that the package is being
+imported for its side effects, because there is no other possible
+use of the package: in this file, it doesn't have a name.
+(If it did, and we didn't use that name, the compiler would reject the program.)
+</p>
+
+<h3 id="blank_implements">Interface checks</h3>
+
+<p>
+As we saw in the discussion of <a href="#interfaces_and_types">interfaces</a> above,
+a type need not declare explicitly that it implements an interface.
+Instead, a type implements the interface just by implementing the interface's methods.
+In practice, most interface conversions are static and therefore checked at compile time.
+For example, passing an <code>*os.File</code> to a function
+expecting an <code>io.Reader</code> will not compile unless
+<code>*os.File</code> implements the <code>io.Reader</code> interface.
+</p>
+
+<p>
+Some interface checks do happen at run-time, though.
+One instance is in the <code><a href="/pkg/encoding/json/">encoding/json</a></code>
+package, which defines a <code><a href="/pkg/encoding/json/#Marshaler">Marshaler</a></code>
+interface. When the JSON encoder receives a value that implements that interface,
+the encoder invokes the value's marshaling method to convert it to JSON
+instead of doing the standard conversion.
+The encoder checks this property at run time with a <a href="#interface_conversions">type assertion</a> like:
+</p>
+
+<pre>
+m, ok := val.(json.Marshaler)
+</pre>
+
+<p>
+If it's necessary only to ask whether a type implements an interface, without
+actually using the interface itself, perhaps as part of an error check, use the blank
+identifier to ignore the type-asserted value:
+</p>
+
+<pre>
+if _, ok := val.(json.Marshaler); ok {
+    fmt.Printf("value %v of type %T implements json.Marshaler\n", val, val)
+}
+</pre>
+
+<p>
+One place this situation arises is when it is necessary to guarantee within the package implementing the type that
+it actually satisfies the interface.
+If a typeâ€”for example,
+<code><a href="/pkg/encoding/json/#RawMessage">json.RawMessage</a></code>â€”needs
+a custom JSON representation, it should implement
+<code>json.Marshaler</code>, but there are no static conversions that would
+cause the compiler to verify this automatically.
+If the type inadvertently fails to satisfy the interface, the JSON encoder will still work,
+but will not use the custom implementation.
+To guarantee that the implementation is correct,
+a global declaration using the blank identifier can be used in the package:
+</p>
+<pre>
+var _ json.Marshaler = (*RawMessage)(nil)
+</pre>
+<p>
+In this declaration, the assignment involving a conversion of a
+<code>*RawMessage</code> to a <code>Marshaler</code>
+requires that <code>*RawMessage</code> implements <code>Marshaler</code>,
+and that property will be checked at compile time.
+Should the <code>json.Marshaler</code> interface change, this package
+will no longer compile and we will be on notice that it needs to be updated.
+</p>
+
+<p>
+The appearance of the blank identifier in this construct indicates that
+the declaration exists only for the type checking,
+not to create a variable.
+Don't do this for every type that satisfies an interface, though.
+By convention, such declarations are only used
+when there are no static conversions already present in the code,
+which is a rare event.
+</p>
+
+
+<h2 id="embedding">Embedding</h2>
+
+<p>
+Go does not provide the typical, type-driven notion of subclassing,
+but it does have the ability to &ldquo;borrow&rdquo; pieces of an
+implementation by <em>embedding</em> types within a struct or
+interface.
+</p>
+<p>
+Interface embedding is very simple.
+We've mentioned the <code>io.Reader</code> and <code>io.Writer</code> interfaces before;
+here are their definitions.
+</p>
+<pre>
+type Reader interface {
+    Read(p []byte) (n int, err error)
+}
+
+type Writer interface {
+    Write(p []byte) (n int, err error)
+}
+</pre>
+<p>
+The <code>io</code> package also exports several other interfaces
+that specify objects that can implement several such methods.
+For instance, there is <code>io.ReadWriter</code>, an interface
+containing both <code>Read</code> and <code>Write</code>.
+We could specify <code>io.ReadWriter</code> by listing the
+two methods explicitly, but it's easier and more evocative
+to embed the two interfaces to form the new one, like this:
+</p>
+<pre>
+// ReadWriter is the interface that combines the Reader and Writer interfaces.
+type ReadWriter interface {
+    Reader
+    Writer
+}
+</pre>
+<p>
+This says just what it looks like: A <code>ReadWriter</code> can do
+what a <code>Reader</code> does <em>and</em> what a <code>Writer</code>
+does; it is a union of the embedded interfaces (which must be disjoint
+sets of methods).
+Only interfaces can be embedded within interfaces.
+</p>
+<p>
+The same basic idea applies to structs, but with more far-reaching
+implications.  The <code>bufio</code> package has two struct types,
+<code>bufio.Reader</code> and <code>bufio.Writer</code>, each of
+which of course implements the analogous interfaces from package
+<code>io</code>.
+And <code>bufio</code> also implements a buffered reader/writer,
+which it does by combining a reader and a writer into one struct
+using embedding: it lists the types within the struct
+but does not give them field names.
+</p>
+<pre>
+// ReadWriter stores pointers to a Reader and a Writer.
+// It implements io.ReadWriter.
+type ReadWriter struct {
+    *Reader  // *bufio.Reader
+    *Writer  // *bufio.Writer
+}
+</pre>
+<p>
+The embedded elements are pointers to structs and of course
+must be initialized to point to valid structs before they
+can be used.
+The <code>ReadWriter</code> struct could be written as
+</p>
+<pre>
+type ReadWriter struct {
+    reader *Reader
+    writer *Writer
+}
+</pre>
+<p>
+but then to promote the methods of the fields and to
+satisfy the <code>io</code> interfaces, we would also need
+to provide forwarding methods, like this:
+</p>
+<pre>
+func (rw *ReadWriter) Read(p []byte) (n int, err error) {
+    return rw.reader.Read(p)
+}
+</pre>
+<p>
+By embedding the structs directly, we avoid this bookkeeping.
+The methods of embedded types come along for free, which means that <code>bufio.ReadWriter</code>
+not only has the methods of <code>bufio.Reader</code> and <code>bufio.Writer</code>,
+it also satisfies all three interfaces:
+<code>io.Reader</code>,
+<code>io.Writer</code>, and
+<code>io.ReadWriter</code>.
+</p>
+<p>
+There's an important way in which embedding differs from subclassing.  When we embed a type,
+the methods of that type become methods of the outer type,
+but when they are invoked the receiver of the method is the inner type, not the outer one.
+In our example, when the <code>Read</code> method of a <code>bufio.ReadWriter</code> is
+invoked, it has exactly the same effect as the forwarding method written out above;
+the receiver is the <code>reader</code> field of the <code>ReadWriter</code>, not the
+<code>ReadWriter</code> itself.
+</p>
+<p>
+Embedding can also be a simple convenience.
+This example shows an embedded field alongside a regular, named field.
+</p>
+<pre>
+type Job struct {
+    Command string
+    *log.Logger
+}
+</pre>
+<p>
+The <code>Job</code> type now has the <code>Log</code>, <code>Logf</code>
+and other
+methods of <code>*log.Logger</code>.  We could have given the <code>Logger</code>
+a field name, of course, but it's not necessary to do so.  And now, once
+initialized, we can
+log to the <code>Job</code>:
+</p>
+<pre>
+job.Log("starting now...")
+</pre>
+<p>
+The <code>Logger</code> is a regular field of the <code>Job</code> struct,
+so we can initialize it in the usual way inside the constructor for <code>Job</code>, like this,
+</p>
+<pre>
+func NewJob(command string, logger *log.Logger) *Job {
+    return &amp;Job{command, logger}
+}
+</pre>
+<p>
+or with a composite literal,
+</p>
+<pre>
+job := &amp;Job{command, log.New(os.Stderr, "Job: ", log.Ldate)}
+</pre>
+<p>
+If we need to refer to an embedded field directly, the type name of the field,
+ignoring the package qualifier, serves as a field name, as it did
+in the <code>Read</code> method of our <code>ReaderWriter</code> struct.
+Here, if we needed to access the
+<code>*log.Logger</code> of a <code>Job</code> variable <code>job</code>,
+we would write <code>job.Logger</code>,
+which would be useful if we wanted to refine the methods of <code>Logger</code>.
+</p>
+<pre>
+func (job *Job) Logf(format string, args ...interface{}) {
+    job.Logger.Logf("%q: %s", job.Command, fmt.Sprintf(format, args...))
+}
+</pre>
+<p>
+Embedding types introduces the problem of name conflicts but the rules to resolve
+them are simple.
+First, a field or method <code>X</code> hides any other item <code>X</code> in a more deeply
+nested part of the type.
+If <code>log.Logger</code> contained a field or method called <code>Command</code>, the <code>Command</code> field
+of <code>Job</code> would dominate it.
+</p>
+<p>
+Second, if the same name appears at the same nesting level, it is usually an error;
+it would be erroneous to embed <code>log.Logger</code> if the <code>Job</code> struct
+contained another field or method called <code>Logger</code>.
+However, if the duplicate name is never mentioned in the program outside the type definition, it is OK.
+This qualification provides some protection against changes made to types embedded from outside; there
+is no problem if a field is added that conflicts with another field in another subtype if neither field
+is ever used.
+</p>
+
+
+<h2 id="concurrency">Concurrency</h2>
+
+<h3 id="sharing">Share by communicating</h3>
+
+<p>
+Concurrent programming is a large topic and there is space only for some
+Go-specific highlights here.
+</p>
+<p>
+Concurrent programming in many environments is made difficult by the
+subtleties required to implement correct access to shared variables.  Go encourages
+a different approach in which shared values are passed around on channels
+and, in fact, never actively shared by separate threads of execution.
+Only one goroutine has access to the value at any given time.
+Data races cannot occur, by design.
+To encourage this way of thinking we have reduced it to a slogan:
+</p>
+<blockquote>
+Do not communicate by sharing memory;
+instead, share memory by communicating.
+</blockquote>
+<p>
+This approach can be taken too far.  Reference counts may be best done
+by putting a mutex around an integer variable, for instance.  But as a
+high-level approach, using channels to control access makes it easier
+to write clear, correct programs.
+</p>
+<p>
+One way to think about this model is to consider a typical single-threaded
+program running on one CPU. It has no need for synchronization primitives.
+Now run another such instance; it too needs no synchronization.  Now let those
+two communicate; if the communication is the synchronizer, there's still no need
+for other synchronization.  Unix pipelines, for example, fit this model
+perfectly.  Although Go's approach to concurrency originates in Hoare's
+Communicating Sequential Processes (CSP),
+it can also be seen as a type-safe generalization of Unix pipes.
+</p>
+
+<h3 id="goroutines">Goroutines</h3>
+
+<p>
+They're called <em>goroutines</em> because the existing
+terms&mdash;threads, coroutines, processes, and so on&mdash;convey
+inaccurate connotations.  A goroutine has a simple model: it is a
+function executing concurrently with other goroutines in the same
+address space.  It is lightweight, costing little more than the
+allocation of stack space.
+And the stacks start small, so they are cheap, and grow
+by allocating (and freeing) heap storage as required.
+</p>
+<p>
+Goroutines are multiplexed onto multiple OS threads so if one should
+block, such as while waiting for I/O, others continue to run.  Their
+design hides many of the complexities of thread creation and
+management.
+</p>
+<p>
+Prefix a function or method call with the <code>go</code>
+keyword to run the call in a new goroutine.
+When the call completes, the goroutine
+exits, silently.  (The effect is similar to the Unix shell's
+<code>&amp;</code> notation for running a command in the
+background.)
+</p>
+<pre>
+go list.Sort()  // run list.Sort concurrently; don't wait for it.
+</pre>
+<p>
+A function literal can be handy in a goroutine invocation.
+</p>
+<pre>
+func Announce(message string, delay time.Duration) {
+    go func() {
+        time.Sleep(delay)
+        fmt.Println(message)
+    }()  // Note the parentheses - must call the function.
+}
+</pre>
+<p>
+In Go, function literals are closures: the implementation makes
+sure the variables referred to by the function survive as long as they are active.
+</p>
+<p>
+These examples aren't too practical because the functions have no way of signaling
+completion.  For that, we need channels.
+</p>
+
+<h3 id="channels">Channels</h3>
+
+<p>
+Like maps, channels are allocated with <code>make</code>, and
+the resulting value acts as a reference to an underlying data structure.
+If an optional integer parameter is provided, it sets the buffer size for the channel.
+The default is zero, for an unbuffered or synchronous channel.
+</p>
+<pre>
+ci := make(chan int)            // unbuffered channel of integers
+cj := make(chan int, 0)         // unbuffered channel of integers
+cs := make(chan *os.File, 100)  // buffered channel of pointers to Files
+</pre>
+<p>
+Unbuffered channels combine communication&mdash;the exchange of a value&mdash;with
+synchronization&mdash;guaranteeing that two calculations (goroutines) are in
+a known state.
+</p>
+<p>
+There are lots of nice idioms using channels.  Here's one to get us started.
+In the previous section we launched a sort in the background. A channel
+can allow the launching goroutine to wait for the sort to complete.
+</p>
+<pre>
+c := make(chan int)  // Allocate a channel.
+// Start the sort in a goroutine; when it completes, signal on the channel.
+go func() {
+    list.Sort()
+    c &lt;- 1  // Send a signal; value does not matter.
+}()
+doSomethingForAWhile()
+&lt;-c   // Wait for sort to finish; discard sent value.
+</pre>
+<p>
+Receivers always block until there is data to receive.
+If the channel is unbuffered, the sender blocks until the receiver has
+received the value.
+If the channel has a buffer, the sender blocks only until the
+value has been copied to the buffer; if the buffer is full, this
+means waiting until some receiver has retrieved a value.
+</p>
+<p>
+A buffered channel can be used like a semaphore, for instance to
+limit throughput.  In this example, incoming requests are passed
+to <code>handle</code>, which sends a value into the channel, processes
+the request, and then receives a value from the channel
+to ready the &ldquo;semaphore&rdquo; for the next consumer.
+The capacity of the channel buffer limits the number of
+simultaneous calls to <code>process</code>.
+</p>
+<pre>
+var sem = make(chan int, MaxOutstanding)
+
+func handle(r *Request) {
+    sem &lt;- 1    // Wait for active queue to drain.
+    process(r)  // May take a long time.
+    &lt;-sem       // Done; enable next request to run.
+}
+
+func Serve(queue chan *Request) {
+    for {
+        req := &lt;-queue
+        go handle(req)  // Don't wait for handle to finish.
+    }
+}
+</pre>
+
+<p>
+Once <code>MaxOutstanding</code> handlers are executing <code>process</code>,
+any more will block trying to send into the filled channel buffer,
+until one of the existing handlers finishes and receives from the buffer.
+</p>
+
+<p>
+This design has a problem, though: <code>Serve</code>
+creates a new goroutine for
+every incoming request, even though only <code>MaxOutstanding</code>
+of them can run at any moment.
+As a result, the program can consume unlimited resources if the requests come in too fast.
+We can address that deficiency by changing <code>Serve</code> to
+gate the creation of the goroutines.
+Here's an obvious solution, but beware it has a bug we'll fix subsequently:
+</p>
+
+<pre>
+func Serve(queue chan *Request) {
+    for req := range queue {
+        sem &lt;- 1
+        go func() {
+            process(req) // Buggy; see explanation below.
+            &lt;-sem
+        }()
+    }
+}</pre>
+
+<p>
+The bug is that in a Go <code>for</code> loop, the loop variable
+is reused for each iteration, so the <code>req</code>
+variable is shared across all goroutines.
+That's not what we want.
+We need to make sure that <code>req</code> is unique for each goroutine.
+Here's one way to do that, passing the value of <code>req</code> as an argument
+to the closure in the goroutine:
+</p>
+
+<pre>
+func Serve(queue chan *Request) {
+    for req := range queue {
+        sem &lt;- 1
+        go func(req *Request) {
+            process(req)
+            &lt;-sem
+        }(req)
+    }
+}</pre>
+
+<p>
+Compare this version with the previous to see the difference in how
+the closure is declared and run.
+Another solution is just to create a new variable with the same
+name, as in this example:
+</p>
+
+<pre>
+func Serve(queue chan *Request) {
+    for req := range queue {
+        req := req // Create new instance of req for the goroutine.
+        sem &lt;- 1
+        go func() {
+            process(req)
+            &lt;-sem
+        }()
+    }
+}</pre>
+
+<p>
+It may seem odd to write
+</p>
+
+<pre>
+req := req
+</pre>
+
+<p>
+but it's a legal and idiomatic in Go to do this.
+You get a fresh version of the variable with the same name, deliberately
+shadowing the loop variable locally but unique to each goroutine.
+</p>
+
+<p>
+Going back to the general problem of writing the server,
+another approach that manages resources well is to start a fixed
+number of <code>handle</code> goroutines all reading from the request
+channel.
+The number of goroutines limits the number of simultaneous
+calls to <code>process</code>.
+This <code>Serve</code> function also accepts a channel on which
+it will be told to exit; after launching the goroutines it blocks
+receiving from that channel.
+</p>
+
+<pre>
+func handle(queue chan *Request) {
+    for r := range queue {
+        process(r)
+    }
+}
+
+func Serve(clientRequests chan *Request, quit chan bool) {
+    // Start handlers
+    for i := 0; i &lt; MaxOutstanding; i++ {
+        go handle(clientRequests)
+    }
+    &lt;-quit  // Wait to be told to exit.
+}
+</pre>
+
+<h3 id="chan_of_chan">Channels of channels</h3>
+<p>
+One of the most important properties of Go is that
+a channel is a first-class value that can be allocated and passed
+around like any other.  A common use of this property is
+to implement safe, parallel demultiplexing.
+</p>
+<p>
+In the example in the previous section, <code>handle</code> was
+an idealized handler for a request but we didn't define the
+type it was handling.  If that type includes a channel on which
+to reply, each client can provide its own path for the answer.
+Here's a schematic definition of type <code>Request</code>.
+</p>
+<pre>
+type Request struct {
+    args        []int
+    f           func([]int) int
+    resultChan  chan int
+}
+</pre>
+<p>
+The client provides a function and its arguments, as well as
+a channel inside the request object on which to receive the answer.
+</p>
+<pre>
+func sum(a []int) (s int) {
+    for _, v := range a {
+        s += v
+    }
+    return
+}
+
+request := &amp;Request{[]int{3, 4, 5}, sum, make(chan int)}
+// Send request
+clientRequests &lt;- request
+// Wait for response.
+fmt.Printf("answer: %d\n", &lt;-request.resultChan)
+</pre>
+<p>
+On the server side, the handler function is the only thing that changes.
+</p>
+<pre>
+func handle(queue chan *Request) {
+    for req := range queue {
+        req.resultChan &lt;- req.f(req.args)
+    }
+}
+</pre>
+<p>
+There's clearly a lot more to do to make it realistic, but this
+code is a framework for a rate-limited, parallel, non-blocking RPC
+system, and there's not a mutex in sight.
+</p>
+
+<h3 id="parallel">Parallelization</h3>
+<p>
+Another application of these ideas is to parallelize a calculation
+across multiple CPU cores.  If the calculation can be broken into
+separate pieces that can execute independently, it can be parallelized,
+with a channel to signal when each piece completes.
+</p>
+<p>
+Let's say we have an expensive operation to perform on a vector of items,
+and that the value of the operation on each item is independent,
+as in this idealized example.
+</p>
+<pre>
+type Vector []float64
+
+// Apply the operation to v[i], v[i+1] ... up to v[n-1].
+func (v Vector) DoSome(i, n int, u Vector, c chan int) {
+    for ; i &lt; n; i++ {
+        v[i] += u.Op(v[i])
+    }
+    c &lt;- 1    // signal that this piece is done
+}
+</pre>
+<p>
+We launch the pieces independently in a loop, one per CPU.
+They can complete in any order but it doesn't matter; we just
+count the completion signals by draining the channel after
+launching all the goroutines.
+</p>
+<pre>
+const NCPU = 4  // number of CPU cores
+
+func (v Vector) DoAll(u Vector) {
+    c := make(chan int, NCPU)  // Buffering optional but sensible.
+    for i := 0; i &lt; NCPU; i++ {
+        go v.DoSome(i*len(v)/NCPU, (i+1)*len(v)/NCPU, u, c)
+    }
+    // Drain the channel.
+    for i := 0; i &lt; NCPU; i++ {
+        &lt;-c    // wait for one task to complete
+    }
+    // All done.
+}
+
+</pre>
+
+<p>
+The current implementation of the Go runtime
+will not parallelize this code by default.
+It dedicates only a single core to user-level processing.  An
+arbitrary number of goroutines can be blocked in system calls, but
+by default only one can be executing user-level code at any time.
+It should be smarter and one day it will be smarter, but until it
+is if you want CPU parallelism you must tell the run-time
+how many goroutines you want executing code simultaneously.  There
+are two related ways to do this.  Either run your job with environment
+variable <code>GOMAXPROCS</code> set to the number of cores to use
+or import the <code>runtime</code> package and call
+<code>runtime.GOMAXPROCS(NCPU)</code>.
+A helpful value might be <code>runtime.NumCPU()</code>, which reports the number
+of logical CPUs on the local machine.
+Again, this requirement is expected to be retired as the scheduling and run-time improve.
+</p>
+
+<p>
+Be sure not to confuse the ideas of concurrencyâ€”structuring a program
+as independently executing componentsâ€”and parallelismâ€”executing
+calculations in parallel for efficiency on multiple CPUs.
+Although the concurrency features of Go can make some problems easy
+to structure as parallel computations, Go is a concurrent language,
+not a parallel one, and not all parallelization problems fit Go's model.
+For a discussion of the distinction, see the talk cited in
+<a href="//blog.golang.org/2013/01/concurrency-is-not-parallelism.html">this
+blog post</a>.
+
+<h3 id="leaky_buffer">A leaky buffer</h3>
+
+<p>
+The tools of concurrent programming can even make non-concurrent
+ideas easier to express.  Here's an example abstracted from an RPC
+package.  The client goroutine loops receiving data from some source,
+perhaps a network.  To avoid allocating and freeing buffers, it keeps
+a free list, and uses a buffered channel to represent it.  If the
+channel is empty, a new buffer gets allocated.
+Once the message buffer is ready, it's sent to the server on
+<code>serverChan</code>.
+</p>
+<pre>
+var freeList = make(chan *Buffer, 100)
+var serverChan = make(chan *Buffer)
+
+func client() {
+    for {
+        var b *Buffer
+        // Grab a buffer if available; allocate if not.
+        select {
+        case b = &lt;-freeList:
+            // Got one; nothing more to do.
+        default:
+            // None free, so allocate a new one.
+            b = new(Buffer)
+        }
+        load(b)              // Read next message from the net.
+        serverChan &lt;- b      // Send to server.
+    }
+}
+</pre>
+<p>
+The server loop receives each message from the client, processes it,
+and returns the buffer to the free list.
+</p>
+<pre>
+func server() {
+    for {
+        b := &lt;-serverChan    // Wait for work.
+        process(b)
+        // Reuse buffer if there's room.
+        select {
+        case freeList &lt;- b:
+            // Buffer on free list; nothing more to do.
+        default:
+            // Free list full, just carry on.
+        }
+    }
+}
+</pre>
+<p>
+The client attempts to retrieve a buffer from <code>freeList</code>;
+if none is available, it allocates a fresh one.
+The server's send to <code>freeList</code> puts <code>b</code> back
+on the free list unless the list is full, in which case the
+buffer is dropped on the floor to be reclaimed by
+the garbage collector.
+(The <code>default</code> clauses in the <code>select</code>
+statements execute when no other case is ready,
+meaning that the <code>selects</code> never block.)
+This implementation builds a leaky bucket free list
+in just a few lines, relying on the buffered channel and
+the garbage collector for bookkeeping.
+</p>
+
+<h2 id="errors">Errors</h2>
+
+<p>
+Library routines must often return some sort of error indication to
+the caller.
+As mentioned earlier, Go's multivalue return makes it
+easy to return a detailed error description alongside the normal
+return value.
+It is good style to use this feature to provide detailed error information.
+For example, as we'll see, <code>os.Open</code> doesn't
+just return a <code>nil</code> pointer on failure, it also returns an
+error value that describes what went wrong.
+</p>
+
+<p>
+By convention, errors have type <code>error</code>,
+a simple built-in interface.
+</p>
+<pre>
+type error interface {
+    Error() string
+}
+</pre>
+<p>
+A library writer is free to implement this interface with a
+richer model under the covers, making it possible not only
+to see the error but also to provide some context.
+As mentioned, alongside the usual <code>*os.File</code>
+return value, <code>os.Open</code> also returns an
+error value.
+If the file is opened successfully, the error will be <code>nil</code>,
+but when there is a problem, it will hold an
+<code>os.PathError</code>:
+</p>
+<pre>
+// PathError records an error and the operation and
+// file path that caused it.
+type PathError struct {
+    Op string    // "open", "unlink", etc.
+    Path string  // The associated file.
+    Err error    // Returned by the system call.
+}
+
+func (e *PathError) Error() string {
+    return e.Op + " " + e.Path + ": " + e.Err.Error()
+}
+</pre>
+<p>
+<code>PathError</code>'s <code>Error</code> generates
+a string like this:
+</p>
+<pre>
+open /etc/passwx: no such file or directory
+</pre>
+<p>
+Such an error, which includes the problematic file name, the
+operation, and the operating system error it triggered, is useful even
+if printed far from the call that caused it;
+it is much more informative than the plain
+"no such file or directory".
+</p>
+
+<p>
+When feasible, error strings should identify their origin, such as by having
+a prefix naming the operation or package that generated the error.  For example, in package
+<code>image</code>, the string representation for a decoding error due to an
+unknown format is "image: unknown format".
+</p>
+
+<p>
+Callers that care about the precise error details can
+use a type switch or a type assertion to look for specific
+errors and extract details.  For <code>PathErrors</code>
+this might include examining the internal <code>Err</code>
+field for recoverable failures.
+</p>
+
+<pre>
+for try := 0; try &lt; 2; try++ {
+    file, err = os.Create(filename)
+    if err == nil {
+        return
+    }
+    if e, ok := err.(*os.PathError); ok &amp;&amp; e.Err == syscall.ENOSPC {
+        deleteTempFiles()  // Recover some space.
+        continue
+    }
+    return
+}
+</pre>
+
+<p>
+The second <code>if</code> statement here is another <a href="#interface_conversions">type assertion</a>.
+If it fails, <code>ok</code> will be false, and <code>e</code>
+will be <code>nil</code>.
+If it succeeds,  <code>ok</code> will be true, which means the
+error was of type <code>*os.PathError</code>, and then so is <code>e</code>,
+which we can examine for more information about the error.
+</p>
+
+<h3 id="panic">Panic</h3>
+
+<p>
+The usual way to report an error to a caller is to return an
+<code>error</code> as an extra return value.  The canonical
+<code>Read</code> method is a well-known instance; it returns a byte
+count and an <code>error</code>.  But what if the error is
+unrecoverable?  Sometimes the program simply cannot continue.
+</p>
+
+<p>
+For this purpose, there is a built-in function <code>panic</code>
+that in effect creates a run-time error that will stop the program
+(but see the next section).  The function takes a single argument
+of arbitrary type&mdash;often a string&mdash;to be printed as the
+program dies.  It's also a way to indicate that something impossible has
+happened, such as exiting an infinite loop.
+</p>
+
+
+<pre>
+// A toy implementation of cube root using Newton's method.
+func CubeRoot(x float64) float64 {
+    z := x/3   // Arbitrary initial value
+    for i := 0; i &lt; 1e6; i++ {
+        prevz := z
+        z -= (z*z*z-x) / (3*z*z)
+        if veryClose(z, prevz) {
+            return z
+        }
+    }
+    // A million iterations has not converged; something is wrong.
+    panic(fmt.Sprintf("CubeRoot(%g) did not converge", x))
+}
+</pre>
+
+<p>
+This is only an example but real library functions should
+avoid <code>panic</code>.  If the problem can be masked or worked
+around, it's always better to let things continue to run rather
+than taking down the whole program.  One possible counterexample
+is during initialization: if the library truly cannot set itself up,
+it might be reasonable to panic, so to speak.
+</p>
+
+<pre>
+var user = os.Getenv("USER")
+
+func init() {
+    if user == "" {
+        panic("no value for $USER")
+    }
+}
+</pre>
+
+<h3 id="recover">Recover</h3>
+
+<p>
+When <code>panic</code> is called, including implicitly for run-time
+errors such as indexing a slice out of bounds or failing a type
+assertion, it immediately stops execution of the current function
+and begins unwinding the stack of the goroutine, running any deferred
+functions along the way.  If that unwinding reaches the top of the
+goroutine's stack, the program dies.  However, it is possible to
+use the built-in function <code>recover</code> to regain control
+of the goroutine and resume normal execution.
+</p>
+
+<p>
+A call to <code>recover</code> stops the unwinding and returns the
+argument passed to <code>panic</code>.  Because the only code that
+runs while unwinding is inside deferred functions, <code>recover</code>
+is only useful inside deferred functions.
+</p>
+
+<p>
+One application of <code>recover</code> is to shut down a failing goroutine
+inside a server without killing the other executing goroutines.
+</p>
+
+<pre>
+func server(workChan &lt;-chan *Work) {
+    for work := range workChan {
+        go safelyDo(work)
+    }
+}
+
+func safelyDo(work *Work) {
+    defer func() {
+        if err := recover(); err != nil {
+            log.Println("work failed:", err)
+        }
+    }()
+    do(work)
+}
+</pre>
+
+<p>
+In this example, if <code>do(work)</code> panics, the result will be
+logged and the goroutine will exit cleanly without disturbing the
+others.  There's no need to do anything else in the deferred closure;
+calling <code>recover</code> handles the condition completely.
+</p>
+
+<p>
+Because <code>recover</code> always returns <code>nil</code> unless called directly
+from a deferred function, deferred code can call library routines that themselves
+use <code>panic</code> and <code>recover</code> without failing.  As an example,
+the deferred function in <code>safelyDo</code> might call a logging function before
+calling <code>recover</code>, and that logging code would run unaffected
+by the panicking state.
+</p>
+
+<p>
+With our recovery pattern in place, the <code>do</code>
+function (and anything it calls) can get out of any bad situation
+cleanly by calling <code>panic</code>.  We can use that idea to
+simplify error handling in complex software.  Let's look at an
+idealized version of a <code>regexp</code> package, which reports
+parsing errors by calling <code>panic</code> with a local
+error type.  Here's the definition of <code>Error</code>,
+an <code>error</code> method, and the <code>Compile</code> function.
+</p>
+
+<pre>
+// Error is the type of a parse error; it satisfies the error interface.
+type Error string
+func (e Error) Error() string {
+    return string(e)
+}
+
+// error is a method of *Regexp that reports parsing errors by
+// panicking with an Error.
+func (regexp *Regexp) error(err string) {
+    panic(Error(err))
+}
+
+// Compile returns a parsed representation of the regular expression.
+func Compile(str string) (regexp *Regexp, err error) {
+    regexp = new(Regexp)
+    // doParse will panic if there is a parse error.
+    defer func() {
+        if e := recover(); e != nil {
+            regexp = nil    // Clear return value.
+            err = e.(Error) // Will re-panic if not a parse error.
+        }
+    }()
+    return regexp.doParse(str), nil
+}
+</pre>
+
+<p>
+If <code>doParse</code> panics, the recovery block will set the
+return value to <code>nil</code>&mdash;deferred functions can modify
+named return values.  It will then check, in the assignment
+to <code>err</code>, that the problem was a parse error by asserting
+that it has the local type <code>Error</code>.
+If it does not, the type assertion will fail, causing a run-time error
+that continues the stack unwinding as though nothing had interrupted
+it.
+This check means that if something unexpected happens, such
+as an index out of bounds, the code will fail even though we
+are using <code>panic</code> and <code>recover</code> to handle
+parse errors.
+</p>
+
+<p>
+With error handling in place, the <code>error</code> method (because it's a
+method bound to a type, it's fine, even natural, for it to have the same name
+as the builtin <code>error</code> type)
+makes it easy to report parse errors without worrying about unwinding
+the parse stack by hand:
+</p>
+
+<pre>
+if pos == 0 {
+    re.error("'*' illegal at start of expression")
+}
+</pre>
+
+<p>
+Useful though this pattern is, it should be used only within a package.
+<code>Parse</code> turns its internal <code>panic</code> calls into
+<code>error</code> values; it does not expose <code>panics</code>
+to its client.  That is a good rule to follow.
+</p>
+
+<p>
+By the way, this re-panic idiom changes the panic value if an actual
+error occurs.  However, both the original and new failures will be
+presented in the crash report, so the root cause of the problem will
+still be visible.  Thus this simple re-panic approach is usually
+sufficient&mdash;it's a crash after all&mdash;but if you want to
+display only the original value, you can write a little more code to
+filter unexpected problems and re-panic with the original error.
+That's left as an exercise for the reader.
+</p>
+
+
+<h2 id="web_server">A web server</h2>
+
+<p>
+Let's finish with a complete Go program, a web server.
+This one is actually a kind of web re-server.
+Google provides a service at
+<a href="http://chart.apis.google.com">http://chart.apis.google.com</a>
+that does automatic formatting of data into charts and graphs.
+It's hard to use interactively, though,
+because you need to put the data into the URL as a query.
+The program here provides a nicer interface to one form of data: given a short piece of text,
+it calls on the chart server to produce a QR code, a matrix of boxes that encode the
+text.
+That image can be grabbed with your cell phone's camera and interpreted as,
+for instance, a URL, saving you typing the URL into the phone's tiny keyboard.
+</p>
+<p>
+Here's the complete program.
+An explanation follows.
+</p>
+{{code "/doc/progs/eff_qr.go" `/package/` `$`}}
+<p>
+The pieces up to <code>main</code> should be easy to follow.
+The one flag sets a default HTTP port for our server.  The template
+variable <code>templ</code> is where the fun happens. It builds an HTML template
+that will be executed by the server to display the page; more about
+that in a moment.
+</p>
+<p>
+The <code>main</code> function parses the flags and, using the mechanism
+we talked about above, binds the function <code>QR</code> to the root path
+for the server.  Then <code>http.ListenAndServe</code> is called to start the
+server; it blocks while the server runs.
+</p>
+<p>
+<code>QR</code> just receives the request, which contains form data, and
+executes the template on the data in the form value named <code>s</code>.
+</p>
+<p>
+The template package <code>html/template</code> is powerful;
+this program just touches on its capabilities.
+In essence, it rewrites a piece of HTML text on the fly by substituting elements derived
+from data items passed to <code>templ.Execute</code>, in this case the
+form value.
+Within the template text (<code>templateStr</code>),
+double-brace-delimited pieces denote template actions.
+The piece from <code>{{html "{{if .}}"}}</code>
+to <code>{{html "{{end}}"}}</code> executes only if the value of the current data item, called <code>.</code> (dot),
+is non-empty.
+That is, when the string is empty, this piece of the template is suppressed.
+</p>
+<p>
+The two snippets <code>{{html "{{.}}"}}</code> say to show the data presented to
+the templateâ€”the query stringâ€”on the web page.
+The HTML template package automatically provides appropriate escaping so the
+text is safe to display.
+</p>
+<p>
+The rest of the template string is just the HTML to show when the page loads.
+If this is too quick an explanation, see the <a href="/pkg/html/template/">documentation</a>
+for the template package for a more thorough discussion.
+</p>
+<p>
+And there you have it: a useful web server in a few lines of code plus some
+data-driven HTML text.
+Go is powerful enough to make a lot happen in a few lines.
+</p>
+
+<!--
+TODO
+<pre>
+verifying implementation
+type Color uint32
+
+// Check that Color implements image.Color and image.Image
+var _ image.Color = Black
+var _ image.Image = Black
+</pre>
+-->
+
+                                                                                                                               root/go1.4/doc/gccgo_contribute.html                                                                0100644 0000000 0000000 00000010472 12600426226 016037  0                                                                                                    ustar 00                                                                0000000 0000000                                                                                                                                                                        <!--{
+	"Title": "Contributing to the gccgo frontend"
+}-->
+
+<h2>Introduction</h2>
+
+<p>
+These are some notes on contributing to the gccgo frontend for GCC.
+For information on contributing to parts of Go other than gccgo,
+see <a href="/doc/contribute.html">Contributing to the Go project</a>.  For
+information on building gccgo for yourself,
+see <a href="/doc/gccgo_install.html">Setting up and using gccgo</a>.
+For more of the gritty details on the process of doing development
+with the gccgo frontend,
+see <a href="https://code.google.com/p/gofrontend/source/browse/HACKING">the
+file HACKING</a> in the gofrontend repository.
+</p>
+
+<h2>Legal Prerequisites</h2>
+
+<p>
+You must follow the <a href="/doc/contribute.html#copyright">Go copyright
+rules</a> for all changes to the gccgo frontend and the associated
+libgo library.  Code that is part of GCC rather than gccgo must follow
+the general <a href="http://gcc.gnu.org/contribute.html">GCC
+contribution rules</a>.
+</p>
+
+<h2>Code</h2>
+
+<p>
+The master sources for the gccgo frontend may be found at
+<a href="//code.google.com/p/gofrontend">http://code.google.com/p/gofrontend</a>.
+The master sources are not buildable by themselves, but only in
+conjunction with GCC (in the future, other compilers may be
+supported).  Changes made to the gccgo frontend are also applied to
+the GCC source code repository hosted at <code>gcc.gnu.org</code>.  In
+the <code>gofrontend</code> repository, the <code>go</code> directory
+is mirrored to the <code>gcc/go/gofrontend</code> directory in the GCC
+repository, and the <code>gofrontend</code> <code>libgo</code>
+directory is mirrored to the GCC <code>libgo</code> directory.  In
+addition, the <code>test</code> directory
+from <a href="//code.google.com/p/go">the main Go repository</a>
+is mirrored to the <code>gcc/testsuite/go.test/test</code> directory
+in the GCC repository.
+</p>
+
+<p>
+Changes to these directories always flow from the master sources to
+the GCC repository.  The files should never be changed in the GCC
+repository except by changing them in the master sources and mirroring
+them.
+</p>
+
+<p>
+The gccgo frontend is written in C++.  It follows the GNU coding
+standards to the extent that they apply to C++.  In writing code for
+the frontend, follow the formatting of the surrounding code.  Although
+the frontend is currently tied to the rest of the GCC codebase, we
+plan to make it more independent.  Eventually all GCC-specific code
+will migrate out of the frontend proper and into GCC proper.  In the
+GCC sources this will generally mean moving code
+from <code>gcc/go/gofrontend</code> to <code>gcc/go</code>.
+</p>
+
+<p>
+The run-time library for gccgo is mostly the same as the library
+in <a href="//code.google.com/p/go">the main Go repository</a>.
+The library code in the Go repository is periodically merged into
+the <code>libgo/go</code> directory of the <code>gofrontend</code> and
+then the GCC repositories, using the shell
+script <code>libgo/merge.sh</code>.  Accordingly, most library changes
+should be made in the main Go repository.  The files outside
+of <code>libgo/go</code> are gccgo-specific; that said, some of the
+files in <code>libgo/runtime</code> are based on files
+in <code>src/runtime</code> in the main Go repository.
+</p>
+
+<h2>Testing</h2>
+
+<p>
+All patches must be tested.  A patch that introduces new failures is
+not acceptable.
+</p>
+
+<p>
+To run the gccgo test suite, run <code>make check-go</code> in your
+build directory.  This will run various tests
+under <code>gcc/testsuite/go.*</code> and will also run
+the <code>libgo</code> testsuite.  This copy of the tests from the
+main Go repository is run using the DejaGNU script found
+in <code>gcc/testsuite/go.test/go-test.exp</code>.
+</p>
+
+<p>
+Most new tests should be submitted to the main Go repository for later
+mirroring into the GCC repository.  If there is a need for specific
+tests for gccgo, they should go in
+the <code>gcc/testsuite/go.go-torture</code>
+or <code>gcc/testsuite/go.dg</code> directories in the GCC repository.
+</p>
+
+<h2>Submitting Changes</h2>
+
+<p>
+Changes to the Go frontend should follow the same process as for the
+main Go repository, only for the <code>gofrontend</code> project and
+the<code>gofrontend-dev@googlegroups.com</code> mailing list 
+rather than the <code>go</code> project and the
+<code>golang-dev@googlegroups.com</code> mailing list.  Those changes
+will then be merged into the GCC sources.
+</p>
+                                                                                                                                                                                                      root/go1.4/doc/gccgo_install.html                                                                   0100644 0000000 0000000 00000041166 12600426226 015333  0                                                                                                    ustar 00                                                                0000000 0000000                                                                                                                                                                        <!--{
+	"Title": "Setting up and using gccgo",
+	"Path": "/doc/install/gccgo"
+}-->
+
+<p>
+This document explains how to use gccgo, a compiler for
+the Go language.  The gccgo compiler is a new frontend
+for GCC, the widely used GNU compiler.  Although the
+frontend itself is under a BSD-style license, gccgo is
+normally used as part of GCC and is then covered by
+the <a href="http://www.gnu.org/licenses/gpl.html">GNU General Public
+License</a> (the license covers gccgo itself as part of GCC; it
+does not cover code generated by gccgo).
+</p>
+
+<p>
+Note that gccgo is not the <code>gc</code> compiler; see
+the <a href="/doc/install.html">Installing Go</a> instructions for that
+compiler.
+</p>
+
+<h2 id="Releases">Releases</h2>
+
+<p>
+The simplest way to install gccgo is to install a GCC binary release
+built to include Go support.  GCC binary releases are available from
+<a href="http://gcc.gnu.org/install/binaries.html">various
+websites</a> and are typically included as part of GNU/Linux
+distributions.  We expect that most people who build these binaries
+will include Go support.
+</p>
+
+<p>
+The GCC 4.7.1 release and all later 4.7 releases include a complete
+<a href="/doc/go1.html">Go 1</a> compiler and libraries.
+</p>
+
+<p>
+Due to timing, the GCC 4.8.0 and 4.8.1 releases are close to but not
+identical to Go 1.1.  The GCC 4.8.2 release includes a complete Go
+1.1.2 implementation.
+</p>
+
+<p>
+The GCC 4.9 releases include a complete Go 1.2 implementation.
+</p>
+
+<h2 id="Source_code">Source code</h2>
+
+<p>
+If you cannot use a release, or prefer to build gccgo for
+yourself, 
+the gccgo source code is accessible via Subversion.  The
+GCC web site
+has <a href="http://gcc.gnu.org/svn.html">instructions for getting the
+GCC source code</a>.  The gccgo source code is included.  As a
+convenience, a stable version of the Go support is available in
+a branch of the main GCC code
+repository: <code>svn://gcc.gnu.org/svn/gcc/branches/gccgo</code>.
+This branch is periodically updated with stable Go compiler sources.
+</p>
+
+<p>
+Note that although <code>gcc.gnu.org</code> is the most convenient way
+to get the source code for the Go frontend, it is not where the master
+sources live.  If you want to contribute changes to the Go frontend
+compiler, see <a href="/doc/gccgo_contribute.html">Contributing to
+gccgo</a>.
+</p>
+
+
+<h2 id="Building">Building</h2>
+
+<p>
+Building gccgo is just like building GCC
+with one or two additional options.  See
+the <a href="http://gcc.gnu.org/install/">instructions on the gcc web
+site</a>.  When you run <code>configure</code>, add the
+option <code>--enable-languages=c,c++,go</code> (along with other
+languages you may want to build).  If you are targeting a 32-bit x86,
+then you will want to build gccgo to default to
+supporting locked compare and exchange instructions; do this by also
+using the <code>configure</code> option <code>--with-arch=i586</code>
+(or a newer architecture, depending on where you need your programs to
+run).  If you are targeting a 64-bit x86, but sometimes want to use
+the <code>-m32</code> option, then use the <code>configure</code>
+option <code>--with-arch-32=i586</code>.
+</p>
+
+<h3 id="Gold">Gold</h3>
+
+<p>
+On x86 GNU/Linux systems the gccgo compiler is able to
+use a small discontiguous stack for goroutines.  This permits programs
+to run many more goroutines, since each goroutine can use a relatively
+small stack.  Doing this requires using the gold linker version 2.22
+or later.  You can either install GNU binutils 2.22 or later, or you
+can build gold yourself.
+</p>
+
+<p>
+To build gold yourself, build the GNU binutils,
+using <code>--enable-gold=default</code> when you run
+the <code>configure</code> script.  Before building, you must install
+the flex and bison packages.  A typical sequence would look like
+this (you can replace <code>/opt/gold</code> with any directory to
+which you have write access):
+</p>
+
+<pre>
+cvs -z 9 -d :pserver:anoncvs@sourceware.org:/cvs/src login
+[password is "anoncvs"]
+[The next command will create a directory named src, not binutils]
+cvs -z 9 -d :pserver:anoncvs@sourceware.org:/cvs/src co binutils
+mkdir binutils-objdir
+cd binutils-objdir
+../src/configure --enable-gold=default --prefix=/opt/gold
+make
+make install
+</pre>
+
+<p>
+However you install gold, when you configure gccgo, use the
+option <code>--with-ld=<var>GOLD_BINARY</var></code>.
+</p>
+
+<h3 id="Prerequisites">Prerequisites</h3>
+
+<p>
+A number of prerequisites are required to build GCC, as
+described on
+the <a href="http://gcc.gnu.org/install/prerequisites.html">gcc web
+site</a>.  It is important to install all the prerequisites before
+running the gcc <code>configure</code> script.
+The prerequisite libraries can be conveniently downloaded using the
+script <code>contrib/download_prerequisites</code> in the GCC sources.
+
+<h3 id="Build_commands">Build commands</h3>
+
+<p>
+Once all the prerequisites are installed, then a typical build and
+install sequence would look like this (only use
+the <code>--with-ld</code> option if you are using the gold linker as
+described above):
+</p>
+
+<pre>
+svn checkout svn://gcc.gnu.org/svn/gcc/branches/gccgo gccgo
+mkdir objdir
+cd objdir
+../gccgo/configure --prefix=/opt/gccgo --enable-languages=c,c++,go --with-ld=/opt/gold/bin/ld
+make
+make install
+</pre>
+
+<h3 id="Ubuntu">A note on Ubuntu</h3>
+
+<p>
+Current versions of Ubuntu and versions of GCC before 4.8 disagree on
+where system libraries and header files are found.  This is not a
+gccgo issue.  When building older versions of GCC, setting these
+environment variables while configuring and building gccgo may fix the
+problem.
+</p>
+
+<pre>
+LIBRARY_PATH=/usr/lib/x86_64-linux-gnu
+C_INCLUDE_PATH=/usr/include/x86_64-linux-gnu
+CPLUS_INCLUDE_PATH=/usr/include/x86_64-linux-gnu
+export LIBRARY_PATH C_INCLUDE_PATH CPLUS_INCLUDE_PATH
+</pre>
+
+<h2 id="Using_gccgo">Using gccgo</h2>
+
+<p>
+The gccgo compiler works like other gcc frontends.  The gccgo
+installation does not currently include a version of
+the <code>go</code> command.  However if you have the <code>go</code>
+command from an installation of the <code>gc</code> compiler, you can
+use it with gccgo by passing the option <code>-compiler gccgo</code>
+to <code>go build</code> or <code>go install</code> or <code>go
+test</code>.
+</p>
+
+<p>
+To compile a file without using the <code>go</code> command:
+</p>
+
+<pre>
+gccgo -c file.go
+</pre>
+
+<p>
+That produces <code>file.o</code>. To link files together to form an
+executable:
+</p>
+
+<pre>
+gccgo -o file file.o
+</pre>
+
+<p>
+To run the resulting file, you will need to tell the program where to
+find the compiled Go packages.  There are a few ways to do this:
+</p>
+
+<ul>
+<li>
+<p>
+Set the <code>LD_LIBRARY_PATH</code> environment variable:
+</p>
+
+<pre>
+LD_LIBRARY_PATH=${prefix}/lib/gcc/MACHINE/VERSION
+[or]
+LD_LIBRARY_PATH=${prefix}/lib64/gcc/MACHINE/VERSION
+export LD_LIBRARY_PATH
+</pre>
+
+<p>
+Here <code>${prefix}</code> is the <code>--prefix</code> option used
+when building gccgo.  For a binary install this is
+normally <code>/usr</code>.  Whether to use <code>lib</code>
+or <code>lib64</code> depends on the target.
+Typically <code>lib64</code> is correct for x86_64 systems,
+and <code>lib</code> is correct for other systems.  The idea is to
+name the directory where <code>libgo.so</code> is found.
+</p>
+
+</li>
+
+<li>
+<p>
+Passing a <code>-Wl,-R</code> option when you link:
+</p>
+
+<pre>
+gccgo -o file file.o -Wl,-R,${prefix}/lib/gcc/MACHINE/VERSION
+[or]
+gccgo -o file file.o -Wl,-R,${prefix}/lib64/gcc/MACHINE/VERSION
+</pre>
+</li>
+
+<li>
+<p>
+Use the <code>-static-libgo</code> option to link statically against
+the compiled packages.
+</p>
+</li>
+
+<li>
+<p>
+Use the <code>-static</code> option to do a fully static link (the
+default for the <code>gc</code> compiler).
+</p>
+</li>
+</ul>
+
+<h2 id="Options">Options</h2>
+
+<p>
+The gccgo compiler supports all GCC options
+that are language independent, notably the <code>-O</code>
+and <code>-g</code> options.
+</p>
+
+<p>
+The <code>-fgo-prefix=PREFIX</code> option may be used to set a unique
+prefix for the package being compiled.  This option is intended for
+use with large programs that contain many packages, in order to allow
+multiple packages to use the same identifier as the package name.
+The <code>PREFIX</code> may be any string; a good choice for the
+string is the directory where the package will be installed.
+</p>
+
+<p>
+The <code>-I</code> and <code>-L</code> options, which are synonyms
+for the compiler, may be used to set the search path for finding
+imports.
+</p>
+
+<h2 id="Imports">Imports</h2>
+
+<p>
+When you compile a file that exports something, the export
+information will be stored directly in the object file.  When
+you import a package, you must tell gccgo how to
+find the file.
+
+<p>
+When you import the package <var>FILE</var> with gccgo,
+it will look for the import data in the following files, and use the
+first one that it finds.
+
+<ul>
+<li><code><var>FILE</var>.gox</code>
+<li><code>lib<var>FILE</var>.so</code>
+<li><code>lib<var>FILE</var>.a</code>
+<li><code><var>FILE</var>.o</code>
+</ul>
+
+<p>
+<code><var>FILE</var>.gox</code>, when used, will typically contain
+nothing but export data. This can be generated from
+<code><var>FILE</var>.o</code> via
+</p>
+
+<pre>
+objcopy -j .go_export FILE.o FILE.gox
+</pre>
+
+<p>
+The gccgo compiler will look in the current
+directory for import files.  In more complex scenarios you
+may pass the <code>-I</code> or <code>-L</code> option to
+gccgo.  Both options take directories to search. The
+<code>-L</code> option is also passed to the linker.
+</p>
+
+<p>
+The gccgo compiler does not currently (2013-06-20) record
+the file name of imported packages in the object file. You must
+arrange for the imported data to be linked into the program.
+</p>
+
+<pre>
+gccgo -c mypackage.go              # Exports mypackage
+gccgo -c main.go                   # Imports mypackage
+gccgo -o main main.o mypackage.o   # Explicitly links with mypackage.o
+</pre>
+
+<h2 id="Debugging">Debugging</h2>
+
+<p>
+If you use the <code>-g</code> option when you compile, you can run
+<code>gdb</code> on your executable.  The debugger has only limited
+knowledge about Go.  You can set breakpoints, single-step,
+etc.  You can print variables, but they will be printed as though they
+had C/C++ types.  For numeric types this doesn't matter.  Go strings
+and interfaces will show up as two-element structures.  Go
+maps and channels are always represented as C pointers to run-time
+structures.
+</p>
+
+<h2 id="C_Interoperability">C Interoperability</h2>
+
+<p>
+When using gccgo there is limited interoperability with C,
+or with C++ code compiled using <code>extern "C"</code>.
+</p>
+
+<h3 id="Types">Types</h3>
+
+<p>
+Basic types map directly: an <code>int</code> in Go is an <code>int</code>
+in C, an <code>int32</code> is an <code>int32_t</code>,
+etc.  Go <code>byte</code> is equivalent to C <code>unsigned
+char</code>.
+Pointers in Go are pointers in C. A Go <code>struct</code> is the same as C
+<code>struct</code> with the same fields and types.
+</p>
+
+<p>
+The Go <code>string</code> type is currently defined as a two-element
+structure (this is <b style="color: red;">subject to change</b>):
+</p>
+
+<pre>
+struct __go_string {
+  const unsigned char *__data;
+  int __length;
+};
+</pre>
+
+<p>
+You can't pass arrays between C and Go. However, a pointer to an
+array in Go is equivalent to a C pointer to the
+equivalent of the element type.
+For example, Go <code>*[10]int</code> is equivalent to C <code>int*</code>,
+assuming that the C pointer does point to 10 elements.
+</p>
+
+<p>
+A slice in Go is a structure.  The current definition is
+(this is <b style="color: red;">subject to change</b>):
+</p>
+
+<pre>
+struct __go_slice {
+  void *__values;
+  int __count;
+  int __capacity;
+};
+</pre>
+
+<p>
+The type of a Go function is a pointer to a struct (this is
+<b style="color: red;">subject to change</b>).  The first field in the
+struct points to the code of the function, which will be equivalent to
+a pointer to a C function whose parameter types are equivalent, with
+an additional trailing parameter.  The trailing parameter is the
+closure, and the argument to pass is a pointer to the Go function
+struct.
+
+When a Go function returns more than one value, the C function returns
+a struct.  For example, these functions are roughly equivalent:
+</p>
+
+<pre>
+func GoFunction(int) (int, float64)
+struct { int i; float64 f; } CFunction(int, void*)
+</pre>
+
+<p>
+Go <code>interface</code>, <code>channel</code>, and <code>map</code>
+types have no corresponding C type (<code>interface</code> is a
+two-element struct and <code>channel</code> and <code>map</code> are
+pointers to structs in C, but the structs are deliberately undocumented). C
+<code>enum</code> types correspond to some integer type, but precisely
+which one is difficult to predict in general; use a cast. C <code>union</code>
+types have no corresponding Go type. C <code>struct</code> types containing
+bitfields have no corresponding Go type. C++ <code>class</code> types have
+no corresponding Go type.
+</p>
+
+<p>
+Memory allocation is completely different between C and Go, as Go uses
+garbage collection. The exact guidelines in this area are undetermined,
+but it is likely that it will be permitted to pass a pointer to allocated
+memory from C to Go. The responsibility of eventually freeing the pointer
+will remain with C side, and of course if the C side frees the pointer
+while the Go side still has a copy the program will fail. When passing a
+pointer from Go to C, the Go function must retain a visible copy of it in
+some Go variable. Otherwise the Go garbage collector may delete the
+pointer while the C function is still using it.
+</p>
+
+<h3 id="Function_names">Function names</h3>
+
+<p>
+Go code can call C functions directly using a Go extension implemented
+in gccgo: a function declaration may be preceded by
+<code>//extern NAME</code>.  For example, here is how the C function
+<code>open</code> can be declared in Go:
+</p>
+
+<pre>
+//extern open
+func c_open(name *byte, mode int, perm int) int
+</pre>
+
+<p>
+The C function naturally expects a NUL-terminated string, which in
+Go is equivalent to a pointer to an array (not a slice!) of
+<code>byte</code> with a terminating zero byte. So a sample call
+from Go would look like (after importing the <code>syscall</code> package):
+</p>
+
+<pre>
+var name = [4]byte{'f', 'o', 'o', 0};
+i := c_open(&amp;name[0], syscall.O_RDONLY, 0);
+</pre>
+
+<p>
+(this serves as an example only, to open a file in Go please use Go's
+<code>os.Open</code> function instead).
+</p>
+
+<p>
+Note that if the C function can block, such as in a call
+to <code>read</code>, calling the C function may block the Go program.
+Unless you have a clear understanding of what you are doing, all calls
+between C and Go should be implemented through cgo or SWIG, as for
+the <code>gc</code> compiler.
+</p>
+
+<p>
+The name of Go functions accessed from C is subject to change. At present
+the name of a Go function that does not have a receiver is
+<code>prefix.package.Functionname</code>. The prefix is set by
+the <code>-fgo-prefix</code> option used when the package is compiled;
+if the option is not used, the default is <code>go</code>.
+To call the function from C you must set the name using
+a GCC extension.
+</p>
+
+<pre>
+extern int go_function(int) __asm__ ("myprefix.mypackage.Function");
+</pre>
+
+<h3 id="Automatic_generation_of_Go_declarations_from_C_source_code">
+Automatic generation of Go declarations from C source code</h3>
+
+<p>
+The Go version of GCC supports automatically generating
+Go declarations from C code. The facility is rather awkward, and most
+users should use the <a href="/cmd/cgo">cgo</a> program with
+the <code>-gccgo</code> option instead.
+</p>
+
+<p>
+Compile your C code as usual, and add the option
+<code>-fdump-go-spec=<var>FILENAME</var></code>.  This will create the
+file <code><var>FILENAME</var></code> as a side effect of the
+compilation.  This file will contain Go declarations for the types,
+variables and functions declared in the C code.  C types that can not
+be represented in Go will be recorded as comments in the Go code.  The
+generated file will not have a <code>package</code> declaration, but
+can otherwise be compiled directly by gccgo.
+</p>
+
+<p>
+This procedure is full of unstated caveats and restrictions and we make no
+guarantee that it will not change in the future. It is more useful as a
+starting point for real Go code than as a regular procedure.
+</p>
+
+<h2 id="RTEMS_Port">RTEMS Port</h2>
+<p>
+The gccgo compiler has been ported to <a href="http://www.rtems.com/">
+<code>RTEMS</code></a>. <code>RTEMS</code> is a real-time executive
+that provides a high performance environment for embedded applications
+on a range of processors and embedded hardware. The current gccgo
+port is for x86. The goal is to extend the port to most of the
+<a href="http://www.rtems.org/wiki/index.php/SupportedCPUs">
+architectures supported by <code>RTEMS</code></a>. For more information on the port,
+as well as instructions on how to install it, please see this
+<a href="http://www.rtems.org/wiki/index.php/GCCGoRTEMS"><code>RTEMS</code> Wiki page</a>.
+                                                                                                                                                                                                                                                                                                                                                                                                          root/go1.4/doc/go-logo-black.png                                                                    0100644 0000000 0000000 00000021213 12600426226 014747  0                                                                                                    ustar 00                                                                0000000 0000000                                                                                                                                                                        ‰PNG
+
+   IHDR   Ü   M   Í`
+g   sRGB ®Îé   bKGD ÿ ÿ ÿ ½§“  "3IDATxÚíwÝWuÇ¿oßÛÞW»Zí®V–dK¶ŒeãcÄ)„dBHO&“ú3LfR'“L2)!ž„˜jˆ;¶±Á²Œe°šÕ»VÛû¾}ïåû9s^ÞjÛÛÕ.ùÝ™7¯ÿÊ½÷{Ê÷œ{nZIKÚê¶”¤6I…¢Ï«$5ðºZR³¤YI¹5rÝiI%>o”Ô%ir!×šJÆ?i«Ü2 j³¤v€——TÉ¤®aòž‘4-éßç×ð=]'i1Ìóœ7Ÿ´¤•[ƒk¯jI’ê%ÝÂ¼ÛèjÑf•lñ~PÒ€¤ñ5p_Õ’f¸¿VIY´ÛI'$½LÒFI/J:Å÷c‰†KÚJ·:ISN#õHz¹¤%µ`~5¸˜’Í˜k¦ ú%=-éIIG%–t¤W²Õp»%5!ˆ¶£Ñf ß)Iw#Æ$½Ä==%é@¸¤­T«@3IR§Zµ¤ c&×&&tMVt‘ÿ50©¿"éYI'%=.é¹¾þJ„@AÒ íž;$•t½¤­€
+ü¶4Z–Ï^.i¤’>*é…Ä¤LZ¹f¡MÒ«Ñ=|×Îç)´Ü9I§%}‡‰9V¬@ãýÇí’ôh“m öÉÔÌ›%íä:®GXlˆ­ŠjI#\O^ÒA€ö,÷q³øm’†"Gø.\ÒÊæßl`¾^Òë˜´ø5UøjiI}’žôy4Ç>|»Z&ðÇÌ ¼ë%Ý&é7%=_faÑ*é{yß&é^Ãõ˜¿˜‹ÜÃ>7 öñ›žA~·ÇFIÇÀ%­­óðfI¯b2Î¢j d“ñyIŸD»˜œÓ ¬`VABT¢m*Å´¤ï‘ôæ2®žóîÌiI»8ç.îcÄiîzÞW;qàkåX˜™‡ØËWâË'HZÒ–Úª ØÝ’nÇ„¬dõ­ Jz	;ÅÿóÂAtKºã×;ÀSø;ÆrZ ¾öj®·3‡WP¨CPñÈq¯uÜ÷÷”„´ƒ˜œ3‰†KÚrÚ.À¶‹Ig¦c~ÛEIÿ"éK’¾í4Z1Û8Ëç• /…)Öèˆˆzþ×‚_5¸LAÑ‰€Ø„ê XuŠîn´XšsO¨&üÊi€™ÔÍ\ï÷ÚÏqoä\À%m©í&I÷àçTaru¸dÂ_)0‹CüçJZ©àM:óR€0çü­# –ØÒLþQ`"w`ònÔc€¥ Ør\Ë$ Úè6s½i€¹Ïžá¸æ³ö#n’t8\ÒÛRø&·ã·‰`Rþœ¤wKú&®P‚¤¨QŒapÌ’îbÒv)2‚¦+ùÝ¨ðbÉ‘~á=’nEû4JêhŠxZá>ŽIúÞ[ˆ …ùI¿ÏuuóÛ.çÓ¢IS	à’¶ØÖ.éû G'©ž‰zQÒŸIú/Í¤Î;ÕçÀ0™r+çá¸rKï:®‹¸ö^ç·5bN:_lœsŒ(ÄÑ>Is–Ï„_×îÌÚÏ!xÞ‹pxàå¸‡vÌàÚpI[L«W`	_vjÂk—ôIïQHmZl«D} oL1n'gºe‚È‹5)3€ënˆ‘ûÄÇ®LµüvTÒ×%}!rÏ–¶v  ás = âÕBßÌàÓU¡­«À%m¡­YÒ¯ ©»û%}
+m±¦^ZË4VVfof‚š–46ð¸¤G´ø¯f„Ä)ÄÛf9ï,×0Å¹Æ|B!=ë ×f6…€1\Ígû$ýÇ9¿ÖPªƒ\9+i8\ÒÒºblæ»53QŸP èÿM‹_FS¯Èúyÿ°€O8Ž¶É3aøýÌ"ÏÓŠVþ~I×*2‘Æ0žx—$}VÒ¢igõ±Š+R /Ëûç8O?¿éCãÝÎëoJšM —´ùZ>Ï[Ø=cðþ[Òû%}c‰Ä‹… Ì‡Ë+°y˜d9 gò¬B,ïè<ÄHÞ£óÍhä<@ŸAãä05”ôÏhÐœ3eEÏæƒÎpMi4o^!Mmˆë<Ço{ÜÿFÍ¶MZÒæjÕ
+1ª×)0’ÕL²ÿ€¹°ÌãçÝsÀ¸M1-Ì€3‰Æû´MÜ´’ôF´ N*¬>¨†¤¹ éCh:• Xq›q~å¬{m‚¡‚×›°Ò+ã	à’6Ÿ)v·¤ŸÂ'©v~ÎG˜¨K]]€¤ðšäÌÆ&÷™}_+é‹ºòj´»ž6üµ·8®Žs¦Ñ®g$}M} ¤ÙÐÂ<šÔÌÉÂ,½ w¯~4^}¸¤ÍÕ%ýZí@EÃü#dÂr×¦ÙÒ3_©“iiT&ì_ëÊs3›0ßÀ1j zN’I4Î»%}ÍýÏì¹^ûŒz-&kMÖÊq.*æUîO —´R-#é™üw0i'ðq>ŠŸ³ÜfÚÈ’œàí
+)`Æî™9ùiÌÀÜ<~a³Bæ¯)®6HsýçÃEîåkE„ÍRê§TpiÅ@~N1Ýk!1!˜ØpI+n?'éµ’^ÔUˆ±ý=f¤eÉ§µôâ\‘ŸøË˜”»Ü÷ g
+óøšY…E«?¤Oñ<Y7 Ãû'…kZŒi<ŠÉÝáú¤ ¶q®/zi–´µÑ*œ	µÚÍ|¥7JúyÅe1Y…)2Š³EÏK½W+ôÊ¾U¡ Ï½Š«Xr
+!‡ÃŠô{©6­@¿ÿ”3˜ÇŒcò3ø¿óå*HT T³>g¸qÞÎý\¸µ×òWè¯’ôN…Ô§:€+´³%´Y¡ ÿIIÉ¤þ—/ûñŸ˜–9×9›2H®ÅŸê¥?%}K!ý æp¶Ì}—ãù€×abcú>Ý	à®nK_Áœñž€ó%´Är[BÜëW˜´ãLÔJú Zh¤Ì÷mDÅW$=¦P¯ä
+ßVÎÿ¼Âªðþy ¾E¡†ÈÛñú¸Þf…¬‘3hÉçÑÊé%˜•Uô×›8ï0Âª`ïWX|š´u
+ÎÊ"À-äÖ¶*¬ÂžÆ¹?)éw™üF\Ô,ã|óµ'ü·bbnV\ž3ß„ÿ>zÿ)…z'²‡r;·AžÔ®Àµ7s­PX¶³ÐÓŸTŠ‘JÚúh9Å|¾Â2´[¾l€ÿcELŸVÈö?«˜Ï8µ‚÷5æîïà),PpÜ à:ñ•îF(ÇïûGÀ'->%l¾Ö
+¨PL´¶°€0c?QÊMÚúiFªTa.¶Ùš2«¤õK˜‘›ãSŸÄœËiu°ÚŠê…€-Ã$¿²bB£Š{8¨é”ã•l¾Üy ÛŽp”Ïf°¾  h¸uÔŒÐ¨DÛôòù­<žU ¥3˜4ø<…yÈŠfH’Ÿu¾à8ùaÅìx#2Æ´¶J· ÍÞˆ&ë¤êËÒ}3rºÌV†ù½£
+IY…“ _øsK;ÜÚhÛªGŠ¶ Á;boa0›ô›ô]|>ÌcLÆÿzÈ
+NB×aŠý±âêæChµÚÂ@]­ZaÍÙýôSbÐû˜Bý”G@Œ”Ù”4ë Ð^£Pb¢Ÿ×ÌÊ'V(ÜÕ%=,I·’É²›ÛŠ4ìVHz@²e$Üx5)Äšª˜lL‚c
+z)SÍR—2ø<?ŽV°œÀ <W‚”˜ÐÚÙÁF
+¬ä›:æ3!4žp–Ý‘-ó¹ÍœŸD^‡Yy€÷3ôáW5GFN¸åƒ(çú²]qµo§by½B09 *ùÎòïj™ ³Šà&þ÷"€‡T8„½	>Kö¸æ®deõ+*_¿‘fò|–ã -å*Ëë¥† ªtyÎa®„É\¥X¿$ƒ¶QéÅ¬õ˜’[b]£XôÉ#˜Ô© ›×rvþ„_}_IóiÆ0\‰ÎË(&®×dCg HÓÉÍtxÜ«¸9E/¿ãwŠ	ºBcÙ¶L9Ålˆ~'•k²¾¢@5œçIªš²‡)ÎÓ©E²ðÛ†ïSXj#ÅX_ßçÜçÅó&· ‚ÃOz¿N­IaÉÌž¥PJ®ƒ>xÒ¡œ÷+$&w)ÖÉ#”žÄw2Áµ\ß9_D6Y¿4CÐÔs¾;ÝXÎ`ÎN\ÉwøÿB>Ø–I­Š1-ÛP¢U1ÆU§X‘w­R«XÃ£5ÒÉL¼´Ó$c¯M!cã$“üœB wÂùGøý)´˜•Ï>¥+¯ýZV\xyæd-`šEû„._{f>äˆþoøÁ&âì@^œ¦ÖËq7*¤oÝD_·8s»ëíá÷—W|ß ÖM?UóÛñ?Ï(b].ÁS˜Cp41î³ÜÇV0tax^Òÿ\iÜ¾[gK&ºóê®µH¤Œ\q:³ÎM¦GfT1èµh˜@gPÓÉ{èð…8Ö~sR1ð:èµbÿèÜ&E©Vx_¡”¼QqCÄó
+Ù$£nBY	9&mþ
+æ¡œæ5S1Å5< ÀÚÑj8]ŸöñßVI?†Pz	Íµ“c´¢©ÇéÿS°OqŒœÊ“‹Zê›è7Û®¡PÉÜy„û˜[Ï+ã´J‹b½Šm€«Éí®Ã¬Ên¾hâO1INðŸI>»À@?ËD}‰ßŸç7–¥Q¬uN¹×N’ÓÌ+ÕjÑ÷ÃhZNdÁðY’	7'¬ž‡ùWÆÊe8žeÅ[Iï›x¿‘¾lSX&3„ÉÕ‰ÏñŸ³	Sº¡Øé|Ø-
+©]í’~Tq}[}¾Ÿû{‚brûÑ6óØ¤·¬)íeÌmï§Kÿ­KÀÙÎ&]˜@Í<¬Êotl†NÉ:6®C1~UË³ùL'‘ˆg›Ô§°Hq sª‘	ÓW4—ÓV“í³Iü
+«,Ø=¥Pøw¸W«òñ7«ç_áˆ“Ÿ—ôV>ï¡ŸŒ$åXÆÂˆ‹ôµ	¸¬bp¸‹ñ3‚E
+Kq>ãX€Q}  ncÌ¾ ÷ðWùrKK™ÇÓœo‡b:×Nîe=Œ–Ë¯ÀU2H7s3ö>ã4•-î«qæ_Ái¸¬b#CRöq´Ô#€í¼bŒf®8Íù¢÷³Z_Íj„¼Îi–þÎ»Š«RYÁ&ðnúõ­
+ëÖ)nÁd g\ªðIÏð¾[±¿ÕóŸv–I?ÍB!ÿ®PLµÿß®PÖnÿ;É}Ýªkü'7NùøBpíä^;ñ%Mxž¤ÏRL´^3€³ÍÔÍÔéA“\ëÈ
+K?2©g_ÛÔ¡ŽÎ­v>@ëðSHœý
+eÜFð‰&ôÝÙJ±•5’~˜ÉÚ«XMê¬¤?å¹àB	¦Fð‡ÑŒßC¿60F} mÜiÆ&…ØÔ^ÆÎV[O)IÝ€V8Ãoºùÿ dá’AæE'cj¾·UÛú€›ì+Ù®EØ¡á63›˜ý˜¾_[ÈÁÊ	¸J'¹¬Ò­mfg%±-*oÛÙÆ¶X£3ýì7SÜX=ƒ;Â`Ì*,(|†9I§œY£á‡‚.Ï]µúúËÕœô‘-mEÿ4¯
+IÉ‡0ë?WŠtÚ`›a7éq¾×~wŽqÙsø×sJ±¼øvÆr	úŽqý‚!Ãv+drôpì<c[‡&¼°Â`«@8t`úîTXtSÆ™·[¨@_,àêylRÜ>¶Àv„¬çóvÇô5ðÚ€e{A8m)%“pSaT!ƒâ,å$¯ÏÎ!™×J³õkgîÌò>ËuO,rðÍíaÒZY§a*pê™‰ÒŽšDƒ<È¤-(&&§Üu™ ¸Ë1œ['êVºqéá8ÿã™V¬ÏhAÿ]
+9½Ž\ú–BÜÍ–ÿ<!ÕÆùŽ@ÄÈ…a^D{>‹àXA3ßz¸kœÆŸBëä>^ÌXÎ¸mn€ïâ¤Í¨Q³Í[·²}ÕŽÝ2Ÿ¡Ãutƒbý¿17X1¨“Î×å5 ×KX"_Â?œq¦òL	aÖéLê;7$´¬ÃL´3 íQÅ¬•¾Æ½ŒMÔ	Åd^+UPíÌÐ‚.P[òF&ÖG¬t1~ûþïAÂW8Ë"PMƒ¿ã_£¸IFÚ"ƒ÷^4æ@W€åÜÁõŸ`¾|™{>µ
+óa8èULˆØÆõZ9ôgŠ˜èEÎ¢è7 %m‡ÈKh1«RTÁÿ§Cx\1Mi °4Ò™/08õüî, ÒÚÊD_(Ýž½Â O—˜Ö_ÕôÁHq&öµ€§K±ÎaýÞŠÖŒI×È¿ ˜¬økòd˜¥Í¤ÓüÅ|çòoVX~F¡ÜÂQG*éòäèFGDMCåßŒÐÍ ê0-žö^îi6ò“’þÁ1ÓàY´ô*ÿÚ¶bk¢G!QÀâ¶÷Au¦í$‚§©€»YÒŸ(f=[¼Ä¨ÞŽ4'x´óùiÅ%"§Ã<5%>°N‰Š…Ä|êÜD3‚¨³È¤ç4¿¹èBíŽ:·°Gžÿñ}ÎûIúCÌ¬í˜a>orñ°B}&ÅF¯$îG#
+_ëSÜÏñ9k£Š+ÄÛ– Y&Î7Ö½pA6\BhÔ ß¥¸…TZqVæZvÇµŠsßÆ½Ü®˜hžãžÎC
+}f)×“qìa¶ñoq²8À}¨N«HÔO'âÿg\¬bVÿš¯3ÒÅ„´L
+Œ6#¨ÚšÍ’¸èRüÏZÎ™’ã˜pÝL¾SŠ«†0¯qþ×`˜ù7ÈxPXù<Î±³Î—¶t4¿ßZ©Ô¨Å”4/ T~Mk{ºåÑ`·ñ»g±zörü»ÐÒFœ˜Izžk~’l)µGJúu¢Ùn£otýV‡¯Y‰ŸúÍ¥NšÝÜÌwP‘O£±^Æ€šsÝêÌ‘©ïRpÕ9Ó¯E1ÇÒ¤ÞY>Ï3¶‹L/ýa¼±[y7©go—V[¦Ê( ±œÎ§9ç)…¸S7¿û°bÜëc|v¿B-*gô(ÿ
+pûåÿYÅâ¥å6ÏzÊÕ™i=à@fší¨¤¿å»Ãôy'}r}hÂ©
+¡ñ¨Hånôç;˜ÑÎ{ÑÈ£…'™.GJ¿Päw<Ãó¡"J{p•&}J—g<¤ÈFÚn&–jS¥Ë—Îœ©µA1xkŒT‡‹»lbÀ‡×žÕ9PÎ*nÞ—s ™Â´*¾®oÏãÙÖHCh¦ã
+©bÍ.,2€8ÄyN Q/aªŸw~X=yŠcX~ç”Bpøœßh5ýWjâÞ"é·¡Ðó˜Ê­NÃ›¹ú®ã§6s¿og\W¬ÇùXù´oåüUN u:?zaûgZú¬
+¬6õžVÜ•ÒbKVÊmŒŸp jbÀ®wä%%¸0Åˆs¾7ÓÉ×¸PÆ¶ŽãÔ:F-ï@ekÅ¼“=(ú¤½€Æ²ÆÇ™DÇó6;œ9^U±órÿm¾ï+7Ë¤Ùín>ã& ~XÒßqŒiÅ4$s!¦Ë<n7IúU¶#Üÿl9…E²ç¹Ç#Š9˜-ŠñJç‹NX‰Œ’4ìåŠûŠ§·ÍšDÐ*¬†?¼°-p«eÊ5 3ø ÎÇGñ>ç“8­¸m•£•MÓ™yhiHuŠy}fÚ™©·ÁÑòYÇºå1ƒ.qm'¸¶}
+©Rƒ\Ÿ“â'˜³0&xl"vµ‘AQ¬C?éü¬Cs<3ç2ëÛ¦°­q?Îk¯ñRs°¨Ëm¯d| ^ /~Zq½ÛQH’o m× ÔBqD1l\a]àJ0Ù×*äšnVÌ&¹±«ügù®O—oiµægAî6ÅMìvâµ¹„™€dB±vE…ƒ­¸älð´Ó>VT#¥¸ŠÙ–TŒ»	nËlŽqGÐT{1ù6+:78· Õ}ÿcû0Í9â4V¥"WŠá,„ýjB³ ”c4ý(¬ä˜#wl{Ýr›dµø˜oB¸Xbø»ùµs/c|ÀÉ±š–©Ô í8§™ôålõœçÍŠ‹„[pF³[Ž+ÄCÿ±°^ ·E!%f3 K)&#›©vŸY6J££˜+ÜäÉºk¯s¾›÷›*¥Ûé¨‹tš±|éÔ¼r´ö¨b–¼™©Õ°€ý\Ï9&Ø8‡m‡ÛçÀ2\@å")jR¸ª y“b`üA&©¾ý~ å ›	/cßáŽ=IŸ[Ò×$ý9à¿D¿ú]LÜœèq!‚:Æë¿Ê¬‘Û ûw#,¶(n¾±Aáù‚BîéËŽXÀ{'šÈL§n4ãÌ<Ë7´-fëÜd­eBå€1GZœTÜ«y’É(e+Äcõ?²Î21åÈc…®b¢òq„Ãì€µ’­’Éy#¾k«»¦qü¾¼›¥åË8¦¶2û×Kíb7cšý)V@¥l¾uavn¢o§C‘óeºîz®ùµÎG›QŒ½Ù^rƒøm°‘_/w,i5ZŸ¤Å9g@,˜Ù ˜š”§S1¨'n:ÝVd]¨Âšs°Y>~cË|èü¦‹œm”‹\ï´bv}Í*êJÍÊìà¾›èƒÇ	s@óIÓË1'­ÿZ\¨ãŒÇ9úðN´Û4Bèýh©‘9Xîjîad“eÐœàõšgAç[¾÷nLIü–ít×w
+áú’Bìò…r›à«8ÛUr6|+*}¿3N¹É1íæ)Ç +Vçõ&_)sÇÖuYž¡¯]˜)"Z†xØ>bvÍs-8ºÊ`«çºnA8Ùê+Ñ6Ž23ÝØL[µ¼Ôf–G'ö'0±G×7(.&ÂÌÜ¯˜,=×½ÔÑï¯PÜùô"s¢FË[Ém! ›7˜æú‡qqîà ó BjÛé`EW¥ÌÓ¹I¹é¢÷––ÔÊÄ¡ƒ²ÎŸ²E>!Ø4\5ï}T3Ul-¥6MÌÃ®¥f+/vCÚÌ(ÆÐ·ÃHkKßšq~ñRþÅup%ýˆBæ¼ÿUX-B;üÚ);Ï9gl7Ú¦Ý‘'Ûðßê!(*øý¨b)ò6…åC› ˜ÅJî™ ¿¤ëû¼BZÛÈJàÕn¶ÜÞJÕ¥Üu¥œ†4“³V—×ÙH— #¦ÝûÂÔRËÑnXÁm•-ŠKšp±ê\V¯¤ÊN…%œ·úÿ­œc¶3Íê”¼›I;ŸfJ;¸ÀmQÜû9®·”sÿ+”pŠk±4bânDËmW,JôÜ›Óüv7æ@>¾’s5ZÊÑøf6ãhã,ƒ”w>Ç`	z²„ÉZªôÝ×¬LÅ)Ðh'ønfœYÎ‡ËºÉºma[÷Þà:ƒZg† ?§í¿¤t[d|6Ð|y#Ã¾Å¹GÜ¼iV¬_Ò¬#ts¹"é^4æ.XÜçá@ªÓ‡_†pû’b}­'ÀùT,{]_<“FW0=µ6ô:m–U3‹vÛ¥¸¦­S²O1?3íH“œ¾+÷}ª!HRëÕh £hç×IúÄØbvd2  &Ê!H)Æ¶Å²SÎTB¼¡Pƒ °‚F–Q’Aƒvpž§è»OÀ'L¬Æ@–›®öë­l‹ÓaF-šx²r–ŠdùœF0)îêbÙíUE;·@i‹W­Þ»øìŒâÊK¦’ô7
+9›ÃÎÜŸ‹Ð²<Ù.ÅE˜Àç² ½-dv`háœ¶Ì¨‘y¶$ãæ¢™ØÖw§V3€í÷ ïKZÙ2{+8#5’VÞVîsÛÊk[ÑÙ-NÓ™ï6±@gy¥¦en€pØ¡¸ŸÁNÅd€ƒ#D–š–+á¯Y(Æ—|?†iXú¢âº¿“Šéy#î<·äâŠ+ÅÍUéæZ¶*®”b¸ç«
+%!ö­¶?Ÿlæ±>š…8îC»™©nÄÃ“ÌêGN87åL²JÇäûÆVÎÝÈ©]
+™ÿ›™”oã<VXwñ´bE€7‹ãž¥üï…EiÎ}¦ñuÜ§­&°MGóeÓŠYDãhÈ3
+É Û £qc yÍöA…àöªûù	àÖG³äç³êýN¨×1Ùab	€i¬HóØöÅÆòÚfbhoÄY&o ¸éð—/)VË-Ò|•]o¥#L[·(¯}H1´1àüR¿±‰×[×(öò¿&×Ñ ÿ
+:˜ .i¥šiŠ6Å
+¨u¦RÚÅjtñ`9Ó%ÌýzÅ8”e\¼ŸªQqaèYô4âcŠ	ÈËi}ŠY(¶ŽqD!ù¹ X¶žû±Õð}
+Enk¸vqµŠ+ÚëÐÄGV|Óøª•öH ·>“Œsüm-ŸO£B¦Æ­˜LmHù£Šy£½º|áVG®¤1Wß¸n˜Ûðwþ…ÉûŒbVNªˆ [lÛ§/i%ò2˜ªûJ«+”V¨u»Á°“×»“'òÏ ¤žäºÒUf½À­n ³è’âÖÄ>}«Ca‰Œeé\é7ŒŸe¡˜:…Á~À»ßé•Š…dÍÿ³µi9…8Õ³CE×¶œvQaÜÍPwbö]T¨±óƒ
+	ÙÓŠ+H¶ÒjÅ-¶L¸CØŒ(³xW=Ä” nýøpY&Ò´•ÈXÈZ…²äwaF=¦˜êUÉä›à¯UÈ{¼f»yÎ8PN LówæýJ†¿¬_Û¦¸¯Þ½Š¡…[x˜™le‡Ÿ9©XàJ™/(,Ó‰ç&€[?m˜I5†¯fûÚ9©¸r~
+öoóñA´ŸíˆcûS³×¢˜òÕ²~­r¬Ì`³Œí˜†—Ðâ[¹ó×&ôf£­â°Í›Ö%v*„*>©3º–1•Ìã5ÙüJ+»‘ÉôI¿á|šJgÚY†÷º>æ²ó}
+ç¦áž-÷ô	ŽuXa-Ø7´2±U¿§Ÿù]ïÄ7ë@9 u÷µ‚Ä–ÀìA#áÃ>©XkÍ1`I[›>›mu?mçÒí˜‚–*gÉ¼¶fÐŠ ÙÎ6¶En;&˜Å³†ùþ)´Ë!&êW«†­T†m€9ð.)–^Ø¬˜[kôþIg>>øF/?)ò%üµB¸¤-ÇiÂï:‰¶º•Ï‡™•h£ŠÁaKqÚÈÄ<ÌgO(–™0SóEÀw@1Óc¥Û&Å•ûY4–…Æ.REØ*ý*„åîÁ„|
+“{Í&®'€[ûÍâpãŠ»½^BÚw+®wóà´üBcõ¬ó>Ûs Í‚ÆÏá·}[qc•Õš´ÎëR`[‡hü×V9Ô¡Å÷ðü ×ýyLç5¿B$ñáÖWkRXxÚ…öÌD+l´IquFpU,7žEs½ Î é*®²¾ÚÂ¥SÓ6Ž±Uæ=ÜëaÌEîa]­mL ·¾š•Œ¸×¯•‡IÛ”~Tö·ô++wn>Ù9&¬‘*3kl^ï7nY5ãëy À­_M×­H›g«½€3©¸Wv¯­Š×XÒ…IKÚòZEÒIKZÒ’–´¤%íê´ÿg_Oþêa
+ä    IEND®B`‚                                                                                                                                                                                                                                                                                                                                                                                     root/go1.4/doc/go-logo-blue.png                                                                     0100644 0000000 0000000 00000022220 12600426226 014621  0                                                                                                    ustar 00                                                                0000000 0000000                                                                                                                                                                        ‰PNG
+
+   IHDR   Ë   K   ÞKsë   sRGB ®Îé   bKGD ÿ ÿ ÿ ½§“  $8IDATxÚí	˜TÕ±ÇéY€™F@QPÁÜâJDƒw}ÑÄ%š¸Çg4îÉËbÌSãnòb¢1j¢§Õ¸Å÷`@Q\ØdDWÿs~wæLÛ3ÌÍÌ ÷~ßùn÷íîÛ·oWªú×¿ê´j•néö5Ý¶:8[´ÕÁ®4zžIïJº¥[ÝJ“ìËÂÞ¥7%ÝÖ®ÀmyP6zîÖ¹ëg´KÿÍtk
+ak\›ºÝ™-j>EJ¾;Vìê×²»öÓ3ÝšÐ	q@®R$¯óZ&ŸÀ6ÍuºÖù…ß:\[êŠ¥[Ó(M©Ü¬L¬ E6JLX5ƒWh&oË"%µkh#¥É£,›Ø¨Lc—tk2ëÂãN&ŒLèº˜€J7³ÇÛÛþ66G0K›cG12¹.£=ï*WÌ®³}îïI·tk¬+S5óVï³­‰[¶´±—)Èq¶¿ÒÆ¥öøw6®±Ç°÷Ÿa÷³ÇÛc…š|—U«¶2Ù2m°†Rè^¶ßÓÆ¦öº,aQª8é¶&³r±	QqtL
+r´ÿ±ã¿·q§=~Úò¸	ö|¶=Ÿgc‘7ìø¶ÿ‘¾ö¸¢©»³tÙoÚ8ÄÆá6ö±ñßv\ÏÏ·qŒK‚‚»sl½&Ånß‹tkÙJ‚UñV¤·å¦ÚþÏ6²1ÔÆp3lÌ²÷¿g5ÅO”¢ØxËÆ*;þ¬í¯°×~œ P…ž½í|f²Ãuºcmÿk¿µq
+ñÛ´ñ€mô³ñ/?`¿k´ío¶qž}¾¬Žïi›JHºåº/mm´±ÑÅä$7Øã{mÿ°a6^6¡’RŒ°ñ‚½v£“ƒB¹£ìµÃQ¦Wíø$Û·ý›¶¿°°mNÌTA|tÃ”Ù±ñRøn7ÎŽ½#ÅæØ±»ì:/¶qJ°*ÙGl,°!¥ùf«4•Žt‹¬ŠKà-lœÌ,,%ù7'z¥ù½	\¯àæx×gk½p×žB›cc¾Ol|*Å+âU,p7ï${~­}ßãRPRÐÏl¼ocª—õûÈÆ
+K¹þÑö[þdûËmÜmãËðÞìRIH·ú*Œý»6®·ñ˜	á£¶ÆÆ‹6ÞFÈä®ìFÐ\n£³½¯œÏšÂ¸oØó«ìñ@ÚX„Ñ-‘ Ûk›¯èàc©m¤«ì|‡ïrRæéö|º=ÏÆA9œ¬ÆBV×²ÌÆt¬ßóö]ç<Ûë}wÚ¾c*	éV«EQ +kb‚r¢=ÖŒû¨=~Ìm°=~Åö¯Ûógíµo	*¶ÑX¡8¡Á(çbûJ{m[{|¶íßµý!vÉ®²ç_auÇ4Ò=LÆ`jw„ÅNOÉRØkS7Ù˜cÇ?åûV†Çn¦½n® ³8ÊøàVpR˜—íø‹öúB”G1ÖîµXÝ4fI7/ÝlüÄBá¡Ü¨±&L¿µ±)³z&_  k£XçlÜ¯UAaœ,Ë*fö_*qÙ‰¬Ê.Á=t°sÈ%œM¼±ýb\ªå r².p±äžÍåšæá–ÍÁ=\¬‘›"—.úMú½›ð»RAYùÄÿ·Ï—X~ÄòOk’l¯DœývÈÆW8É>×Åv|¬ŠÎ e÷C²ÇË«‚ë“<>£®W†óïdãZ;ï=\Ÿ¹uNnÞ";þ¹”Ò^[Âw(F™iãô  8)Ùîö¾ž6~‚"™bxË2%XÃ[Ÿ‡ìxy¤ ©°¬ï®W„&fã6¢×„^Ù˜f¯7AjÃûŠáÉ	´[ÅÇí};4>^ð~,‹·.}x²XÉñ<Ž…ø ‹°ˆs.Fqd)ìË]¬Œ¬Ã¾‚—£s‡ÏÏ	à…Wì/‚…rŠa¶J•$ÝZåX‡cÈ?<ocŒ	Šåm´S•ñ®i²u¡S:×¸s§Ùó'q°&n1Š3=áeÕÓª(&ê „}?×gvþöP–¥Äbj¯®Åeø­eRžp®+p³Áßîó `ÈMôÖHJ8æAI*%ëµëUƒ¶r†¿Ú±QrIäv™Ð<hJqXüÞÕƒžFR”@ºöüRp%1ÊÊjTÌ]¿ºsG¥ÉF%4ÿ4XÜá>áœ³ƒµqJ*ö©fAG‰Û‹æ"e·ÑÅ¿4²~ïÃ|\1èwŠ¯%ÝÖ_‹¢Yö8ÙvŸ‡²(¸ß¬!B1ðª¢s_Š/!VY‚›$7çÊú*µ½¿<€Ù'l¼i¾,¸ZNÀÁ[ö|dÈÂ»Cml1W£g>8/–XÉQ’1¸†¢e&w²Z¿O¥$Q ­{áÉÊÄ+³ýS¹Q8ïÁs‰%hH°\®	àª(nÑ,¾s~X6›É¡ÒÙ1{.îáË Z_à&=‹r›RÎYbÙj¹Æ6|G
+cDP'Kó¿}ý,)µ²û©Ä¬çŠ¢`Ý[ ëþb‚ò¶xX–3ä>åàë¨µ‹?c°sÍŽ¯•ÄŸÚñþ¸ù®±(	$Ð¿Q®'¸Jn–}ÏâÀAózË‹¸ËmlÅ^E«qéŠÈ	‡—l%ù³.Þ] Ü,í¢TjÖïXE‚"Aþ?èïØcãn¹3@GÂßÐó*>ðBˆPìê>±±Š˜…„dösÔÃò©`Ìx[Ù'íOcIÄ˜/K`ã{ÏQ¶ïÊ÷—×‡àˆ['…,	.™ë)þ€Ã{]ù—¶—;¾1÷"Ý¾>¨×±À®“Œ›D|*µ)R”¤¨JÕ‘ÁòyŒÉ¸KÓ@Á’Ëíù,W”•/‚:ówE	ÑpÃ4ûKyvÍqßŠëcEFŠ½91‹%5Ý4â–Ùä]†ÖÅ<N·&á³M©$ÉþsÈwØlêÅ*†ß¦áç¯cll#Íd!qÅŒàÄÛ¨–ël¤»íŸ…9Ã®o*J§ _ÉÈÝƒep_ù¸'ú­Ýí;Øùf`µÆ‘àüÈŽÝ’JiˆôG7å÷›öP¨û˜¬µ‚ÚS$gä]Q#¾£˜	@³õÉâ_E0qbU4.²×h9¯ +ihï¹ÉŽ".™ò9£˜«dM3êXRåPn¤Ä`<Öv
+~t*­-•Ê®vfl¬ŠÎý$‹`¨ Û#J?’-ýùÆ÷Õ¹•ìyÖ­²$ÑðDLc%çìÉ}1Ó³œÿ®"°xˆ=ÎÚõÍå«®Q]-V£,*?…åz¥\òV™æVš7^(ªKØ4cÒÏ*öÅ‹£ ‘ÿ¯džfjcÞzjºŸÓ’¼Èš
+DT›¯ ¹PôedÙÇoˆùýØ
+åX>îX:¹B/Ë¾Ü:·WmT›¸hà}Éó¿(9”Æ[@=¯N%¶[˜(£^LüPÏ8_I¤h"F
+þ‚¡_'É–Œê7ä|{;ÿ.­Îª¶-7Ô®Õ„×½ÁÐsU3nM§4?Üì·RÇ™³B~ÅY{÷ÌRÉ\g\3×W¨†à(—bãJròûmïœQ¤Ö…rnjcêt'É{ì*º5%ý©›1¦sö\Èâ†ZŽÚ”NgÚ3=NMþ$;&"¦`í»RIlQJáV÷zÔU*îzre7®‡P´ŽZ«^h"º÷qg¶M\;‚þ¢fž¤(ªù_\¯qÔôk<|,+Xž
+4}ôn¢Ø¥¸ § ,ÿ¤ÆEñ‘àé¾MV¦[ž 4ß± ®3®H_êIÎ¡©ƒ5Pp·À¾ÃþÀ?‡b*ŸãµÞš(FÙ[m‰(dšJîà°¤wV¤XåÍ9Yh†·a®g&ËªÈ%šŠeQÑ˜b ÖÄª$ß í Ýß‚z_Š`‰Ngµ0î)5çH%¶ÀñÅêf¹H(K¡—lÆ,º§½¶wè_%ôÈ]‡r3´Ívÿ±÷¼NÅÞ\ò"IÆ)Xßü«A²Ÿ¥; ?
+lû±Âó“ÜàzMà×Zh*²¤|ÿ~ #¨ïkX•™*iÞ!iÁT˜	«ªÁ^k&£›HB.…e¬ûu‘xc©¤¯¡¯[‹‡n	þïºÙ­¤Úùê¯…2üŽÞT²ÏØñ¡pÏÑ(At“Çm?ƒ‚¦aöü	\§÷½Ãs ¬ó£kŸ;Ó†NŠžX²3«"tg(IÇ½Þßß½ø«ABŸIò$1á1ž8äî$.–½·"¡ÐäN.¢©¼|•¸a“ÄÉÄ"˜¹¡Pvnì–óvï”ˆôhÝ@Z#Íµ1¢·¸M×[¸8÷‡,ßÅü ‘éJA Ú0ÊqsJÕ˜€Ž%1ÝØ8ÁÆöÚE4Dj
+àŸ€ŽfÆI³¹1PÉÇc=$Ô–{ëágW‘§3JGh#­só
+¹ÂŒ‹QDÀzU`áúB¦åPYvÈ}o|ŽšµíùgñÈJÖ ¶$JÀlÝ(Öè4¾»ãõT]þ,7ÑIã,&‹10~•$½ŽÚúvü™ÆY‘šIVx`¥ÔÐ[ÒÔ‰î?Î~×ÇQ¡×…Íå–¶´˜¡,àøN.Ê^bÄŠ$²¹s‰~®î…ö>e‰ÕáÂÐ+{;y‚Çà)
+‚ï›$LdvOÿ¬	äþÅ[•céiu=Å›êfN§´KžëMbâÚ%Šyº…R[w$¹‚)PY>´Ç—%íRÉó”ÐÀ»8†¤k‘ÖáÖœïµ}ÛL·ÇÇ¡¨¼î‡@±°¼(•„÷{ô!{‚Â+QYØçOÐÄ+c#c”Lž‰S÷|g»ýïj9».šãCÂÔmßø¹Õš"MíÅ-F™á2 ,•àûêi%ý%³Ö-Ìâ÷€‚<ˆð¿‚°+Sü:tÉ¸DoÑQñe\…WB“9¥îv¬håv¬«Ü¤úþÙù¡T—«uæTìýÛbí^©Fu|ýÎ0K»ŠZò!5b/|úÖÑãL5_Ì·;êZ$9Ëz»o‹;Åý{•üÍ,wÊóºäÚ¨¤jñ¿Í¹ñ‚3÷ÓIR7œ&=ø¾‚+¡£¦®;{ =>…Ikíª"5·Qc¡L°õ‰4Cnec· °ªøóuä§Rqƒfx;vhçã†ON&pÍ{8¶‚Ë[íùe´ý´¹îô@ßP‡‹È×í¦™š²¸.åN„q-O"t\y”rØøàêÆ²sPàlYMåÊÒUÞç.Ê¢øBÉJUMž áòO¸u¢ò;&˜QÔ½È}1ú½GÙæSû1†\ÎÄPã‰ÏÂDãT¶\I’2Ë{§Ý„	ë@Áº…†lÏ)F“¦Ú&ÉªxK¶àD% Ç&ÿY#Ðžl³+–¢"§n7{.á=ÄBÝFn·çB…¸Ïÿ³ÿo{mqÂ«I¼ "ž AÛËÝ²òÓìv²|GI5½<àñ	R´º{Ñ\‹à0óïŠë8¦KC“ï5\Ìhå4’ÿ·mu‘WVÖð>û#ƒðú*ÁwíØBÊm•£YhŸ™kÇæ£zn
+âæÑõqAÒµ%TDú¦v«pGÕ¶h,ÓÄ
+¯óßù"ÿéçRòÉHäŽ4
+¿Æž§´yòñpâúµj©VePãi£1x^Ðö¸LÇ„6žašå†?‰"¨Éó,Ä˜ÿqü©Sø£Gó˜UqB¡®‘Û ¡hn×±±HKœ<ÌÉÏ\ˆë5/ê%|rIR• 's_‚ï{©kÇ94ãÎ$ë?òå{þ4€ÅÔM %êRêV–Ù{TŸPò‡Ó£ëÀ‘3A &ã½
+èqMÒ¢Ðr`³}È1ùþ¶ÿ”ûônè ïöm2ñÕ@°Vå(evÙÎÞ³?ÔÅ &æ_»¿ð`Æy4gÕ|£¨§ ÂÅ_³ã¢}_|Qw¤=ï‹VÆÌÚœ±V1Ï´nh^ ºw›$ÈNubÍm]¼¯Å”? *Ö&p¿²µå”ÿÑ>7WiO£Å[ê<œ)ˆSr½çj{¬5N~&%§žÅsø?¤Ö^Šs +/¶°â;¦ý3œ[	@¡†ßTüÚXå õ»ã~ypf6Hä±‰…-Øw×¡ ¨ÔUC®0rüåý™UÎ±¹Šª·»išÄ
+™Ñf0cÍ]š1VßÀ’Øb9>®°ó¹>uõœjj¬<jÔPÙ¯ª÷oÇÖ§Š/$]Ûà>ø‘mˆMŠx\LS‰ÑÌî+˜8²XO9näWˆ˜ `jÖ½?Š6+ð°÷šLH !ˆÿ…€{Ü6Z?²7”û!M=Lü%u,Bº,×”ýèßY¡ÌØÿ¿³hÞ-…ù_Î[TàÿCtžžaböå
+\ñpWß!1Ù¡ÁQ|)Ãúò} Ñ³)è±Y*{7iðéàh}ŒQšÅ˜ý¦ÄÉW§	Èln¼=éîp5ŸÑéÒœk–çƒls&ÖÌÄ;Õ	»|¬aêHzÐîÔ’˜ÂÖ²Jb^ÕýNØûûÞ6ú¶‹U-Ÿ ¸A®ÍÏI6V)h’OŠ>Û¨üò€RyÚþ$>…ÞXp4Va3â9JXÌr™ïµãÞ¥(Šg§ˆ ¹«hšƒûÎŽúï§± Ð­4ÁkŸ J…ˆý"†E9ŠúÓÀ;ó­gWbÇé¢Wv@Œ·— ]LÑã5f ×¢@z3Þ[hòC(O¿`U\?¨§Ø9{ V´¢öêÁ–U%¾*Y}\âWémõ§’ë¹;3´fØ¿·iç{ƒ8`.Ç;¿os|
+-U“•²¤Ó}qq„H©†ü¼ñª–öV©;-Kƒ>36¬kâ×TÙ‚^ÆñDÐ*M{~Ï%0f`Qn W‘ô>E;…yy˜QÝOÈšÛ±Ð¡@R…Êý¶%(<*ú<ô{X”'B³>·iA”4ª(‡ª‘tŸÂ1— p.’âŠûí¹™mŸ=Æl2²’ûhSßúŒ–  ‰w¦]ìô¥fä7ä^ÄŠN¦éô4îaÒS÷šÏ­Œfú9P0>c2:„ï¯ÌÐïN,§/ï<VãêBIqm™øÜ4AàÁºåŸ¨¢ÊI¹uŠ÷d¢êN²—ˆºC3n)Ëß”ôÃ=?ëñš&;6•Ï£lxÃOf> —ç£–³ fUãÝÍQê”.4’ ÔÑ¾´Op«˜¹± TBaö€´·+³•etÝF2má¢]‹Ix®Nñ’º‹hÅ«x”ÀæÍ`%:±ß@Ù`O­6•}",†ã‹–¦2Ë.Eˆæâ¢$-L—³_bß]QˆÓg¬)2k=64óèÕ(ßpÊ_—A×0-ÞS"ôT@V²/-À¤™Áµz4k(ÞÂ34¦X¯K–s>ó+;þ>3Qùb-ŒtbáÅÇ>»Ùt×smO1ÉOÃ¢=YßfäJLÆpž(äB—Ô?6çf&,ÎÌÚìÕ%øfü,Y‚g5ˆö=qw@øÀUÒú$W„ÒX¿ïý MÃCÇO)™)z÷âœÆt‹÷ïaB_Kþ.ØÝ@áª_—]ƒcE_¡KƒPŠC¨?é‚u8Aùˆê¥Þ|.äÔ€€¹M(øZ›
+zïoç„—ñ¹–dq¢Wa
+ïàÓd ý·f‚€‚E±Q!ó)  ûé^Þæ¹·¹ÿÓBbÕwÔ/.ÔM)Ž;†×vÓ› 34sn]_¤ÄnÄÖÐ[º2ïÚò8ñLÜîê¨nCAóÕj€ša{0â±àø<Í@ªËí¹m6ƒ«‚ÎÏø‰e¨jEÊªRÜ»O—TÝU“ác±®ñ†§V\Dü\³b±šV,\%”Y·Û€Óê½b;‡•S‡–ùò2Äƒ™¡G±â×­()“ƒ›Á½<0écÏOÒïzœ>èï§Ù³
+™ÌMú”…I^€±=äM¨Ý¯´”^AÉPª3k3^X×))J[¡w¨ô$ÈÓ„£¦ÖvüL–o¾ÇŽÛ¬í´ûó,Ùü|¥Á¬3ø”×¸‘‹HÂ}N¾a–#ŸóžOØNF{,@Ç w¢Å|8òd˜­¿àzÏUçDZ*á‡Ô²ì‰¥nO<×¡–ûQ
+¥/Ü¯ÁÕë#ú¼È!ä”TIYžôüZ3×+.mö.øSP„QÏÿV4aÈÅ±ÅŠ<M¦{•ã:ÞMp=k4 «Ú½p²äsw?4¹Û®¡–WëI.JZ{|h¡êbš‚åéz´.ÐÙaFræïŠ“ä€í«5Êû‘™I‚ß¬ø`$nÀ¤¼ô	¶©amAÿø=Ößl&Â¦ zËÐÑ£*{ýFXåÊÓÌ6ïóE{ËBé	+Ze­·•W^{Í+ÉNMòÅL} XlŽ{°5`e	Í$'ÈnµºàÚßñsŠ;Òg'ªvÕTùF·3ª‘§`ÜÃŒŠG®×’Ø6XQË7yÐú+`µ“Ï¶þ~‘f/“JP°}M²’V&]ÅÓr«®¹!7BuAÜ#qã^€E 7zãuJQ"xOdÄ#	ÉÊ~Ì<ÿâÆŽ"Àý|’‹«OÖœ‰k’Ôm¿<8ôi$HÔ‚»d¦ëGQÖþPö7UŒ~¶¯5òÿý¢†	Jp	eéIYjëdI£eæ¾âÖ6å‹8\€”¾%$ AûïÀH2ûEkø1[wÂu™úÿúïpñÖXž=b²¦èøâí‰UÌ7xç:”jÚ/‘¸Ý$0|²»ˆÌÀÚ-ÂþkC—ÎhI
+SDRí~Y78ÿ‡|Ìpnðèˆ÷•dùÇƒ2½™ð¿ìÆ†4)äãFâ¹iß	±€ÛNÂnÇ6ÅíÉÔäYù„[ô‹ë§àw¨]©Úk#¶u}‰•µ)PÃgOw÷bA £xåW±Y·ÜôÂ×¶=±QOÜÇ¡&Þó#±Ð+pa·	q w“Ûæüþ}ðÆHÆªÜ’Ú5‹Ï?µ#6ýe`¸„2Ob¹œ?RÐ®ÕººÁ•jËº §„?Åé‡Ý›ñZ¿`	œu!ªâøÅõGýY]òaöIáTn7Âvô¢2.™‡·¤ˆjÐ§J\§ä­›jvŠj0*H®ÝE­Í,¦¯>$FÁëŽ4Ô²Du@úlGâ§}IVÃ‚M õú<X	ït«Iã©‘—«c<KdÏ!Öz€x®ÍêV'ÎmëZ³ÈÍ	D¸2 ‡~¢½ïDë?¾ƒgñBˆk]»Üâ¹uÎ‹nJ3÷¡èÇíjEüzíÉ—Ã®µÙÝmÅŸÙ‘¡Lž(YÍ6C&·5ÊÔ!T%ú T°¦¹Snr•!nª¢]dòÅYMiÆ‰kÊÆóâÞ„Ó49°¨}Â·#.`9¹­v‰Sr–ÉÛ0ÀÔžÆÞŸ>Zp‰“`^„ÊÝâ…ŽòTSv…`96ä€üz*®RmÌéõµ¶LlUÖŽÜ1”f"ç-×ÃäN é¿Ê|³i}»ê¯~ÝÍØhª¶þøf47"@.îB(ÀŠªûÊNVDÍ¨ ™CQNâ1Öq5”£9£–‰¥œær7$«
+Ñ 	§Ú ;†ß[½&I#»´héÂ¤uTˆÝfèé¡‹¥¯Q`²_]À÷¶œµí‡ ¨¯ò Ö•üv\µ™[	Ÿè¼’B»žX;±C”—z›²‚§á¡-lf_Æ}[ˆ-[ÆÿX  ßµªàÐL€x¡~z[šFÈ]êÀ±2¿8±,IAS}:¿7W‘V#2ÑÌÐžZ>ô+Yjú18fÝ“É€})÷«M}„$gñØŽœs+&.Y„E¨ð½ÕµŠ3:‘`;æïáüû«³JÈ²iX°È“4Y‰«ŠY]‚Ú3@ñîšˆ“¨XWæ1ÄoÏÞ(sß+êº.[¹„¸ÀW*nB ¡ö#“§ÿïåoÖ‰¤Æ=ê*:­å»#¨ÑjWS2Ü1øæÞ·ªoÍ%=‚š=æ÷ÃÑBWÀh>?XuWT×„“¸±$~1Ï	DOÏ8>ŽŠL)C\Ê\‚GP–$U¡UBv¼¢æýÐf^`€¹ÕkÌxìû¹½ÔÖ9+ÂŸXTO¸Fu†__6õŽ ††OA¡Ôüá®Ð•&”Áò^åªJóõðÊçòXØ»^¢ë÷‰ªø*B¸&ÃùÁò–¿ç@ä-Hy{Àfž Ñs!3ÿA´“ªHrA EÑúô¥x}~M|v!0ðxª6ßŽVg+tÊÏõXSä±ÙgÊÄÕª­b/Ýò¶mB^'DIJ"ªÍJàòß†…M}ÂsãP’ØÜµ	JÎÂ£íAü:·H‰;ÑW¼0Î†s;×sÑ6§×VyÔÕ¿*îÝlÈ°1õGÇ‘ëZˆ€ë\–{©bž'.WIGv g#E;?” û<ØUjíjÏÇbMD))óCâ¹]‰aSáYß6ºÖ”áÍ‰8hK¨L¼¡Ú® R-‰fç®,“rD]•Ìn¯G½Æ/¢ç/¼7ßDÜ,˜;X4:8Ö€ãk‹ƒ¸†“ix±
+…™âÏÒèÂu·†p©$oOâ³ï¢,gòþ;XKæÉÀÚö=–aQïÊÂH™TrÖ+%©nür‘3ýºœ<Çlr
+‚¼ÕÜnCòAŠ'*Ø¢œØ§×¦=.›ö—G}Ñ¦A_‘2Î‹ŽúràÍCe¤‹×‰©PBÏ,,Á¢ÐxÛõVò·Bàî“Ÿ»Á®>Öò%QË¥Iaå/ÏÅû4°œ}†Û)Un“JÎú«0Åä‰ö”pÁÿZõ,^L|±-(Öv ƒ¥Áµò0r˜04Å“ûãFˆÙü(åƒC'¯4(à›I°5JÀ’XÑžzò,ç¾/”Rû„ô®@ã¢õ…ÎSP_îœ”6Ì!Ï³ž—³½ãÍé¶žZ„¿73|Bð\BÌ—a†ƒÙÒ»@ÒLÚHíC[nÚN´Òb¦‡ÃÈAº‰r|­å\Š»â†|ahñRèøè)üs` Ï‡u,7íP"ø[Žæ}Þ‚|”¬ €7ž’Õíì”aM·õSiÚ[øÂ¼‹²Á[AÝþ­Ð`ÔÞçºÝô¢F˜½é™ð© Ê ]·T³¾çý@Fu7Ûó^¢!%Š[²V¸«ŒrâÅôS«¦÷Bs;5éó‹M1{‘¦wS±Aâ–s½éº/îff]È—¥ÛÚSª„ÞÕÏhZ!eùŒ˜e1ÉÉ/a×Š\y•{Òeó  ×[€šGP{ó~Ô;ámøZWRcÓ'áy5V«»wú2ô­©ÞC¾/é%°~ÙJ@
+æänúrudØ9ÞxIÅèþ1ç-EQ×[¨8›‰P$çJ0n„Ø‰Âñ‘½¾2ªÐ\ùðB…&Qûþxh[ë÷÷B*õ>³ôT^Ýþ¶Ð]ÇÓˆŠÉèÂ*nU]¬çÛ:Í£÷ñ,úLBé'àb}ÈRàÓ¡ý?†§õBîV­È©’¬çÊâ"eq	Õ£’ þrúñ~Â¬»‚™yvÒ×8ªç@<òn ª¸Ä¥y£ºRÔ¿G² ½âUe%£ÊÎI–^Íwà„:çû˜äM,Üt,ÈÓJ¸†þr¾uïùÉú˜©¢¤[mnX)™õýì±Ö…
+ü:'X÷)µ÷sÂêºR%	(jÉGÐBÞ	¹¿fÊCäm.	A¼kŠÖ‹‚óvƒÒ$øÙ
+ý|Ùï½aµ³*ôM´ÅOªCù§¸^4xWƒðÖT"Ý¾¾ÐqNâ²±ö0Í4|óí‰]¨/&.˜Œ0&½™ù;C±”/Þhm+?x[êöÝ-Oùe<.Í$œµ†ÝmˆKz‡\‹k›JBºÕWÐ³«“×ùU|Õtãu\³÷£ždƒÉ<JŸ‚k)Ï~„žÖÀ¯2V# _ÛÖ’˜,i#Û>ô s"€î(1>¿²T˜²µ}méö5¶2¢¥@9Šûéø¨¸ãêÐ5Æ—Ïö£:ñ(ÆÉôèNÍKÒÖ’\Ïú_[ß]°{‘UÍ-PqËT_«²	IÈ®ä`´T]yôU  å¡6$åJÕ!Û™‚qÉ"*wê;¶ 8Yû±¾3bšÝ®Óbò„)®nlK[ðµ5j2É)wÎç‚¥3Sº5j¢-úšþ®ŽÉš—Éöÿ£Íâ7£Ð9    IEND®B`‚                                                                                                                                                                                                                                                                                                                                                                                root/go1.4/doc/go-logo-white.png                                                                    0100644 0000000 0000000 00000051735 12600426226 015027  0                                                                                                    ustar 00                                                                0000000 0000000                                                                                                                                                                        ‰PNG
+
+   IHDR  L   Ù   ÒPo  S¤IDATxÚí}qäÀÖó¥0LÁLÁLÁLÁšBSh
+MÁüÿ÷ÖÎ~ZE§í™¼æ!UMm’Ýd3~µZGGç?ÿ1Ã0ÃøìûÞýÿ×ÅGÂ0Ã0#&L&K†a†a&U†a†a&M†a†a&L†a†a&L†a†a&N†a†aïC˜Ã0ã]½‹•Ã„É0Ã0N&ã¢ÝùH†aï¸ Zm2n¹^z	Ã0ãíÀÖç†!Óè#a†a˜@>§mÂÔY•4Ã0¼¸š ùœÆ?«ûóç`ó·a†ñö‹ëwV%¬Rüü¹ýjòäóg†axqýÂVý/¶¿zn»O|ÿGa²Ü0Ã0€4Ý¬$°’tôøhÿüyýÄ÷@˜|îÃ0•¦³$ÿ¿¾ÖÙ@üç÷«®	Ã0ÃðÂJeåE¢¢ëÇ=|ÞÑ¿í¼?aúó}Ýõ|^?÷Ñ4Ã0Œÿ[$¯e/>ÆÏùïzá¿¹Ø@ü”×Â@dØçÏ0ÃxOõA¨@ÿ]$'zðR_›ÿ¼ð{z Nþg•ãÇ¯ÏÉ¯a†ñn‹!«C#üy%@¡¹ñRä
+æ?e:¦ß=÷G_»^ôùÀŠ£¦a†ñŠJÁJ+(I#¢éIº¥õÏë¿Ÿ'øüúúï×2|œˆ`ð±'Æ„éw®‡®áIðú€ë§§keÄ2­ªa†ñðêÀIRÞ¢Ô£ÈÑ_K@†þû*^^›xUøyWâ4êäEöû	QwUˆ¨s±Æ|üª‹¨>®¤(Ž@šz"[Ÿ_Ã0ãWÉÒÂDå¶¤™ÈÒJ$im¤ˆ$]_;|œAyâ…KuV™>wM ÿÒ(¯ö !™½’I¼zøþŠãBjS$|Dâä3d†a<2aê©ÜÆê‘R‘®äH‘¤³di‡ÇäéJÆ"qƒÄ·PŒÏT.cïÙ@¦ý^×¯­ô}|íLt-[Ç>(Ã0Ãø±ó`!í@@ÑÒð]•¤|#Iblô±ú<“WŠâ&MÇ„	$“ ÆWei&rƒ¾3E†˜)¢_Ï @ÍDÞLšÃ0ŒßSàkèA™©†¤R”ÊaRD‰¨?7Á¿)‚XUaÇh‚Ágúï¹í@EêÀ_4‘Ïy"ƒþç<Áy¾ž£>fÏZ¥ïÉô}	þ+‰×¿¿‹09üÔ0ÃÕ¥ «i„…3	E)‹E3ùaÂÄ„ªâL‹vŸŸÒTèg¡éüòîç™ß*ie5$LèE[É—VáEÒ\þü¼üçÜ!¾ž³J?o'‚%MÝ7+7†a˜ éñ!¾ÆFnÕòŸ¥BäH¨Dd†MÁ³²\`¡¼.Ô» cLœ®ïXÂ	Œúù¼F8æ|®™¥€$P†ÖÀø?“Á›£ðàœïâc¹ÎäÆ0Ãø^ÂDŠÒ$ŒÛL’T$€"L¨eZèVÊQêÉs¤"F¡Xì¤NZ¸¯ªÄ
+ï­ÃóÝiš¨m$ß*«nD^6q¾Sãë×Ÿƒå>$Kx^Ë†#(”WE±Àÿqý9ö2†a_K’x„•Þ"IªT–r•ex‘\(k§£ùpÜÊŽÙ>øó’ð?a]¡ÇÃ›œóA$®ã‹Ö9ð™íô'«=x2ü›¾ž‰t¯p]`—Ýj†Ÿµqº¾‡Ñw¹a†ñÕ¤©Ýo“èLb…©¥$•À£tý]ŽhÚðvDž.TòI°03aÂÎ.ôù•=Mt^yNß ­þŠ×ÀXÏ!¢µ‘§u7*â„~$ô¬!©SÝ“T*›úÃ0Œ/[@/‚dêN´˜ñb•ØŠ J+äôtDÖzºŠÃW9-º¢µ†wµØóÇ×ßy|±sŒ*â ÌÜ…E:§% B¬*EÝŽ5ˆ~ØÅñßDÉn‚ëŽ“áQ-ä8‰¿A™¾ÓÃ0Œ¯R•:JR^¢Ä^¥Œ2)Â¼Ðh‹K n]xözXÈs3€bÂ„I¥ïÅ{ƒŽ­Ë³Ÿß€OA
+ú"ñ™ÊhQwc”…$ëˆ0)ÅªB™5“2É×ÿ|,µZe2Ã0î&K\æ¡*5^¹A–ª0X'kqá]¨ ˆ4èÈÇÔÑpÝ‰‚× |-Î¨r¤gW%„ªÔ‹ÒŸÓ•”›,üF•Ló¥1ß¯žÝE{¦¸Ä‹¥»+1ß…GíJ¶wË†aŸ%LœØu¾©KÃ§T!e{ ’ó!3R½ÄïŠ$IßHþ~ ‚´”¦ÿýÞ/¤ ŽÔUˆiì)P–
+)u9ª‚ í_‰Ko-ÒTE7^DØáQã¹‚6†aw-¦œ½Ã#*"U©Ðî¾ŠE•¥þ_$=—ÖÉTCuºˆ÷(Jà¬Â´	Óp÷ç¸YV+”àj#u]ÍúÛÄqÛ‚’'‡2xïž&&?‰¦JeC&eè™sYÎ0Ã¸YuèÉè‹s¿8µ9"LJQÂ®¦žÜŠÏO™<9½x/ù$Qj©LO_–#ƒ7ŸßÈw¶·Ë¤(o‰CK[DK•³ Å•b"àý%îib†aœ]D9sg£M2íèsFÉyJº’8Ï©c²ôEÄà‹˜)wqÂEú)&‘Q5@—ÏoKAÙ­Ü8ùŒzÇ^¨³?S•ÿ
+½<××2¾—å+"¢$|Ã0ãõÔ%ÎÝY¨“-	…)¥™*šÿÎ#SÍgÿr0B¹©ÜP~k¦ñYHê,DCü Ê[dÒ¯rGDÇòÈ“„H"
+àV°"Æþ¥JÝšÿS ï<¶‰’aÆ{¥ÍÃ¹]*¤0ÑDyåsÉ4¾ˆÍW¿¡^aX90yŸQE*˜…ûGWšht*ˆXnå\¥=èhÛ…i{»ÀlBùÉDl*¥±+cþ‘êaõúÛxÃýÒ»»Î0ã½SGa…+ˆ†ææFjwUiøiR!LâWÂ”n KG$àÚá÷ðÊ‚ Äkp.3‘™£œª[É“”„]î°•Æ¾QßN”ÿ°´˜Î„XªæÃ0ã=Ô¥ŽÂ(W ;‹P–r#&€³m°îòïGDaS¾Ãk£½³JFQ…¹º3äéŒÑG™L¤xÍ”Ü]Äx“Dª{°”2¨Jÿ”æüd0Ã0x1Å¶ò•†Ì®At@Ë§´Àì·Ny•nýÅâßÑ8”½Ÿ‰ªGá_ú,YÚ}qmR®Â¼_bQOøº¶†U‚¯á åÈnGDž#&Š¨¢ƒ/Ó ß-è¶Û)“+½âØÃ0ãë”¥‘ÚÊç ½<‹„åëk¡Î«0|òFeD¦f)D„mâ{»E]:úw—Ý#r©zwÂch²ÈOÚDÆQ«[íè±ùO@¤½ÓñçÁûœ‚ñ*µ1Ô¹5^¥€Â4¸Ôf†aü‡J4\†[>¥"Ô¥óßº3JÑgÉÀÉÛQ¾Ð*Lêõ„Gæˆ0]ì¼*Â4K¬ÂlAû9ª"H¯©.ò‰€ÑSgþÝ&:ßØÇ¤“ÊÔÚà÷uˆ¥a†ÉÒ?³ÕÐÜÝÊS*Aj÷C„7ŠÐÊAäH­ z”¥¹£ÔúˆçŽÁõ…¤QÅDÄ¨6’µ[%¹…Õ"¡&)õÇãt˜ÌðZx…ŽÈíÄèÆ;ûIa†aÂÔÁ.~¢|¥|"W‰ËÓ#¨,´(#5€y8“Çe¿ƒ0m@º¦<¿ÊÓ)ptktÀÕªÚF®Bo×N³NÌìN”R?”ç”:
+Ÿ÷ÿÔLji«£o£äo—äÃ0Þ\]ê)c©5#
++Ì:J¢1ˆ7‰2Ô-oþ<=š9˜<^£8ÏU$jßÛýv¨ÔÉ6Y! óÈ{vááÊÊÔÓè›"T¦]tt*ÂT¨¤wí°st€aÆ“¥ë¶6ÌÜ¥Q¶ÉØ÷ d¡£Vú+aâQ.·ŽíP„éÑJ‘0CÛ|«“­dEªL…2Ö$º‘œ’&58ù@% kN%Ž/äkR„©RÜA¹–ZÏ¨b†aÆk*K#,¢‰:¥J#.`ƒÌCv¾˜ÔŽ„¯œ$LµX¹<JÂ³PÓ&ê
+Ìõ¨å_Ú‚RËáÏ	ÊpÊÄ:M<Ž:,©ìzÒ VÖ ÕýèX¸$g†ñ†D‰Ëpìëh•àp€iz¶vkJ÷N+p/aÚ¸5þASOIíIx–Îªg*»ˆÇ¦`Šû‚D©Eb[D7ú÷AžWGá–…Þs4Òe;H(ÿ_D†Ÿ†aï©,ÍDÖQÂ¯c	®{°÷u¦íüªnpªõvcIŽ“ª"I¤xs$Äx{j¯´d#“’” $†}oÊÝRäêŒâ_Ÿ•47ÊÊµab¯ÔÈ`†aüÜbÚÑBšNx•
+—Ð[ò(ïíå¥ƒ< rZ½6[a$Š¦;‰îÆ(W©ŠÐÆLŸot]Lp-MŠ}æúPQ!böhÕàó,æÍU"Sêý1Ãx}²„-Ý³P•J°óFÈúH]p÷,`°Ð£¼¡«òÛ¦÷FðhjÄADmô<N„Uš‚ãBZ”÷Ü–géÄ÷®bTJ¦sË>®«rº	5[]2Ãx²4’Ù9Áb‘¥
+!–OY‚¾oXE{yäã©ü¥ù7x–fðhå þŒgg#Ï*‘¦¸W›}«#îàûê„S%¹•´ëuÎ×Bþó^M˜Ã0Þ€,áðÙ•ºáÔ Rë›Fœü6a:ë’wŠ‘¥VheÑÿô1 óÜ‘‡§‚¿*5ë•JRÜV”?fòo¤z_ZDíÏqPã{
+¦DåÉ,¦bÂd†ñ>di-å9FŠåŠ+Yêð½ê¶âÁã’nˆˆS…®¬î§I¥i3“Thö_+|²‚¯m£¤î«éy¸GúÌùm}-*ÛAp%—¹q}Y…ÒÞM˜Ã0Þ€,] #l OK4½K0mtýDIn$Â´˜×ŠH_ÙAuc.Æà\8&Å[@Tš­·sGäo“†£¸Rž¢*f›èÜ„zØû‰b†ñº„©¾%Uzã@ÂÈGÝYß“¸Ýqùui‚—¯\Po,/"YJD˜J0LWŸ‘<&"PÓ£emP;hh`?Vsk£ÜúP†aÆ×‰R¼× 4Q…vx†âV2÷çßOÁXŒ[ÉÌéÞ{'r–JPnÝï¡Ò¿ÃrÕòh³Æ§Ðf!‰MõžU— çk~²†a¼&YBÏ‡3ª2Eãr÷Š³²þ¼§ùŽ Ê(éû:—lü…÷2@4ÄBªÙ*<iÊÐ^àÏ
+iå*K_¡ˆýaão°ìÆƒL^­Mxf(a›0†a¼Y „’¨¼¢Ž,²Ìûº<Ë{>Z´É×²Ü87îˆ8ý¨w	ÈìHæDfoVLÐ¿T©ô†Äi!¹‡¤ùÖïO^ÛaÇû™¨ôZé˜Ô > ¦œ®ƒwÃ0Œ×QP&èl[¡<‘¥Ñýõç<)Y¼´qÊŸÚ>é_Ú£ÅžæÂñL¿xsŠHñ® ´a'ÜCq»ˆ¤ü†ºtD ˆp<TlÆ«á’œaÆ%ì–šD(å&’žÿú3Ð§òŠæÖ?Ç(SêïQ–êYæ	BOD8Q×cJJ”±…ÊR†ë keñX’Gò6‘ºÔ¡Ñ1aEC?=CÎ0ãEÈÀ@^µ{ÞÄ‚¹>J»ø£¼=gÂ([qWE§û	Ò@ñ#ÎÔé¶#N*4Á9jÌ½i\É‘á¨b×(…ŒßUŒyÙ>¦õ«; Ã0Œß[,zJvÎ¢h¯#.6¦ÜK.‚uÓ&Ò¾”¥o2$_Žµ™ÉŒ\à=18v%ªˆÖú„„àÏ=&<^‰†éîÔðÀ9Tx}8Î¸k†ñdi¦n8åËØ)6`2Ü·ÎûIb©  Ê(R”OzšP©¹*2Ýw½7z¡ZÂ¹I•ÌÉy°ÁÂýs…ÁÃã³’%5Žß ²¨6æÉ¦7Ña…É0ãÈÒJVkÐF^¡;è)r–¾p!ar=“ 5ø»¨— ôóÝ„	Gž$XØÑ¹‰\¡”íÐÜ}×ðâG:Ï”hýÚ@£o6 È…”'Vb±³Îþ%Ã0Œ'&XbZƒ‡ÿFJSØ€.'ñJ¤‰ÑnA‰m¹Á^1¤ò»”PJ1H·’™™S»ÕL@$I+Ž¼y6eñàž Ó³'2Œ„7%–•Äìî8Ã0Œç_&(ÅeAqZ¸×R7øã'<FWn¦€B.Çå“å¸v/÷Œe9R”ÙÄH›$¢"6Rq¤æ3M@–^…(±ÊÔÁ¹/â¾Èôõ–±ßê’a?¶Ã÷Ãæëé ¿­ÎënMñ~RðÂ—`<ˆ"-¬gR¯¿P)ðñX›SòÇ…âÿ”ážýþ>¯þäN¸•T·zbdŒÕ%Ã0Œ'] pnX3°”c¡n¸Ë+tý(d˜I•ué–Ñ(×‘!?A˜z"J)ˆ("&b£R#6Ì\Ž}•Ía*pþ8‡)Š•¸Þ;6{†a<á¢ÐQyfJ2Xz˜°›ëÕU?(eÍÌ¥hFù'È´ÃÏÔö_i¼§µóÌ¸þ¶ñÏ50¼êùÊq™’ÐÕ^åQ»÷ÉOÃ0ŒçY.4;,5)¹¤°²©÷SÇi; KÛIeéïâùÇÊ­3µþgQjÛˆá
+~«J±¯ÜÙÁµÞéÞ;•é”ÂX`ÜÕ%Ã0Œ'[0°P•_öÀ¯4ñâþj]pâkÓ	÷­ÊÒôÝ
+=™aaWóá”ºTÅ¨”„ñ¯šæN›Š”ãªP•ŠÈeâk£X]2Ãx2"ðg˜aÑT%¥BùwB½ƒùþÏû\‚$ï{qí”êÈÚ'~g4-Ï”Ø¾B6:ï<òd¥è€¨o—<çœY5!ÚÀô½Šœ2>ßÿË*ó“È0ã	 ø| °†eÌ–Yˆ,uïÒ©q3…<Îq1ŠTUòg®;ûÂ)¹;ÜTlDjÔ
+—ï:Ö´¹ot<g‘ÇÅ'œh†ñmüw<„Ÿ9‰ø“Àµµ¼4<7Í
+›¦Í¿â5(M	¼G#‰™‚3„(ißîH‹üÊˆòßÌ´øs	v…÷÷Ï Ý÷¬ñ8”ŽC¥c–ºãþfmùÉnÆ[¹''¡)[@”2(KrqÇ,,1&ƒ}. Q|_ÿê˜¼‘Ì~›Eøqp^&‚×QŒÄ+›½o™·ÇDiQö/†ñZŠÖ«Šm¥Ü Jœµ3¶Hæú®„™Ó -÷?îï¡DeÃ•Jˆœ»„ªS¾ðuðÊó…Gk¦Œ²BŠÝÖðµ]ï'—ãÃx]òôèêÌïFmå¹A˜
+…RNïðÉk¦¯ËO_·¤.eÑÅ•©ŒÄ¡‹…†) Jo¹ÕÃÇè_Â¨…$ÒÑ¥ë1í}ß†a<0‘Åc¦ìåµ`¯ÍhÂô9²ýÃªROåDã;u<r8i‚ó?cù+Q>A~9¿*‹!Äj5wÆß3†aO°S&co¥‡<O¥ÿ'`Ë&L½À÷PÄÒZ¦¼­-²B0åÄçÿŒÞø>ÿÓJ“I¥Ì]ÜÉæ{Æ0ãÁÑ	|+[0Í¾vÄùAÿTçÕ"ºõxJ¥×ÊY[ot;A{qì
+tnþ¥ë1u²·aï·0=Ãï#ºµ²èèÙDîNrvLœž†£§†ó¡uA¢'SWßËù•ZïCÄt_µ@0åB†ùÜ‰³â¼EÃ0ŒwÚŽ6ø[‰ò“ˆQ%£P–ö  ²@)f°²ô4$	MÞ½ÈÊâÎªaZ(Å»£kÿ%GŸ0é„±3n•)‘Ÿ)
+|Ýpæ¢¯XÃ0^–Ñ¢„¥­±ªÿ©2V0ëŒG9Ì¤*©Doô³¬·†z!x²t5y/´¨s))“¯‰Ï}uQ©-—w8¦´9ÂaÅX¶FoØ&ò—®;JÀ0Œ—Ýe¢qöúç$v›,.˜¦<ÁçÜµ~'adi$eao¦Ô¥þl7Ô³æV½Ø&ïDJQÞ›"ŒÊIä-ñ«{ñcÙ‘¢6Àý<Ñœ¸Be8¥0]?}o†ñ
+äÉÅõ5Áw˜¸ƒ_aQácq5Îâ8‰á«Ç°‹š~÷Æ@U4€ßlò}·ÀÊ'K¨.qî›»wúzIÞ—w:¿¢t¢¤ö$Ê×Ñ½„Ãxmö6ãq‰‘¡ŽT£<“ I¸£œàa™¨¤¡Æ#$’ê3M†Ÿ¿z6žÉ1ÐÂYsw¡Î¨þžßÁDé×®÷Yâs_)h‡k’Gß¼ËØ“Kp?qÀk“7—²÷ F =aƒ¯VÃ0fWH¦WT am"õg!•h¥¡£™œ"Ú±aJD¶ÒW=@e©ÿóûîbçË¹0µÕ÷ê—ñíêROÃ~3µ¼ãÌ¸D×h†`ÊI%“¿z’7ßGðùDd)5|€Ñýµbè§aÆOªE^zÝ]÷°#œ¡Œ¶PZñLDHÒÌôµBd©Š²VÓß+<4ùµ|ÅBDIÄ¨ %ñ ç’¥‘È[fÓùjý²ÔBŠ×2—Š˜¬oäqá>êÞ1F"xÖŒŽåAŸå`Ð.ç.]ï-—äÃøÖÅ`$24
+&«GLJP)J9b¯G¥·"”š(Ñw	Ú¸ÛïMü=z;
+•¡6²a®%™Uº{vç¾jM]©µ=Sðd!³÷Bª	Î	ì¹÷FÇò"ŽíL*q%¥™‡T×@]2Y2ãæ…Uy#®JÑÞ¢‘††®¢dÆ]@\zÈ¢4V¨\yŠxmBYÚƒ<#þ³P›ö§““©®ƒìB¾•¨+®€)up)îéø‘|v›P9ù˜PU(kéŸëéÎ¯(ÅõÂ¿”èù¡)Ðß4ÃfÏq†a$KB*Œ@&¡­¢D¶RéìˆàðC­)‹ž Y¨e¸RÀ†îAîJ)~øÊ¦*›ÁCžSw‘ÃänR3âZfËü,	è?ý~¥j^½åÀÜEf¦x/¢®{·^¼ÿž†T'QŠ+ÁpÝ”(¿Æ«‘žƒÓ	¿Ð˜¨qœÂLJÐL¥1.“µ¼CJýá¯%ÑJ)F¸ŸaaáÞÌóX®»ôDjØ·ü©\P*=¼•
+†øtëâøl]S#0.Ÿù™QXð;üÄûá½›îŒÄ2ó?uax³ç`Çv€×
+¨k Ú²º„¥O—âãET!|˜cý¾§‡Æ¦Gå	:ê(K'Úñ#ˆ;ÒŠ0T£ç¨^¤B;ï&·¯Ô-4S`e¤ õê~·²!RÇ9P¯FÔáø›ŠÍO®¯&Ltßtâã‘^¬¨Ÿyß°i™D™¨
+Õ¯u¨ÛYKÝ+>ûB^/d	)KmJÛ;mL®ÏœÁq†ñD…`l‚
+gÄ.™™‚ÚØ7¤È×øU™+òqé«œøwÜ–égTñùjF
+\ŽñÖÅö§Uá¨Ë¯Ì‰Ãc0<Âõú$÷UGêß;£ŸÁªé
+iÝ½¿ä,îl.
+•Ä?D<[éèžq<;ADùù˜…b»‘?Ÿ?sžÃ$æ?ñ,&¡^\„7¨Ò©YöïéæŸóôÚ(E¯#ct=øZüBQë¾ú™™Š.Ayp&ÿS³[åÞÒÔO_Gä›EG?Ð+)Kÿ„>ò{~€û¶£†„‰²»T\D´™ø‡0Ý™¤ÎñÜìPƒæ„¥¥¿™@Á3åòLçè³D˜:L9£m†!Æ›(y³j½ƒwÉê’aÔ‰R¾F(ïànt 	x"‚3‹ Å…|4øðž¹dÖ*“"Ehò‰å%¡R%jÆ–|4“G$²‹ÊeÏ¤v$ºƒvò”	öa:Ý¥§J4¯BœJ4¨$ñ=…ŽbÍÁh’åÖÎ)"È¦Y\øâàÔ‰‚]/~†HüÇM˜*ÇaTÈNçx|‡™{†qváBc híE6ÐBóÈ”ÒµÍg
+>L"_(ÊŠò‡Ê	ßOi–TÉ_”ag›iqI¸ã¥Ü%ôOýã%âÝáw/ä­N±T90É¼'ÂTyP\*Hgë™4OÑ÷‰{ºÞ‹ò—š³¸¦KÐ•–©ù!ô5®1(s²w¦.®LÍÝ;¥†ê[,]²™›ï'4º3Îx×›ª'¿Èt‰ÍÔ¶@÷Ô"#Þ­ÎB	ZŒÒ­Î²#ßPJ`õ „VE·7·0Âcpø`y÷,¬\vâÔÐD!…—U¦»ÏÅOÃ³oX,ù~^„‚“N(¤\¢I2ÝÊÞ95³þì©3sÁÜ0ª{ùŠ°'®wdg`µ?· {-	r|õ/Y]2ÞB=ºCZq±ŸÊ_*\q	” LÃ/Õ0×|Âü\“ç‘ZT£>8°ëú#å+u"{©;léØ9ÂÎÙ0+-ä[p.±$‡^¯áQ†ßè¸#…x¡r¶š˜›‡*ˆKÒÖñ>^@Y£Ñ´ÑP~5¥nU¡ì&Pùv)í/´l+m>Š~]H¹M˜ŒWÞa ?4H’"Dé S(L®ÃtË´5â[Ò™¨µãkÂŽ£®ÉÐ—_§läÏÂO‘)Do§|˜ExW~4}¦ËI\‡=½?U6À—Ò*U+åˆ½+I”·×? oF°üÜ	²ÌSÍ¡"5°èRÜ¿ÊR/¦FjÐDQEGñÝ#žr—b¼ÔÍÑ‰E¾;h¯Ÿƒ]§šO–P=Èª'w«‘’µë«î±v?¬Š±}$/Vïàµ‡"ö¸óÍäUâ¯1ašÈ·t7aú
+‚|g9°#u®ÇgõTŸ9â@ÇÖ=ºQ7{˜r°ñÈ"@”×1š[üGX¸WñðH.Åmd2¿¼ófFdÐá†y%Ÿ×Ç0šÉá¶ÉCv‡#ÅAšnìÈ‘PÍ]h“ðqkz«­>ò3”¢£ä|5]¼%+“÷)Iâ.¼|Þè<Yê)u¸ˆA¿E”ã8*¢âÌzËß«0ú;&m£èLÃûy"oà$|+åMâ¾)Â¿ÓÐTe–ßD™k#—ËqÛÉÎÅ¿^&q¬P,
+-ÞY¨ÈX6g¥ëfÏÚ‹ÞS½˜_91ÅM¦ºf8 ’=b½ŸkÆ#,=í¼† #}FSÃ{å­'ÉQ>PŠ"ŸAd3™:'á›Z¨‹ç"âPUsý5Ó$üJÛÁëú_>›µsO^PãïgÌ©	<~›©ÔeÆ>¡*JR›ðöl"í¼6HÒ&T\Eªê	‚´“ù~dÕ‡ó…š'’øÿ6ª›)£	Ïÿ“Iô|O]¨+n¦'–?Ä¨°ÊBd©3Y2~L]80]ÏdÔTµýE´ÞGfì•vaé ‰º%Åo”,]…*„R/—ÈºƒL§Ë;>àL˜þ–œÐ×`·ËD`ÃçïX(o$RØÙÇ[\NÂ÷«ˆK4â&Óù”Ö"iÔàM¯-h¼(Jlhú ;nd0ÑùÎT‚_€`fÚx½u&P röùÂ9Gªc&â>;¨ÒøÎ]3–Š†~¢|¥ì)G­–„2b¹LyXÉB5½TV~Œ£]0fa÷–"F»šY÷â]SÑžÆ{IÁÆƒw"HUx‡”ÊÍøªB‘ÛÅ÷Wñ•`þà=Ø`¶X/Êq¬ªhÒ¨Á1ÀR<Á­kàÉoÄGJN_¤+å1;“”iß0Î>ì» Õœ[6×ƒÑ‰Úb[9D¹Ñ¥r4®£œœc¦ºÈfn×õ•`|ò>Â¬¥•ÝÑ´tŽXU
+º*O|‡Ú„e ?÷H¥¡¿U(6U×7a`WDq*P4&d;©<íÆ· ‚W«otîáXUá‰âPÊM¨Ù¸‰³Ÿæ£Ê9Ðfd„çøuíÙ¯úÄ,>ÖÆ™‡ú T¡h\û…ŽÔ £	÷9Å‘O£Üväî–•Ì¶ØžÛ}e‰Ã0€Ìä£ØÈ ¼ž¥‚¡ ­ÒÄ7‘¤¥‚ÿ<¤ pfá)åI}m]«QF?öÀ«r†E¥9,‹ö¤¬"èú¼Ì¢$Xã‡ØO3CçÝåÝï%±^Á°ñÞƒˆ˜dï’Ø— ã„ó‰Î(EéäÊtbžÙQõQ8cR7·ä3y›xÇì+Äø!²¤”˜;âÄ¢ñiUI”â:hÄP§j·žI)Q%ÅMt¤©à@&h|Žžû>¤­ñõ£R]!òÒC3GRVƒtKP2¬Â þöyKgi Äô™ªEû4$
+õšðFçN$	³h< =ëÁß¥ÊÒS^·v­Â§T)Øm¢L¢Þ5iã—È’Jtnudaztß"÷_¥:ÐB4Óæ(‹Ž¾"ÚáYA‰ÌÚ•6U•Êw› K þl‚tñ‚¨Êq[Ð×Ržž9©hN\&ou¬¸ü†Ýw•¥<aåËb®g2Ìv1ò#gF?¹^÷"êD¢)–ÔÔL´õdÛ}nÌ¶º•E*øùzräþÌqmÔ3¾ëA}ç÷´pfáÕi]ç3n~¾ù=âðX•†ŸÉÌ½ÒÄåöä¨‘E kÃ,žƒŸ™MkŸ„1EöZH<4š¼œeÆtÜ– SY2šü¹$¯Ñ.Hóæã\%ßkÏuý°ºô‚ÊÑ HÑ$2~Ôl´–¯èÈ Ý"AYø	Ž>ôR·2Éñ˜ÚêôÕçÝ!^žñÞ»ç}R;yntÁm°(c²ûG~õq¤çÊJÙ5Ñn½žøû
+ÞÁDÄq;(MF¥õ…F„àì”Ú5	Ÿ7g:æ*ù–FA–°—Ä{]©É$ŒdY¨ô×yýû§‡¹K#\·ªÜ™Di×¾³çYLº ³h¢‡ÂÒð¥F©¬õy‹•FÛo$eUbÛ„¬¿òämx€›í?áµ}þj„)(‘a©f¥jåaêµË§ã5¾œxRii	|7Ê²å9Õ°±?Sý[ì^ZiQœDW. è¹âYô\MdÈÞNFô4údÂ¼ž?§Ê*cŠÅgøÚäñ'Ó@8œ2%Û"þ•°þï:øŽMˆñu¤ˆó$|F3±S`¬Nþ¡£ÒX	JeG³˜ŽüE…Ô£…‚Áõb—²žõ=5rŠä\iÜƒJmÍÝ­dí“„éº !i+õ…•ä•6NÜ2¿Ð³«R*þÂ¡ðœ¸ˆgæ…B"")Ix«È4:R—
+¨=|ú”:2¯0TC.7ôª,;µ^ù^º‘(ub½œ©úPIUMXÎMpž¬,ýôîY#öMb”Ç,vuÜš¿Š¼¢r0 ¶ž:yÖ„}ÔÕVÈ¤ˆŠÑJ>3ø"AÏ®)u(x`_N›Žæžá»Q„©’Ÿ°ç°ï8¶B1€Ä,‚ä)å%‰gÿŒ,žmZôQ’êÑ³v]OY€¿ÇtB]Â’ž".˜Mq…RÜ•©sæðZø0+òÍU¥žüaJXÈD’÷ƒøÙÃÈ¿ÑÃŠóHª™+“µþ•Ð¢RZnäÕ“$©6•Qø[+ø‘'ygxo=TMžC ^·l ~êw½…Q·.º=‰îïy*Ý?™âªÕ9Aé©»gƒqvqÏ2lOäï©òáx¹»n%
+ŸÆ‰Ì®»ˆEu$-5:óØŸa%ei Äÿ²ÛF(«å`î]¡Î¬I<Wß~°®§Åó5¹™)©êó†úÁãOîÛ)wâ$aK:ªU€ãJ»5_i†Ã¶ZóoíBSdë‰Ñù€­¤ˆa‰Ã]FûÕ x‘°HÂßÐ°ø>@¸&ÑQ¶‰ÑXîI 8|Ú·ra©¬1‚ê²6Â7"{U|må¹™6˜rw–,Áû˜)CgÏ´,šHÒAúw!ãõ…<T„âïcoJ%0³åFÞ¨¼ñsˆÇlõ"3p&r¿>;&©+v”ûÉÿŸezPp+ú”Ìîé0ËðÆÒH¯>Û‘–Å®.‹]ÍË"»ˆs‹ú[w€†	ÓªA—Æg ®ÜäÌâÞ]á‰U< úB&ÞËø)ˆÇØIÃ+•â¾ý>ƒã¶gˆU¥z É¥þLjÒJïKX:œ}‡a»tÌG1[M	XEY0½gê€ë`Ýè¯öÒhrÙÄ“¨'&gï¾	¥¬%¶±°enxì*ÍbÄcíl>8Ø£ˆM|D+µÒF¥³h°ëW½Ø#´Ÿ3âÁB5z5‰™À|áßRZ»åç‰®§‘TÍ:E“ÈS9cì¥aee=ã¡9QŠ+BqQ];;=Ì×–ºôÅsâ:"y3¾ýž¬0q~Ú*Âbÿ~7°¼¡m¨þj¨mdb ó\(°IÓL×Á*ÉUWÜ(ÓõkË‰JŽªp%IŽDxûù•p¬qx;Wt&
+ƒ]ƒÒq!¿ÜLQ^óh'0ˆéÅ¸óL"¶ÒŸ‘(7¼=­ôêÜðEÆîLÞ€•äE¼ùþ	o;ðK m[5²"ô“RûHþ„^#&EYÌ+Ìb£‘„Ê©¼I”Ð®ÿ÷a©9Hò®†½3•d†ŸT@¥ÁòúB’˜mWaS6’	w$ÏIV-ÁYŽHêˆàaÕ`¡¢J
+/b#œ‚x‡ò’&Q
+Â<Wùµr@,ÑC³€ñxDó¸Ÿg¯^ßV*§VÑm¹‰{¯ÑÿÂ6ï~ '’h#¿P3ÈÎ8*"tôwYtðŽ7]'è8¨‘;ÐL˜E}
+<E=©¾«h^iáKô@,ÁXŽ](
+*P5*o‘Ï’È»r9(mMA'ÜÞtÜH•Xaú®iPS$6C{|VJÿ¬¯¾ÖDœÃ |£œá”„2Qºþ00t@‚’¥34$aîV	â¬&f¸ö'«rçÜ@*n
+”B~F 2¾e” <ˆÙ³p¶?7ZçÏ¬K`ºV;ÜU”VòOôBã›Û‡%m9š@R|<§ˆ5Þ 6ÊÖ*´Nå²l¡)˜e!d–>¯±…iƒEºku%~éZž(°CÿU¯üNÊ+¶‘±ýªËo)‰EiÉä
+Ê"OºÏA'²êÚKðÿzVÜ¿&ï‘"®÷b4RKÝg•ŒøóÛŽ@ŒìJi·´á·þ®ˆ‰ÇIìž*ÊP}ïÎÞ0~òÁF
+Ë(¦Ú«†ˆ*KÐÕTDgYTÚÚ“è[­ÆU|}#•k:ò:RË(1{ð{±±uÇ=Â}ÏÝ‡?©dŠãÁÑUí¯„	ó}á©âæ\QHÔ%Xˆ€«»ù½KA¹u ã	Þ3$¡'1d™;±7à˜™·{`Ã^HEªŸ$BÛ‰GLŽxàqÀV×2qšO ñõ<Šˆ‰…’šóÁ`Õ*Fnlá¶ý6lAˆ«Q2©û“RÓÁ\5Þõâƒ}TGzÖ>@¯=•^ƒl¸Eª4ïU$zóùžÉwÄ&oåcåòP&?ÎðŽÏQºçQ`“0 9Ú8mâ8woëYÆ°Ex¢¿ÏY”Má³h‘½ˆYOÝn_‘ñ\÷S”C6“BºŠ+S§RºAÚü>·~ïv@’x‡Êã?6R&ÆÀ—…³¬J@ò¶€¢‡©;¹Bÿï;ª8›O…ûVi€×ëv@ªW*ßüüþó;àh'5H8sãØòwÂ;n˜ùZ2:Q›º¿’˜IˆYKxÏ-ê~Ç‡<>Ô'ÑNZÉÿ)EØííÁ}”E$šoŽi_õ‚T/&®Ï$ƒsw¨©S´8Õ• ­š¥r òl"ËL‘:TÐzñìhœƒYôÞ,êÝY?PkÍÏîëhN\M6™¢`2÷–Ÿ¬PÊú”`"V¬;EÌ««”8Ž×Ü‚A•ïX!¢çÐ b~f1#.‰¨†*|bø¼šÞÖÿK„¤£†…nœ‰jË3µ‡vÁN†»E.AW‰É‘ñãe‘`¡ìYù¤z/z2A.´ÀðÐÔÜHˆßn BõŽÒÙ-å5V×"K9ðb™ìC›;ËYü,ž‡3Ì61Ólº7öÕ	“˜§²ê¶`2AIÞêzœD$Ëü.#Mz˜æÆ1iJ"¨tx…)&já6w'Ñ»‘=¦ˆÄË[-8¶ Ø1cl=G\oa™´óîÎ²ã“;hÎ˜hFá@óùÅce˜$J_Î"·¨4†Äî'MÕgüD[ÃO´S	þÌ°Å…J…Ø©‘¨NO´ âƒ³¬2•_r` Yx—üŒÑÏcŒ‰©DPv"G¥ïÀ×&?c7`üX*J	‘‚îiT>VP—Öw
+N¤0Z&ÂuÒ.T1Ê4C)9?-“ZÕ¿ãsèR²¶rËnÞ0¾B¥–ûžr^Ôkam‹x¨,”0]Ä{íõœF½¬¼×\½é»H 2•ÓT‡"vk ,Ï"á{'u,qÙÎË¬B+á|Î"Ø¶kÀ	Ò«xìnU—Þ@‰è)?i%CwØÚ(‡F#3Ø/3©u”…ÔL}P¶nmOïä«š!ÈKÌ.Z‰+å6S¨óJéì^Ó¿£Ôa'IÐE¢ˆMdf\©ãƒ)Hz?êÝžg[ì?£mdë"óq†ÖL©Ç)c(±ãv¦2É,üqÁÍä‘À9rÊ]2—ã½¿Ö1Jà[âÁoß,BÙz‰ˆ´š“‰óë¶“êfÂ2À54¨Øˆ¯YÉß•§w2óü¸Íþoxnº¿“è†Ã¦Œ…R¼9:`£kÁ#f“ÏŸúÝ÷xÚý(:iF1
+Ë;+•²ÈaIA§§š=¶ Gå¯#¢s/¸$•D¹K3= 9´u¢ydÓÆFU¨£RÉDãFjßîPu:Ú«4ò£Ræ²°Ûí7¥}ƒJÂ(®£BÇ˜Uˆ[BCñ~°ÁG¨Š¾Ás¿—Be"ž,!Ëq¯®æY«ˆÈA0íN±E˜÷G%Ã¤ìÿêÞÍp¿]õ„{ÑÒÊuu$B¬-TŸé†ÏbdƒÚî‡ÁQ›ýv'ÙÙîüO¯Wäh/ÌÄrF¢î»•Zˆ“ð-”ú;S‡w¸â¼¨Ø­Å©¥,ÉZ©ó)"®U¤Šg.¸yäC®ÞD÷
+ fB\O*KxˆðZí’Ügj$š÷‡ob‡…*g÷fÏíÛÎdðNpœvP£¬4ô9e8Oã»Ý4–Ñ`—×ZH~avÙ Š *ƒPÐœ9P¢zO	²¬dŒ¢´Ã©Õ%ð®A€"?Ñ.dü¨Aõ=DG
+SFÊ•”.›%
+ýéÏI<Ž´`¡Œ¾Ræ.j3E€\Ä…‰þ®;{ÝFá²ðlšv=;Rw:·óAi÷ôŒ¾]Ty„N÷S"òOÞ•xVD›°ŽJH¬/"#hÛ?|M‚ì½‹Ù›!ª¾ÜG\:W¦ï‰ì;ÂÚÐ¿ÃA½Ü*?_®ŠvÆâï:·û½1õ=Z0È;Q/§LÏÂ­T Uø	úúBJQ	M£äj67×ƒò×¯ÑÑ¿ßn FíÞgÊ.Ar4‘Z4íÿÎ>œh[w=0s$ßP/>ÆŸ9‘RÕ9êé:Aµ©»—l´˜ËU¢t=Èž*{<+®»5¸ò…•ãI„žrþªiÿ8:§eòîÈtßœÑ	çf¦2Ò²ë‘?Š4­T>\~r¼Ì`Ü„&R˜gŠ×ÈpÌ6Ñ’Å5±ât·\˜Ç=/"£ª£Ñ&z¡?Þ@èRfé…‚è’0	F–9SˆM¹YìR²ð(°÷ 2´´Åož¡³e²ÏªH¼Ø Š“‰´äÓš‘ééßLÁ÷pëþ •‰ÔÀ>ˆO¸4Êýw>;€ØŒ"Ù<endnçMÅ%
+½}³rÍD]g;(	%0Q=sí L¨zv­ëÎÇd‡ƒ\·@qÌÔÙ—@I½¼Á9íÈÎ°’Z½Šgø„È²÷,S‡ðÔ*«Æ“Têâa‡ÖÃÂ×QÍ_)<“ÓyùAÃ5K£V‚Ž¬¨åW™°kP;¦ÞßÓyvFEÚO´ü—àï
+)i‹P…òþï@Ë•J[‹0¹ûÇyZL–&’àñçõÔ)Ã¦ú‹ âÍ’Úw/>ÔÇÓxÑŽ¾K .]ŽÂ'_¼×“É÷_Ç3‘•3di%…z$òÚ¨êøCD•¸Å=ŠÁxYRŒ›˜àù¿Ðfµ±Åy2‹èìn´èb|û. GÀpywù\þš)+h	vY(89hÉf2”„!ïzâwTSi´æï»Â|OFÑv¢3m;VlKžéÏå3VÏ•Ôa\ÑKÿf$Õ	òDÝh3<üÇ@é:Ã|NÖ?= ú—õ¡˜9H’æybT…0ké­B}F"ºÒs`%ÏËQ³–—ñÙÅ„éÒR% —hcÅj??²è¤Lïà]¢Ò9W8èuéøY¤â':™²¹z“%ã«K
+L&RfazžéÆ/‚ü¤ ôU‚ü”ÒÈ*¢t¦ž· V“u¡n¯"~vÝ?Í<švKwŽR0˜ÏE*O-ÏÂäÎ]}œ>QPb/ŒÓ<7½gåLõØÒ(/…3Ÿ¥q\
+^Eg£êš+œ	øÿÞ&ÀÞ3ffqzs"â1a‰&|®ô´	ñÚ?ùìÄºøËÃ›76›¨CòòÂkLÏ±Bþ%E8y„?W±‡Ïæå¨ÃÑ0ä®¬žvõÜ5¶
+oÐ*êì ˜¥®¼ë¡˜­W$H•Ôøï·Fé,šs)D­Ÿ±ð©ò=(ã­û¿3Ž’H|þ@.ÈÖ‘ú§¼eƒP;jÃW‰²Ö¤õ¿Qûåû¬£&çð¨rÜFÄ|ÜƒáºG_Û_l6WTC±ôRïÖ&½ë¦aá¦€ýÜˆ,ôápú4ç0ê‚ã®¯KG/Z©èH}^à\ð\¸tWÚPÖƒæ›ÑLÀ8Ëæq1å Ä9«‘ž|Â¤ÊlE¨<­WDHÝµá;ÚîxÕ“_Û¹XÕ\éÁÈ^©>ãÑHŒ@¼œ=¼¥§S‹lœþª²Ø³/ô´`&º.óAhÝ?×íö7šwp=û¿óøVRu9ŸC*k@–òWvP~ëñïn(®"& Ï°L¶¨Ü÷¯æ³	6^hÛ(¢,©’ÚÑ¯ÆJÞ'ô-¹g4oàžL¸3•Í– õ5¾"å)Rå³| å“©îz@å™¿+ïÙ‚Ÿ“hg³‰rX¥[ù¢¸v>S b·œaØ)5ðÕð"¼d£èJä¬©0ÔÓÆÈ›É’jœer§î®+Ñ¢sûªdó ‡ñJX¬.©gX«+n¦ò[Ojéu³2Ü°)Å8Eø'3•ã)É+•Ø_M1TÑ/œßÈr±	Â¤Ê¬W"5‚Â8™,g/Îqÿ8/kmø‰òA+tëë‘ZT•èŒ’t–D•ŸGì™
+Q.AŽÇ,ü;ù|ºï®—‹œ+&D#‘¥‹ˆy¸¼z™ìÜ–Â±%Ø
+e˜9PO•ä^h“w¡gØDe*Ñ[užE¥¸,Tz"¾ý÷áeC>ÿhZVÙ\™ºS_¦;.ðN."/‰Üº,<¢…®Þ¨N”åg›qZ]Zþ£$ZôÓi*'ˆIëë¥¡E*Q>øùg®L	¼IÜ´t9rêwùrŽÊ[¢LÃD¨¯ËAÀ¢&_G˜F2%·bÊ.&¦+2¬ÎÙ«JƒP!r£‹µÕA»¡ ¼‘˜…ð–™xÿ±‡ËoYtõâ3Ÿ9ß¾áú¡û‚+<A_‚4ô3~ÎÕ’·IG7¾–ÙOûÇÁ…*åºE”n1hŸU|ªøøL)/úýIó*Ïc¦î®±áã¹üÖ¢qðPî¨Œ ýFNÂÿq²ÔCY­6"£÷,Ó[•áÈ?7ÐÂ¹‰rw~Êz ,ÍÂÇ7pŠúêR>+E–j@ðø•¢Ñ+Ov.ùøÎÂ+»d75²í0: 	SÏþÑÑÆÍ‹.tìpÄüŒi•åîñ+u½• Æ¯R³WáYÄûš©-x Ž—ËO/ªä°‹¿B9Rc1TãM»aß%_N–Ú!sÛx4°ÐÈ™.R–^õ<6bLfš»¶Ñ3¢ŠÒy+ç¬ˆ¹‚—¯þuqŒÊY”õ…[â³ø)KåÁyÅ£B‰Ê^Rìü_¼lÚ%ü„2î!L—ƒ4f“\O*M-å)Ÿx©Ÿ¿ˆÝÇ,FaD%¨ÛpoÝý@4çuÊïŒá»(¼ñfŠ=€zÛÑb]Þ„šš(ÙxÝ+&áÁë(–a&’4}ŸÁ*”¤îßÃL¿“ŠØÉ~íÞÂ ÙñK¯ÁóŠýJ\~KTBãøeÛH"“×µ·H½7~FêžaÑžè‚žƒyl©ñy¤Lq‹/Î…1y$"ÑSpœ"	§Ô¢¯¾inPrº`<ÎÆSfìK`ÒóX÷UO¡®+-è­àÒD÷ÜÂD¿U"~¶q(AØ%hZ©Å¼¹XELC=PA¯ƒ˜Íwù¢ë »· j£9h›ˆé1Áþ$iìiüÑÄ=¨jÁ,BI¹$·SšûõãùcŒØÀŽÒ÷"r@Ô¬¯Q$áDp8QZš)Eé©§‡Ù :†~û¢Ò—ƒWO‰×=‘Ä¨ìv	”B?hñ'pFÞÚXÌÍ·š¢î¸#õd*ÄE¨s:Ž«(Ád1Ä¶ž˜½˜h“Ø}ÃjyB{ƒ,oB‘Ç÷6<Ó½ÐÈUBS÷Lž%¼O
+êånÒ"FPÚ°Àkß±ØwD~XÑé1Ã"@ügžßLBåR%§KP’úñ]ÖQ7™hËïJgL »wqñ¢÷PÞ‰JÞŠ-˜5È¥‰üKrSJyRS°z êP)s)Ñ0ÕrbHu¡2þ·¨´¤2ÎÎÈ]tt¡??KÀ¢X1!bå³,;“0yó˜«]L]À2æÅê’ñ›7ÁEAýä.är@.j8(“1â`ÈþL	Ñ7øÓo8z1†#QÛ3›U3¦™Ó½#ÂÝ³O¤DôÁý3‹aÙItª3{0z(ñ½ø÷=Ë¦ÀôßË
+‹þô,³Î‚F´]DÍC+}œ‚`×$”Ä*Ò×³Iì†ñS7GwÇô`jÍ§Òí¿§vìLŒ@YºÜø²÷èµ6ØYãÜ+l†ØÄÝL%ŠI…UF×èoÂTû>ú1Fd†ù|Âä]P©ùÎãIäèaR»jØï@¦ÿ2ß~ûœµÖÑ­;Ñˆ­$²Æ²ˆµIDšvJñN¤(e Ãã«'6Þoç}i;/ª­¾õP;š›vçÚ/rï÷–÷c<iê`¡ÀEr%ÂÄ†_ìþœ`Á¼<»±ûàþêÄæc n)T"6šÅ·5“‘ù§TRÍyXvkðv%Çá·¦è¹,ÎeOIé<j‹ãŠ‡I"€=~*~ƒgÃ9>Àx~Â$¾Ö*m]Îì®o]0Î|Ï#™É§Zü{J‹Ç1Qpb¥$âÔ¦Cåõ	óxº É£Í&…T•Ã³(K‡RþÄ3àB†äÒ(â{ÂÎ±þ7»½¢’Á wlò™Edçë-bdP	ŽS]…8œÚe8ã)°äÖ]<4¯©=ÑÇ&;Æ7 ŽèH¤xlÂ‹ã‹@¶+.jH¸wSñC„IM¨O”C•IAÊÔžÆä½*ÏÒ7¾ÇŽ¾RË8î Q†ÐBDäÛIÓ-C·Åæ‡+âË/GUH)Ü¨t·A‡#~ÿB„ØÏzã©HR³lÕ0J?œÁÛ0"õ€EÇfîˆ0mdøÆiê}‹‰—xÄ{¨0“ñ½I¥`§ƒá•™ïÔõÅÄ¹RÇ_¦ôññÖ®¾/Ê“ŠÒ…ZgŠœYÈ·”ic€æì…¼~œÞ^¨n¡QWžg<Ijíxnb$ã‰ïN•Ÿ©Ç~,/ZLpuÁ"uS„ÀoßWB…àã•D*Ù´»ÐÂc‚~é9ˆ„w¥0áåI¹ìÏlF[ŸŸ}îÅXPùm¤Aå‹èlÌ"ˆ²Ri¡2lºç2ÃÛ³düüÍ|=Lš>sSÆ‹ß7-j+-êj1ß)j Ãùa”Ãaj-‚¿ä*~ß^ø•’ð£TÊ¦âaµ[#œr_XÿŠ5½ïAÄIdácÃcp=.ü¼Aeµ%H‘âe‰ÕÂ?'ÊKDz9É;ÓýQ‚¨t]AQœâmüŠ:Ä2oT.ó4Œ÷ÓõÞÁ2D	ºá6R…/b’þådÄÅMjî/=gº í|=9O’o²”¡[ê×ã;¨äÄïC•f3ŽîL×ïgÎËß;R®ÒD¦íUt7&Š	("_i¾¶“2÷7—
+Ô]¯KÆ¦¦¹ÚGÎ0š„©§15(ÃñÐ×LƒF¯»öQ(w—Áù9Ó‹á§#3A5bnðf°*ÃQHìO½÷€dp¬@¿{¡nÉŽ‰ùYÂtfî\ë9ÄÌÂ£´Òø,¯Vêlä9b¢ÐÓÕ_Kp^›Œo»ye÷iÏ¼Ùôm‰ô*¨wåtF-d‚Ú
+xs#Uˆa'6—Æ±\Äˆ¢UÈÅu‚¥ÇÔPÇVë1žQ˜>³­Ž†ƒO@êG1gt
+*™ò6URd‘@.ðÂY¥^·Œ¯%D†a|ÏB(¼KX–ØDÅ	$úÞ	ý³„éÉRÇ‰ø¤¸ÌdâÎBE*ÂËÂb7ÜLÁ;î4ü¥ëd€N¹è=pj5¾—îV¿èg§$P ådˆÃUgA–"º5(©Vê eÂ´‚ªõc9ZÆ‹>¸]23Œ_½{XWÈReU>ªäûÀ.£VêýÃEpD„`Š÷H„hY=…fÃÕàøaÓL#UUÆú©ü"0·O Æl;‘è‘ÞG×š’¨C§BzùØÐ¸ÞÇÄh¢nµ×t¹JœÐ]Å=²Qª\½É’aÆs&ÌÇYÅœ¸½Až*µ[ãü¸Aµ~VMøªcA„á	)Y„ÎTŠãn©"Úï±l3Q	®?šðU
+}ÉfMD˜¶ ÐIà,JŠ§‰r+³«A¾{ï3R4Â9›AMš‰(e"MxNS@ yDÐü×·a†ñuŠ
+çÊœfÎ GcfåæbùÛ*S .±gi 2ÜJ,ÏíAÙNe$K‡Äâ+ƒ˜å™øŽÂì½iÞ)hªÕå«JÅïÝÃï<‘2¶P	.QDÀJ]rYÞ‚ñ/|^gP“†ïVÃ0ŒoTRhÑE°âÖ(¹°©5‚²KÃÔí¿˜3$D‡¥šVŸè=ã°$Œ¿*[éRq4Äû«Îõ'Ï(Æ¼l¤ª0‘˜h(ñ§ß›(Ý¡š4aiìm¡²\iÌ÷cMuÅe \W¿’Ã(Ã0^D]Âr\"åàhì&æaMa
+¼_ékÌƒSÆïD]n™üK<ödoæÑ÷UéXBåù•ôsAJF*W)µ‘ÛïÙÃt×lÀFÇbÑ³H_(o	•§•^L‚‹PÑ˜³~ÿ·‡cguÉ0ã™&X€jŸÞ†ÁîäåHTÖ˜ƒÅíÒ–=5ü®ÐÃ†ÂÓSe¥“ #¢‰$“‡ôN°èÿÓ÷ÝäèÄ1ë ƒ©4Â6•‘}Hihè:9{A&™¡ÿJE á;‰B¥Œ¯ó ÞÀ¿7³±ÛÞ%Ã0Œ×Q™†ƒ™q{àÇáÙa‰Fbðâ8D%§#ðWÃ£ ý.#¨nU¥*Æ`ìÇo§rÞHÊÇÀA†²Øþù=p®Zk”K%òÍD¦§W'‚-Uyt$RODh¦”ù9ˆXD’¥"<zQÓGALð{š$†a¼ aRÓçk-”-ÀÞ•®A–.?éc:P•:èãA³ªì¤Ô¥Vªp{¹îUÍ~HaZÅ¼½5Qá=Ø86T/†£Ž‰Ò$:3'"1+•S«è~‹¢Ô˜“J3ÃË£?Ã0ãkÈÃyë‰²Ü™Ò{üx@š¾¥„Á˜P–˜0©Q'œ»£
+÷€@]Í„ÿß™ßó®5f¦±ùKY«P…Xu¨lÛ‹H‚> ]ü99QÁ“¥¡íÿY¦¹‰8lÚùJ†a/J˜:1•½6•–Ÿ)A—ûM.j"{Pût°_d.$‰v- 6p9näR™Ÿ1i~æQ@˜Ð·¶Q™‘¯VàP…é…ihd6±ú4Pin¤ÀÔ+abU©^½hü8Á¡Âø²±Û0ãÅÕ¥ž:†rcý‘™9ÿ’4ù²ªB¿Ó—ÌLS?CŒ‚éA(¤Fðâ¿‰³GþÌkzvÂ4Âõ±B„jãBeËâz09Šw¾õ¤4a(åL^«"ÚÿkPnÎk»WË}ýnc·aÆk$A(p i£ö`QŒÊr†ïr™¥ã²ÿnJ]øYŠ_ì@[ÅUT#2¨)U¡-.Üh(ñüÌF`ð­ðžx^¡2d¹T:({aì™ê%j  É•¼J\B-BEÚ‚®P&Ç•ÈÒ|6úÁ0Ãxu	»ÁŽæÇ•æ
+µÌ÷”¿ÓQÙåŸœø½¢$êK#´0R,Fá{¡¥¿
+©!Êº¬P,àõ¹vL2²?ò¢K×dì]ø˜¸»l¥6ýJ”LUyŽÿÄQ'èSÆûxÎêÁŒDîž› OlØ7Ã0Þƒ0”à¼ß©0ídòí)¦gŸJ d\¡’]P¢h±EÅóÞX!áE4‹ôî*ÈÁ^Ÿ‘½[/pÍôäwÛD€%›£gð!‘ÉÔ=×
+S/Ìâ3¨J‰rÀŠ0xo¢Wƒsˆ™J¨\õ4‡Î%8Ã0Œ7"M¸£_ºâêóå6(Ë]H=`%¡
+{¡4bFØ ržTæÓÕ«U©ÄRƒî·"¦Ô³úÄ&ç™ÈZÇC‡_€dO@66šÓ6‹c‰³ÜF30QYhM¡Ÿ©G[`ðÞ…'ÍÝ+œÓþ™½h†aÆ}‹*6ScPì™’Ü&üLy†F`‹#+xaì)¬°­è]À$m&5ÅMtVÑE¥¦JÃs±àw/vÝtb(m«¿ˆ²g!S=–Õ¸ûl…¯'"k™~žŠzØN{LrOô;aJøÅ~%Ã0Œ÷T—¸´µP;ø½àsù_2ù[0ÓfTå¬!RyN=”+ù8[i¥pÊ­a|ßéç]?þ0î…‰ö5rsó"\ÊÞtª™t)ÈÆª¤vÕÀÈ½Éõ3€e¾	æ"~Yç¦a†ñ¼
+Ó…J×CÅÔÂ,Ù3’€0­äo™D aOóçº(ÞOO—…Òº•w¥b¸‘™½ˆ1)Y´Ã_^øºé 4¶„=ªr.vî3é˜Ð 	¯"¤Jnª›•¤LvckÖa†ñž¤i Õ€³˜öÆ¢Ó2„o!	ÏJŸs aG£1.¤’ä­I""@ù”TDÀ.ŒÝE,¬<lõ-¸^®çï¨³rfìI“GÂZÒÅÆ´pÂwT,ëc’d†a|0YPÆªwø—ê‰E+S¹n¦ª#¢æ Vø|ŸµG©ÁQÙ:¬xpÉm‡™a+uâ¡·ê-XPò˜A˜ŒÖg<o»HÝ3U¢ø‘â‰ÙP•fÊ-Déœa†!IN|²uö¤©õïÙ\Ž+(î¦ëEéNÁ@U¨ÝT›‘QiÔš‹‘”D2ÿšÐ_XQb’:BÙêˆ°lÁõ´ÄlAºº*í•ªUrsA”FøÉ`†a QB?N|/'Ë,­²‹ò=±¥À4ûLmæ=”ÙHäN@’Ô¼¤tï²Î&æþb8öàòÂ×€.dÔ()½6O£ù{GfìJe´,~+P‰®³
++üý*2³Fi†aÈ±r‚^ ýÊY"µQ;yrNå”D	Ò©V[¥2–6AÚ
+¨V‰R»»³ÉÝ/pmt"4ò¯â÷çßbIÔñ¶çFùÝ²(£F^¹MäB¥‰Èw¢÷ô7iÞOÃ0Œ7 A7¨Já	hdÈ~cYî,aÚ¨+­ÒÀÖDŠÒJÝn™U]OHÀvRª+\©Sj‚N°§ž÷U×”èHì@T3ãjp¼71³ÉR¢q'{@Þ+ŒZÁóWÉNDœ^2+Ë0ÃøÂ$T„Kƒ4Ý xä_‰šVA‚2(>…ŒL‹ji¤6oÂï¢Êƒ™Œ¿3øºþš¼ßôšêÒÝÑu4Q©¤$Vð†­âürWæ*TÇ*á•fÓ%P6‘Ø=S‡æå]Ï«a†q’T‰£ŽºÓfá9›œÌe™ý õ»
+ò´Š’]r¨ÌÄEüþI¤}P’&2 ïª,¨”=—°àš™!ÚDÜC!oÒ&T#åãÀÐ~öJa¥‰ºÿ¦±ûL†a§U(ò1q?­[ã&Ž‚2s¶`$In|ï˜}£…•MÜuHÍbXï`o‹Vœ ÇåÝž"*¡•ÔA4þ'êfK mÔõÈãRV*á±m¢YpƒÏ¥a†qa"âÄéÚ£ð‘l7ÌêRiÍQúr¦É·º¡”	=…j£Ôo,	MD˜TÎÓßÌ7W•þ™ÙG„Ù{ê¨+ öðy*b1zÙªè’[h”N"õª¹{y§œ,Ã0ã{•¦Ž†Üv 2!LQ¾ŽÊÆ9êº;Jsæ=33uFe2¯ð~V L˜0îQab)þþB¤i¤YkP’ãA¼+œ#4ns9v%‚Ì]3øÑ|>Ã0Œ»ÁŽ^˜²}}Ë¤ÆKÔÔ§”å¶àçnôèJê.´©I‰T,Í­ù48ÝùÔ5Ó‹/._rêÍ×EÉ´PJ<F@,ð3G*¿.¿†aŸV•„BÐã-jçŒ”ÎZªÓÖhßDGš¦B©
+ìkÉä‹™(a)n´²tZiâz¾F˜5‡éÙ]à#[©œ¶’÷©Pùn?Ãÿ9Ñè_Ã0ãÛÔƒY¼ÅÉôG^£EyŽf€1¼IÏB¯Låœë÷Œô~þz–|ÜM :Rèzj"@õr!OÑ"ÀDçÿª‘®ÓÑçÒ0Ãø‰Å;œFš—6
+Ï›rK 8ÕÀßtf²=ç%±ù·P{…nªDª'bhEék•§Ž3«(²¢§á¶E:Œðq¢ÞBJ£ƒ'Ã0ŒGPÐƒ2Àb¦SÁŸ1ˆ«Q+Å]HARjÅ@‹k÷ê3àùÚ"r…q.é!Q)l¢ï1Y2Ã0~vQûó'XNðÅŒ®*ÆXäÀãTÆ­`wT	Ò¿UžR¢‘‰¥^´¾›,ýìµÕœ¿'Ìã#yŸ>t/ú<†a¿©pÞÎH
+ÍL™F™2oJc¬…šù†jú‘VQ®Yáã	”/ìŒšDI±Ç²Ïôï‘ñˆ•½e†aÆs,l´ã¨,‚¤†Û÷­ÅRÙ¤kÆì"|+HŒF*Ûä{á,)«†a†a|+yêD™äJ\ðOÌÚYÄ¸‘™”¢åø÷+©Güo'ø&*Ù˜†a†ñã„‰;ŸaÎåò‰^³¹rÿ·¡«eìlC#±a†aÆ£'ìtêéÕ‰ytÍbk*@-S°a†aÆS’(E‚¬ú†a†a†ñ+¹†a†a&Lf‡†a†a‡DÉGÁ0Ã0Ã„É0Ã0Ã0Ã0žg£îÍºa†a†	“a†a†a<Iï<,Û0Ã0£M˜zà†a†a´	ÓÍeàÿsÅ1syÔˆç    IEND®B`‚                                   root/go1.4/doc/go1.1.html                                                                           0100644 0000000 0000000 00000116737 12600426226 013357  0                                                                                                    ustar 00                                                                0000000 0000000                                                                                                                                                                        <!--{
+	"Title": "Go 1.1 Release Notes",
+	"Path":  "/doc/go1.1",
+	"Template": true
+}-->
+
+<h2 id="introduction">Introduction to Go 1.1</h2>
+
+<p>
+The release of <a href="/doc/go1.html">Go version 1</a> (Go 1 or Go 1.0 for short)
+in March of 2012 introduced a new period
+of stability in the Go language and libraries.
+That stability has helped nourish a growing community of Go users
+and systems around the world.
+Several "point" releases since
+thenâ€”1.0.1, 1.0.2, and 1.0.3â€”have been issued.
+These point releases fixed known bugs but made
+no non-critical changes to the implementation.
+</p>
+
+<p>
+This new release, Go 1.1, keeps the <a href="/doc/go1compat.html">promise
+of compatibility</a> but adds a couple of significant
+(backwards-compatible, of course) language changes, has a long list
+of (again, compatible) library changes, and
+includes major work on the implementation of the compilers,
+libraries, and run-time.
+The focus is on performance.
+Benchmarking is an inexact science at best, but we see significant,
+sometimes dramatic speedups for many of our test programs.
+We trust that many of our users' programs will also see improvements
+just by updating their Go installation and recompiling.
+</p>
+
+<p>
+This document summarizes the changes between Go 1 and Go 1.1.
+Very little if any code will need modification to run with Go 1.1,
+although a couple of rare error cases surface with this release
+and need to be addressed if they arise.
+Details appear below; see the discussion of
+<a href="#int">64-bit ints</a> and <a href="#unicode_literals">Unicode literals</a>
+in particular.
+</p>
+
+<h2 id="language">Changes to the language</h2>
+
+<p>
+<a href="/doc/go1compat.html">The Go compatibility document</a> promises
+that programs written to the Go 1 language specification will continue to operate,
+and those promises are maintained.
+In the interest of firming up the specification, though, there are
+details about some error cases that have been clarified.
+There are also some new language features.
+</p>
+
+<h3 id="divzero">Integer division by zero</h3>
+
+<p>
+In Go 1, integer division by a constant zero produced a run-time panic:
+</p>
+
+<pre>
+func f(x int) int {
+	return x/0
+}
+</pre>
+
+<p>
+In Go 1.1, an integer division by constant zero is not a legal program, so it is a compile-time error.
+</p>
+
+<h3 id="unicode_literals">Surrogates in Unicode literals</h3>
+
+<p>
+The definition of string and rune literals has been refined to exclude surrogate halves from the
+set of valid Unicode code points.
+See the <a href="#unicode">Unicode</a> section for more information.
+</p>
+
+<h3 id="method_values">Method values</h3>
+
+<p>
+Go 1.1 now implements
+<a href="/ref/spec#Method_values">method values</a>,
+which are functions that have been bound to a specific receiver value.
+For instance, given a
+<a href="/pkg/bufio/#Writer"><code>Writer</code></a>
+value <code>w</code>,
+the expression
+<code>w.Write</code>,
+a method value, is a function that will always write to <code>w</code>; it is equivalent to
+a function literal closing over <code>w</code>:
+</p>
+
+<pre>
+func (p []byte) (n int, err error) {
+	return w.Write(p)
+}
+</pre>
+
+<p>
+Method values are distinct from method expressions, which generate functions
+from methods of a given type; the method expression <code>(*bufio.Writer).Write</code>
+is equivalent to a function with an extra first argument, a receiver of type
+<code>(*bufio.Writer)</code>:
+</p>
+
+<pre>
+func (w *bufio.Writer, p []byte) (n int, err error) {
+	return w.Write(p)
+}
+</pre>
+
+<p>
+<em>Updating</em>: No existing code is affected; the change is strictly backward-compatible.
+</p>
+
+<h3 id="return">Return requirements</h3>
+
+<p>
+Before Go 1.1, a function that returned a value needed an explicit "return"
+or call to <code>panic</code> at
+the end of the function; this was a simple way to make the programmer
+be explicit about the meaning of the function. But there are many cases
+where a final "return" is clearly unnecessary, such as a function with
+only an infinite "for" loop.
+</p>
+
+<p>
+In Go 1.1, the rule about final "return" statements is more permissive.
+It introduces the concept of a
+<a href="/ref/spec#Terminating_statements"><em>terminating statement</em></a>,
+a statement that is guaranteed to be the last one a function executes.
+Examples include
+"for" loops with no condition and "if-else"
+statements in which each half ends in a "return".
+If the final statement of a function can be shown <em>syntactically</em> to
+be a terminating statement, no final "return" statement is needed.
+</p>
+
+<p>
+Note that the rule is purely syntactic: it pays no attention to the values in the
+code and therefore requires no complex analysis.
+</p>
+
+<p>
+<em>Updating</em>: The change is backward-compatible, but existing code
+with superfluous "return" statements and calls to <code>panic</code> may
+be simplified manually.
+Such code can be identified by <code>go vet</code>.
+</p>
+
+<h2 id="impl">Changes to the implementations and tools</h2>
+
+<h3 id="gccgo">Status of gccgo</h3>
+
+<p>
+The GCC release schedule does not coincide with the Go release schedule, so some skew is inevitable in
+<code>gccgo</code>'s releases.
+The 4.8.0 version of GCC shipped in March, 2013 and includes a nearly-Go 1.1 version of <code>gccgo</code>.
+Its library is a little behind the release, but the biggest difference is that method values are not implemented.
+Sometime around July 2013, we expect 4.8.2 of GCC to ship with a <code>gccgo</code>
+providing a complete Go 1.1 implementaiton.
+</p>
+
+<h3 id="gc_flag">Command-line flag parsing</h3>
+
+<p>
+In the gc tool chain, the compilers and linkers now use the
+same command-line flag parsing rules as the Go flag package, a departure
+from the traditional Unix flag parsing. This may affect scripts that invoke
+the tool directly.
+For example,
+<code>go tool 6c -Fw -Dfoo</code> must now be written
+<code>go tool 6c -F -w -D foo</code>.
+</p>
+
+<h3 id="int">Size of int on 64-bit platforms</h3>
+
+<p>
+The language allows the implementation to choose whether the <code>int</code> type and
+<code>uint</code> types are 32 or 64 bits. Previous Go implementations made <code>int</code>
+and <code>uint</code> 32 bits on all systems. Both the gc and gccgo implementations
+now make
+<code>int</code> and <code>uint</code> 64 bits on 64-bit platforms such as AMD64/x86-64.
+Among other things, this enables the allocation of slices with
+more than 2 billion elements on 64-bit platforms.
+</p>
+
+<p>
+<em>Updating</em>:
+Most programs will be unaffected by this change.
+Because Go does not allow implicit conversions between distinct
+<a href="/ref/spec#Numeric_types">numeric types</a>,
+no programs will stop compiling due to this change.
+However, programs that contain implicit assumptions
+that <code>int</code> is only 32 bits may change behavior.
+For example, this code prints a positive number on 64-bit systems and
+a negative one on 32-bit systems:
+</p>
+
+<pre>
+x := ^uint32(0) // x is 0xffffffff
+i := int(x)     // i is -1 on 32-bit systems, 0xffffffff on 64-bit
+fmt.Println(i)
+</pre>
+
+<p>Portable code intending 32-bit sign extension (yielding <code>-1</code> on all systems)
+would instead say:
+</p>
+
+<pre>
+i := int(int32(x))
+</pre>
+
+<h3 id="heap">Heap size on 64-bit architectures</h3>
+
+<p>
+On 64-bit architectures, the maximum heap size has been enlarged substantially,
+from a few gigabytes to several tens of gigabytes.
+(The exact details depend on the system and may change.)
+</p>
+
+<p>
+On 32-bit architectures, the heap size has not changed.
+</p>
+
+<p>
+<em>Updating</em>:
+This change should have no effect on existing programs beyond allowing them
+to run with larger heaps.
+</p>
+
+<h3 id="unicode">Unicode</h3>
+
+<p>
+To make it possible to represent code points greater than 65535 in UTF-16,
+Unicode defines <em>surrogate halves</em>,
+a range of code points to be used only in the assembly of large values, and only in UTF-16.
+The code points in that surrogate range are illegal for any other purpose.
+In Go 1.1, this constraint is honored by the compiler, libraries, and run-time:
+a surrogate half is illegal as a rune value, when encoded as UTF-8, or when
+encoded in isolation as UTF-16.
+When encountered, for example in converting from a rune to UTF-8, it is
+treated as an encoding error and will yield the replacement rune,
+<a href="/pkg/unicode/utf8/#RuneError"><code>utf8.RuneError</code></a>,
+U+FFFD.
+</p>
+
+<p>
+This program,
+</p>
+
+<pre>
+import "fmt"
+
+func main() {
+    fmt.Printf("%+q\n", string(0xD800))
+}
+</pre>
+
+<p>
+printed <code>"\ud800"</code> in Go 1.0, but prints <code>"\ufffd"</code> in Go 1.1.
+</p>
+
+<p>
+Surrogate-half Unicode values are now illegal in rune and string constants, so constants such as
+<code>'\ud800'</code> and <code>"\ud800"</code> are now rejected by the compilers.
+When written explicitly as UTF-8 encoded bytes,
+such strings can still be created, as in <code>"\xed\xa0\x80"</code>.
+However, when such a string is decoded as a sequence of runes, as in a range loop, it will yield only <code>utf8.RuneError</code>
+values.
+</p>
+
+<p>
+The Unicode byte order mark U+FEFF, encoded in UTF-8, is now permitted as the first
+character of a Go source file.
+Even though its appearance in the byte-order-free UTF-8 encoding is clearly unnecessary,
+some editors add the mark as a kind of "magic number" identifying a UTF-8 encoded file.
+</p>
+
+<p>
+<em>Updating</em>:
+Most programs will be unaffected by the surrogate change.
+Programs that depend on the old behavior should be modified to avoid the issue.
+The byte-order-mark change is strictly backward-compatible.
+</p>
+
+<h3 id="race">Race detector</h3>
+
+<p>
+A major addition to the tools is a <em>race detector</em>, a way to
+find bugs in programs caused by concurrent access of the same
+variable, where at least one of the accesses is a write.
+This new facility is built into the <code>go</code> tool.
+For now, it is only available on Linux, Mac OS X, and Windows systems with
+64-bit x86 processors.
+To enable it, set the <code>-race</code> flag when building or testing your program
+(for instance, <code>go test -race</code>).
+The race detector is documented in <a href="/doc/articles/race_detector.html">a separate article</a>.
+</p>
+
+<h3 id="gc_asm">The gc assemblers</h3>
+
+<p>
+Due to the change of the <a href="#int"><code>int</code></a> to 64 bits and
+a new internal <a href="//golang.org/s/go11func">representation of functions</a>,
+the arrangement of function arguments on the stack has changed in the gc tool chain.
+Functions written in assembly will need to be revised at least
+to adjust frame pointer offsets.
+</p>
+
+<p>
+<em>Updating</em>:
+The <code>go vet</code> command now checks that functions implemented in assembly
+match the Go function prototypes they implement.
+</p>
+
+<h3 id="gocmd">Changes to the go command</h3>
+
+<p>
+The <a href="/cmd/go/"><code>go</code></a> command has acquired several
+changes intended to improve the experience for new Go users.
+</p>
+
+<p>
+First, when compiling, testing, or running Go code, the <code>go</code> command will now give more detailed error messages,
+including a list of paths searched, when a package cannot be located.
+</p>
+
+<pre>
+$ go build foo/quxx
+can't load package: package foo/quxx: cannot find package "foo/quxx" in any of:
+        /home/you/go/src/pkg/foo/quxx (from $GOROOT)
+        /home/you/src/foo/quxx (from $GOPATH)
+</pre>
+
+<p>
+Second, the <code>go get</code> command no longer allows <code>$GOROOT</code>
+as the default destination when downloading package source.
+To use the <code>go get</code>
+command, a <a href="/doc/code.html#GOPATH">valid <code>$GOPATH</code></a> is now required.
+</p>
+
+<pre>
+$ GOPATH= go get code.google.com/p/foo/quxx
+package code.google.com/p/foo/quxx: cannot download, $GOPATH not set. For more details see: go help gopath
+</pre>
+
+<p>
+Finally, as a result of the previous change, the <code>go get</code> command will also fail
+when <code>$GOPATH</code> and <code>$GOROOT</code> are set to the same value.
+</p>
+
+<pre>
+$ GOPATH=$GOROOT go get code.google.com/p/foo/quxx
+warning: GOPATH set to GOROOT (/home/you/go) has no effect
+package code.google.com/p/foo/quxx: cannot download, $GOPATH must not be set to $GOROOT. For more details see: go help gopath
+</pre>
+
+<h3 id="gotest">Changes to the go test command</h3>
+
+<p>
+The <a href="/cmd/go/#hdr-Test_packages"><code>go test</code></a>
+command no longer deletes the binary when run with profiling enabled,
+to make it easier to analyze the profile.
+The implementation sets the <code>-c</code> flag automatically, so after running,
+</p>
+
+<pre>
+$ go test -cpuprofile cpuprof.out mypackage
+</pre>
+
+<p>
+the file <code>mypackage.test</code> will be left in the directory where <code>go test</code> was run.
+</p>
+
+<p>
+The <a href="/cmd/go/#hdr-Test_packages"><code>go test</code></a>
+command can now generate profiling information
+that reports where goroutines are blocked, that is,
+where they tend to stall waiting for an event such as a channel communication.
+The information is presented as a
+<em>blocking profile</em>
+enabled with the
+<code>-blockprofile</code>
+option of
+<code>go test</code>.
+Run <code>go help test</code> for more information.
+</p>
+
+<h3 id="gofix">Changes to the go fix command</h3>
+
+<p>
+The <a href="/cmd/fix/"><code>fix</code></a> command, usually run as
+<code>go fix</code>, no longer applies fixes to update code from
+before Go 1 to use Go 1 APIs.
+To update pre-Go 1 code to Go 1.1, use a Go 1.0 tool chain
+to convert the code to Go 1.0 first.
+</p>
+
+<h3 id="tags">Build constraints</h3>
+
+<p>
+The "<code>go1.1</code>" tag has been added to the list of default
+<a href="/pkg/go/build/#hdr-Build_Constraints">build constraints</a>.
+This permits packages to take advantage of the new features in Go 1.1 while
+remaining compatible with earlier versions of Go.
+</p>
+
+<p>
+To build a file only with Go 1.1 and above, add this build constraint:
+</p>
+
+<pre>
+// +build go1.1
+</pre>
+
+<p>
+To build a file only with Go 1.0.x, use the converse constraint:
+</p>
+
+<pre>
+// +build !go1.1
+</pre>
+
+<h3 id="platforms">Additional platforms</h3>
+
+<p>
+The Go 1.1 tool chain adds experimental support for <code>freebsd/arm</code>,
+<code>netbsd/386</code>, <code>netbsd/amd64</code>, <code>netbsd/arm</code>,
+<code>openbsd/386</code> and <code>openbsd/amd64</code> platforms.
+</p>
+
+<p>
+An ARMv6 or later processor is required for <code>freebsd/arm</code> or
+<code>netbsd/arm</code>.
+</p>
+
+<p>
+Go 1.1 adds experimental support for <code>cgo</code> on <code>linux/arm</code>.
+</p>
+
+<h3 id="crosscompile">Cross compilation</h3>
+
+<p>
+When cross-compiling, the <code>go</code> tool will disable <code>cgo</code>
+support by default.
+</p>
+
+<p>
+To explicitly enable <code>cgo</code>, set <code>CGO_ENABLED=1</code>.
+</p>
+
+<h2 id="performance">Performance</h2>
+
+<p>
+The performance of code compiled with the Go 1.1 gc tool suite should be noticeably
+better for most Go programs.
+Typical improvements relative to Go 1.0 seem to be about 30%-40%, sometimes
+much more, but occasionally less or even non-existent.
+There are too many small performance-driven tweaks through the tools and libraries
+to list them all here, but the following major changes are worth noting:
+</p>
+
+<ul>
+<li>The gc compilers generate better code in many cases, most noticeably for
+floating point on the 32-bit Intel architecture.</li>
+<li>The gc compilers do more in-lining, including for some operations
+in the run-time such as <a href="/pkg/builtin/#append"><code>append</code></a>
+and interface conversions.</li>
+<li>There is a new implementation of Go maps with significant reduction in
+memory footprint and CPU time.</li>
+<li>The garbage collector has been made more parallel, which can reduce
+latencies for programs running on multiple CPUs.</li>
+<li>The garbage collector is also more precise, which costs a small amount of
+CPU time but can reduce the size of the heap significantly, especially
+on 32-bit architectures.</li>
+<li>Due to tighter coupling of the run-time and network libraries, fewer
+context switches are required on network operations.</li>
+</ul>
+
+<h2 id="library">Changes to the standard library</h2>
+
+<h3 id="bufio_scanner">bufio.Scanner</h3>
+
+<p>
+The various routines to scan textual input in the
+<a href="/pkg/bufio/"><code>bufio</code></a>
+package,
+<a href="/pkg/bufio/#Reader.ReadBytes"><code>ReadBytes</code></a>,
+<a href="/pkg/bufio/#Reader.ReadString"><code>ReadString</code></a>
+and particularly
+<a href="/pkg/bufio/#Reader.ReadLine"><code>ReadLine</code></a>,
+are needlessly complex to use for simple purposes.
+In Go 1.1, a new type,
+<a href="/pkg/bufio/#Scanner"><code>Scanner</code></a>,
+has been added to make it easier to do simple tasks such as
+read the input as a sequence of lines or space-delimited words.
+It simplifies the problem by terminating the scan on problematic
+input such as pathologically long lines, and having a simple
+default: line-oriented input, with each line stripped of its terminator.
+Here is code to reproduce the input a line at a time:
+</p>
+
+<pre>
+scanner := bufio.NewScanner(os.Stdin)
+for scanner.Scan() {
+    fmt.Println(scanner.Text()) // Println will add back the final '\n'
+}
+if err := scanner.Err(); err != nil {
+    fmt.Fprintln(os.Stderr, "reading standard input:", err)
+}
+</pre>
+
+<p>
+Scanning behavior can be adjusted through a function to control subdividing the input
+(see the documentation for <a href="/pkg/bufio/#SplitFunc"><code>SplitFunc</code></a>),
+but for tough problems or the need to continue past errors, the older interface
+may still be required.
+</p>
+
+<h3 id="net">net</h3>
+
+<p>
+The protocol-specific resolvers in the <a href="/pkg/net/"><code>net</code></a> package were formerly
+lax about the network name passed in.
+Although the documentation was clear
+that the only valid networks for
+<a href="/pkg/net/#ResolveTCPAddr"><code>ResolveTCPAddr</code></a>
+are <code>"tcp"</code>,
+<code>"tcp4"</code>, and <code>"tcp6"</code>, the Go 1.0 implementation silently accepted any string.
+The Go 1.1 implementation returns an error if the network is not one of those strings.
+The same is true of the other protocol-specific resolvers <a href="/pkg/net/#ResolveIPAddr"><code>ResolveIPAddr</code></a>,
+<a href="/pkg/net/#ResolveUDPAddr"><code>ResolveUDPAddr</code></a>, and
+<a href="/pkg/net/#ResolveUnixAddr"><code>ResolveUnixAddr</code></a>.
+</p>
+
+<p>
+The previous implementation of
+<a href="/pkg/net/#ListenUnixgram"><code>ListenUnixgram</code></a>
+returned a
+<a href="/pkg/net/#UDPConn"><code>UDPConn</code></a> as
+a representation of the connection endpoint.
+The Go 1.1 implementation instead returns a
+<a href="/pkg/net/#UnixConn"><code>UnixConn</code></a>
+to allow reading and writing
+with its
+<a href="/pkg/net/#UnixConn.ReadFrom"><code>ReadFrom</code></a>
+and
+<a href="/pkg/net/#UnixConn.WriteTo"><code>WriteTo</code></a>
+methods.
+</p>
+
+<p>
+The data structures
+<a href="/pkg/net/#IPAddr"><code>IPAddr</code></a>,
+<a href="/pkg/net/#TCPAddr"><code>TCPAddr</code></a>, and
+<a href="/pkg/net/#UDPAddr"><code>UDPAddr</code></a>
+add a new string field called <code>Zone</code>.
+Code using untagged composite literals (e.g. <code>net.TCPAddr{ip, port}</code>)
+instead of tagged literals (<code>net.TCPAddr{IP: ip, Port: port}</code>)
+will break due to the new field.
+The Go 1 compatibility rules allow this change: client code must use tagged literals to avoid such breakages.
+</p>
+
+<p>
+<em>Updating</em>:
+To correct breakage caused by the new struct field,
+<code>go fix</code> will rewrite code to add tags for these types.
+More generally, <code>go vet</code> will identify composite literals that
+should be revised to use field tags.
+</p>
+
+<h3 id="reflect">reflect</h3>
+
+<p>
+The <a href="/pkg/reflect/"><code>reflect</code></a> package has several significant additions.
+</p>
+
+<p>
+It is now possible to run a "select" statement using
+the <code>reflect</code> package; see the description of
+<a href="/pkg/reflect/#Select"><code>Select</code></a>
+and
+<a href="/pkg/reflect/#SelectCase"><code>SelectCase</code></a>
+for details.
+</p>
+
+<p>
+The new method
+<a href="/pkg/reflect/#Value.Convert"><code>Value.Convert</code></a>
+(or
+<a href="/pkg/reflect/#Type"><code>Type.ConvertibleTo</code></a>)
+provides functionality to execute a Go conversion or type assertion operation
+on a
+<a href="/pkg/reflect/#Value"><code>Value</code></a>
+(or test for its possibility).
+</p>
+
+<p>
+The new function
+<a href="/pkg/reflect/#MakeFunc"><code>MakeFunc</code></a>
+creates a wrapper function to make it easier to call a function with existing
+<a href="/pkg/reflect/#Value"><code>Values</code></a>,
+doing the standard Go conversions among the arguments, for instance
+to pass an actual <code>int</code> to a formal <code>interface{}</code>.
+</p>
+
+<p>
+Finally, the new functions
+<a href="/pkg/reflect/#ChanOf"><code>ChanOf</code></a>,
+<a href="/pkg/reflect/#MapOf"><code>MapOf</code></a>
+and
+<a href="/pkg/reflect/#SliceOf"><code>SliceOf</code></a>
+construct new
+<a href="/pkg/reflect/#Type"><code>Types</code></a>
+from existing types, for example to construct the type <code>[]T</code> given
+only <code>T</code>.
+</p>
+
+
+<h3 id="time">time</h3>
+<p>
+On FreeBSD, Linux, NetBSD, OS X and OpenBSD, previous versions of the
+<a href="/pkg/time/"><code>time</code></a> package
+returned times with microsecond precision.
+The Go 1.1 implementation on these
+systems now returns times with nanosecond precision.
+Programs that write to an external format with microsecond precision
+and read it back, expecting to recover the original value, will be affected
+by the loss of precision.
+There are two new methods of <a href="/pkg/time/#Time"><code>Time</code></a>,
+<a href="/pkg/time/#Time.Round"><code>Round</code></a>
+and
+<a href="/pkg/time/#Time.Truncate"><code>Truncate</code></a>,
+that can be used to remove precision from a time before passing it to
+external storage.
+</p>
+
+<p>
+The new method
+<a href="/pkg/time/#Time.YearDay"><code>YearDay</code></a>
+returns the one-indexed integral day number of the year specified by the time value.
+</p>
+
+<p>
+The
+<a href="/pkg/time/#Timer"><code>Timer</code></a>
+type has a new method
+<a href="/pkg/time/#Timer.Reset"><code>Reset</code></a>
+that modifies the timer to expire after a specified duration.
+</p>
+
+<p>
+Finally, the new function
+<a href="/pkg/time/#ParseInLocation"><code>ParseInLocation</code></a>
+is like the existing
+<a href="/pkg/time/#Parse"><code>Parse</code></a>
+but parses the time in the context of a location (time zone), ignoring
+time zone information in the parsed string.
+This function addresses a common source of confusion in the time API.
+</p>
+
+<p>
+<em>Updating</em>:
+Code that needs to read and write times using an external format with
+lower precision should be modified to use the new methods.
+</p>
+
+<h3 id="exp_old">Exp and old subtrees moved to go.exp and go.text subrepositories</h3>
+
+<p>
+To make it easier for binary distributions to access them if desired, the <code>exp</code>
+and <code>old</code> source subtrees, which are not included in binary distributions,
+have been moved to the new <code>go.exp</code> subrepository at
+<code>code.google.com/p/go.exp</code>. To access the <code>ssa</code> package,
+for example, run
+</p>
+
+<pre>
+$ go get code.google.com/p/go.exp/ssa
+</pre>
+
+<p>
+and then in Go source,
+</p>
+
+<pre>
+import "code.google.com/p/go.exp/ssa"
+</pre>
+
+<p>
+The old package <code>exp/norm</code> has also been moved, but to a new repository
+<code>go.text</code>, where the Unicode APIs and other text-related packages will
+be developed.
+</p>
+
+<h3 id="new_packages">New packages</h3>
+
+<p>
+There are three new packages.
+</p>
+
+<ul>
+<li>
+The <a href="/pkg/go/format/"><code>go/format</code></a> package provides
+a convenient way for a program to access the formatting capabilities of the
+<a href="/cmd/go/#hdr-Run_gofmt_on_package_sources"><code>go fmt</code></a> command.
+It has two functions,
+<a href="/pkg/go/format/#Node"><code>Node</code></a> to format a Go parser
+<a href="/pkg/go/ast/#Node"><code>Node</code></a>,
+and
+<a href="/pkg/go/format/#Source"><code>Source</code></a>
+to reformat arbitrary Go source code into the standard format as provided by the
+<a href="/cmd/go/#hdr-Run_gofmt_on_package_sources"><code>go fmt</code></a> command.
+</li>
+
+<li>
+The <a href="/pkg/net/http/cookiejar/"><code>net/http/cookiejar</code></a> package provides the basics for managing HTTP cookies.
+</li>
+
+<li>
+The <a href="/pkg/runtime/race/"><code>runtime/race</code></a> package provides low-level facilities for data race detection.
+It is internal to the race detector and does not otherwise export any user-visible functionality.
+</li>
+</ul>
+
+<h3 id="minor_library_changes">Minor changes to the library</h3>
+
+<p>
+The following list summarizes a number of minor changes to the library, mostly additions.
+See the relevant package documentation for more information about each change.
+</p>
+
+<ul>
+<li>
+The <a href="/pkg/bytes/"><code>bytes</code></a> package has two new functions,
+<a href="/pkg/bytes/#TrimPrefix"><code>TrimPrefix</code></a>
+and
+<a href="/pkg/bytes/#TrimSuffix"><code>TrimSuffix</code></a>,
+with self-evident properties.
+Also, the <a href="/pkg/bytes/#Buffer"><code>Buffer</code></a> type
+has a new method
+<a href="/pkg/bytes/#Buffer.Grow"><code>Grow</code></a> that
+provides some control over memory allocation inside the buffer.
+Finally, the
+<a href="/pkg/bytes/#Reader"><code>Reader</code></a> type now has a
+<a href="/pkg/strings/#Reader.WriteTo"><code>WriteTo</code></a> method
+so it implements the
+<a href="/pkg/io/#WriterTo"><code>io.WriterTo</code></a> interface.
+</li>
+
+<li>
+The <a href="/pkg/compress/gzip/"><code>compress/gzip</code></a> package has
+a new <a href="/pkg/compress/gzip/#Writer.Flush"><code>Flush</code></a>
+method for its
+<a href="/pkg/compress/gzip/#Writer"><code>Writer</code></a>
+type that flushes its underlying <code>flate.Writer</code>.
+</li>
+
+<li>
+The <a href="/pkg/crypto/hmac/"><code>crypto/hmac</code></a> package has a new function,
+<a href="/pkg/crypto/hmac/#Equal"><code>Equal</code></a>, to compare two MACs.
+</li>
+
+<li>
+The <a href="/pkg/crypto/x509/"><code>crypto/x509</code></a> package
+now supports PEM blocks (see
+<a href="/pkg/crypto/x509/#DecryptPEMBlock"><code>DecryptPEMBlock</code></a> for instance),
+and a new function
+<a href="/pkg/crypto/x509/#ParseECPrivateKey"><code>ParseECPrivateKey</code></a> to parse elliptic curve private keys.
+</li>
+
+<li>
+The <a href="/pkg/database/sql/"><code>database/sql</code></a> package
+has a new
+<a href="/pkg/database/sql/#DB.Ping"><code>Ping</code></a>
+method for its
+<a href="/pkg/database/sql/#DB"><code>DB</code></a>
+type that tests the health of the connection.
+</li>
+
+<li>
+The <a href="/pkg/database/sql/driver/"><code>database/sql/driver</code></a> package
+has a new
+<a href="/pkg/database/sql/driver/#Queryer"><code>Queryer</code></a>
+interface that a
+<a href="/pkg/database/sql/driver/#Conn"><code>Conn</code></a>
+may implement to improve performance.
+</li>
+
+<li>
+The <a href="/pkg/encoding/json/"><code>encoding/json</code></a> package's
+<a href="/pkg/encoding/json/#Decoder"><code>Decoder</code></a>
+has a new method
+<a href="/pkg/encoding/json/#Decoder.Buffered"><code>Buffered</code></a>
+to provide access to the remaining data in its buffer,
+as well as a new method
+<a href="/pkg/encoding/json/#Decoder.UseNumber"><code>UseNumber</code></a>
+to unmarshal a value into the new type
+<a href="/pkg/encoding/json/#Number"><code>Number</code></a>,
+a string, rather than a float64.
+</li>
+
+<li>
+The <a href="/pkg/encoding/xml/"><code>encoding/xml</code></a> package
+has a new function,
+<a href="/pkg/encoding/xml/#EscapeText"><code>EscapeText</code></a>,
+which writes escaped XML output,
+and a method on
+<a href="/pkg/encoding/xml/#Encoder"><code>Encoder</code></a>,
+<a href="/pkg/encoding/xml/#Encoder.Indent"><code>Indent</code></a>,
+to specify indented output.
+</li>
+
+<li>
+In the <a href="/pkg/go/ast/"><code>go/ast</code></a> package, a
+new type <a href="/pkg/go/ast/#CommentMap"><code>CommentMap</code></a>
+and associated methods makes it easier to extract and process comments in Go programs.
+</li>
+
+<li>
+In the <a href="/pkg/go/doc/"><code>go/doc</code></a> package,
+the parser now keeps better track of stylized annotations such as <code>TODO(joe)</code>
+throughout the code,
+information that the <a href="/cmd/godoc/"><code>godoc</code></a>
+command can filter or present according to the value of the <code>-notes</code> flag.
+</li>
+
+<li>
+The undocumented and only partially implemented "noescape" feature of the
+<a href="/pkg/html/template/"><code>html/template</code></a>
+package has been removed; programs that depend on it will break.
+</li>
+
+<li>
+The <a href="/pkg/image/jpeg/"><code>image/jpeg</code></a> package now
+reads progressive JPEG files and handles a few more subsampling configurations.
+</li>
+
+<li>
+The <a href="/pkg/io/"><code>io</code></a> package now exports the
+<a href="/pkg/io/#ByteWriter"><code>io.ByteWriter</code></a> interface to capture the common
+functionality of writing a byte at a time.
+It also exports a new error, <a href="/pkg/io/#ErrNoProgress"><code>ErrNoProgress</code></a>,
+used to indicate a <code>Read</code> implementation is looping without delivering data.
+</li>
+
+<li>
+The <a href="/pkg/log/syslog/"><code>log/syslog</code></a> package now provides better support
+for OS-specific logging features.
+</li>
+
+<li>
+The <a href="/pkg/math/big/"><code>math/big</code></a> package's
+<a href="/pkg/math/big/#Int"><code>Int</code></a> type
+now has methods
+<a href="/pkg/math/big/#Int.MarshalJSON"><code>MarshalJSON</code></a>
+and
+<a href="/pkg/math/big/#Int.UnmarshalJSON"><code>UnmarshalJSON</code></a>
+to convert to and from a JSON representation.
+Also,
+<a href="/pkg/math/big/#Int"><code>Int</code></a>
+can now convert directly to and from a <code>uint64</code> using
+<a href="/pkg/math/big/#Int.Uint64"><code>Uint64</code></a>
+and
+<a href="/pkg/math/big/#Int.SetUint64"><code>SetUint64</code></a>,
+while
+<a href="/pkg/math/big/#Rat"><code>Rat</code></a>
+can do the same with <code>float64</code> using
+<a href="/pkg/math/big/#Rat.Float64"><code>Float64</code></a>
+and
+<a href="/pkg/math/big/#Rat.SetFloat64"><code>SetFloat64</code></a>.
+</li>
+
+<li>
+The <a href="/pkg/mime/multipart/"><code>mime/multipart</code></a> package
+has a new method for its
+<a href="/pkg/mime/multipart/#Writer"><code>Writer</code></a>,
+<a href="/pkg/mime/multipart/#Writer.SetBoundary"><code>SetBoundary</code></a>,
+to define the boundary separator used to package the output.
+The <a href="/pkg/mime/multipart/#Reader"><code>Reader</code></a> also now
+transparently decodes any <code>quoted-printable</code> parts and removes
+the <code>Content-Transfer-Encoding</code> header when doing so.
+</li>
+
+<li>
+The
+<a href="/pkg/net/"><code>net</code></a> package's
+<a href="/pkg/net/#ListenUnixgram"><code>ListenUnixgram</code></a>
+function has changed return types: it now returns a
+<a href="/pkg/net/#UnixConn"><code>UnixConn</code></a>
+rather than a
+<a href="/pkg/net/#UDPConn"><code>UDPConn</code></a>, which was
+clearly a mistake in Go 1.0.
+Since this API change fixes a bug, it is permitted by the Go 1 compatibility rules.
+</li>
+
+<li>
+The <a href="/pkg/net/"><code>net</code></a> package includes a new type,
+<a href="/pkg/net/#Dialer"><code>Dialer</code></a>, to supply options to
+<a href="/pkg/net/#Dialer.Dial"><code>Dial</code></a>.
+</li>
+
+<li>
+The <a href="/pkg/net/"><code>net</code></a> package adds support for
+link-local IPv6 addresses with zone qualifiers, such as <code>fe80::1%lo0</code>.
+The address structures <a href="/pkg/net/#IPAddr"><code>IPAddr</code></a>,
+<a href="/pkg/net/#UDPAddr"><code>UDPAddr</code></a>, and
+<a href="/pkg/net/#TCPAddr"><code>TCPAddr</code></a>
+record the zone in a new field, and functions that expect string forms of these addresses, such as
+<a href="/pkg/net/#Dial"><code>Dial</code></a>,
+<a href="/pkg/net/#ResolveIPAddr"><code>ResolveIPAddr</code></a>,
+<a href="/pkg/net/#ResolveUDPAddr"><code>ResolveUDPAddr</code></a>, and
+<a href="/pkg/net/#ResolveTCPAddr"><code>ResolveTCPAddr</code></a>,
+now accept the zone-qualified form.
+</li>
+
+<li>
+The <a href="/pkg/net/"><code>net</code></a> package adds
+<a href="/pkg/net/#LookupNS"><code>LookupNS</code></a> to its suite of resolving functions.
+<code>LookupNS</code> returns the <a href="/pkg/net/#NS">NS records</a> for a host name.
+</li>
+
+<li>
+The <a href="/pkg/net/"><code>net</code></a> package adds protocol-specific
+packet reading and writing methods to
+<a href="/pkg/net/#IPConn"><code>IPConn</code></a>
+(<a href="/pkg/net/#IPConn.ReadMsgIP"><code>ReadMsgIP</code></a>
+and <a href="/pkg/net/#IPConn.WriteMsgIP"><code>WriteMsgIP</code></a>) and
+<a href="/pkg/net/#UDPConn"><code>UDPConn</code></a>
+(<a href="/pkg/net/#UDPConn.ReadMsgUDP"><code>ReadMsgUDP</code></a> and
+<a href="/pkg/net/#UDPConn.WriteMsgUDP"><code>WriteMsgUDP</code></a>).
+These are specialized versions of <a href="/pkg/net/#PacketConn"><code>PacketConn</code></a>'s
+<code>ReadFrom</code> and <code>WriteTo</code> methods that provide access to out-of-band data associated
+with the packets.
+ </li>
+
+ <li>
+The <a href="/pkg/net/"><code>net</code></a> package adds methods to
+<a href="/pkg/net/#UnixConn"><code>UnixConn</code></a> to allow closing half of the connection
+(<a href="/pkg/net/#UnixConn.CloseRead"><code>CloseRead</code></a> and
+<a href="/pkg/net/#UnixConn.CloseWrite"><code>CloseWrite</code></a>),
+matching the existing methods of <a href="/pkg/net/#TCPConn"><code>TCPConn</code></a>.
+</li>
+
+<li>
+The <a href="/pkg/net/http/"><code>net/http</code></a> package includes several new additions.
+<a href="/pkg/net/http/#ParseTime"><code>ParseTime</code></a> parses a time string, trying
+several common HTTP time formats.
+The <a href="/pkg/net/http/#Request.PostFormValue"><code>PostFormValue</code></a> method of
+<a href="/pkg/net/http/#Request"><code>Request</code></a> is like
+<a href="/pkg/net/http/#Request.FormValue"><code>FormValue</code></a> but ignores URL parameters.
+The <a href="/pkg/net/http/#CloseNotifier"><code>CloseNotifier</code></a> interface provides a mechanism
+for a server handler to discover when a client has disconnected.
+The <code>ServeMux</code> type now has a
+<a href="/pkg/net/http/#ServeMux.Handler"><code>Handler</code></a> method to access a path's
+<code>Handler</code> without executing it.
+The <code>Transport</code> can now cancel an in-flight request with
+<a href="/pkg/net/http/#Transport.CancelRequest"><code>CancelRequest</code></a>.
+Finally, the Transport is now more aggressive at closing TCP connections when
+a <a href="/pkg/net/http/#Response"><code>Response.Body</code></a> is closed before
+being fully consumed.
+</li>
+
+<li>
+The <a href="/pkg/net/mail/"><code>net/mail</code></a> package has two new functions,
+<a href="/pkg/net/mail/#ParseAddress"><code>ParseAddress</code></a> and
+<a href="/pkg/net/mail/#ParseAddressList"><code>ParseAddressList</code></a>,
+to parse RFC 5322-formatted mail addresses into
+<a href="/pkg/net/mail/#Address"><code>Address</code></a> structures.
+</li>
+
+<li>
+The <a href="/pkg/net/smtp/"><code>net/smtp</code></a> package's
+<a href="/pkg/net/smtp/#Client"><code>Client</code></a> type has a new method,
+<a href="/pkg/net/smtp/#Client.Hello"><code>Hello</code></a>,
+which transmits a <code>HELO</code> or <code>EHLO</code> message to the server.
+</li>
+
+<li>
+The <a href="/pkg/net/textproto/"><code>net/textproto</code></a> package
+has two new functions,
+<a href="/pkg/net/textproto/#TrimBytes"><code>TrimBytes</code></a> and
+<a href="/pkg/net/textproto/#TrimString"><code>TrimString</code></a>,
+which do ASCII-only trimming of leading and trailing spaces.
+</li>
+
+<li>
+The new method <a href="/pkg/os/#FileMode.IsRegular"><code>os.FileMode.IsRegular</code></a> makes it easy to ask if a file is a plain file.
+</li>
+
+<li>
+The <a href="/pkg/os/signal/"><code>os/signal</code></a> package has a new function,
+<a href="/pkg/os/signal/#Stop"><code>Stop</code></a>, which stops the package delivering
+any further signals to the channel.
+</li>
+
+<li>
+The <a href="/pkg/regexp/"><code>regexp</code></a> package
+now supports Unix-original leftmost-longest matches through the
+<a href="/pkg/regexp/#Regexp.Longest"><code>Regexp.Longest</code></a>
+method, while
+<a href="/pkg/regexp/#Regexp.Split"><code>Regexp.Split</code></a> slices
+strings into pieces based on separators defined by the regular expression.
+</li>
+
+<li>
+The <a href="/pkg/runtime/debug/"><code>runtime/debug</code></a> package
+has three new functions regarding memory usage.
+The <a href="/pkg/runtime/debug/#FreeOSMemory"><code>FreeOSMemory</code></a>
+function triggers a run of the garbage collector and then attempts to return unused
+memory to the operating system;
+the <a href="/pkg/runtime/debug/#ReadGCStats"><code>ReadGCStats</code></a>
+function retrieves statistics about the collector; and
+<a href="/pkg/runtime/debug/#SetGCPercent"><code>SetGCPercent</code></a>
+provides a programmatic way to control how often the collector runs,
+including disabling it altogether.
+</li>
+
+<li>
+The <a href="/pkg/sort/"><code>sort</code></a> package has a new function,
+<a href="/pkg/sort/#Reverse"><code>Reverse</code></a>.
+Wrapping the argument of a call to
+<a href="/pkg/sort/#Sort"><code>sort.Sort</code></a>
+with a call to <code>Reverse</code> causes the sort order to be reversed.
+</li>
+
+<li>
+The <a href="/pkg/strings/"><code>strings</code></a> package has two new functions,
+<a href="/pkg/strings/#TrimPrefix"><code>TrimPrefix</code></a>
+and
+<a href="/pkg/strings/#TrimSuffix"><code>TrimSuffix</code></a>
+with self-evident properties, and the new method
+<a href="/pkg/strings/#Reader.WriteTo"><code>Reader.WriteTo</code></a> so the
+<a href="/pkg/strings/#Reader"><code>Reader</code></a>
+type now implements the
+<a href="/pkg/io/#WriterTo"><code>io.WriterTo</code></a> interface.
+</li>
+
+<li>
+The <a href="/pkg/syscall/"><code>syscall</code></a> package's
+<a href="/pkg/syscall/#Fchflags"><code>Fchflags</code></a> function on various BSDs
+(including Darwin) has changed signature.
+It now takes an int as the first parameter instead of a string.
+Since this API change fixes a bug, it is permitted by the Go 1 compatibility rules.
+</li>
+<li>
+The <a href="/pkg/syscall/"><code>syscall</code></a> package also has received many updates
+to make it more inclusive of constants and system calls for each supported operating system.
+</li>
+
+<li>
+The <a href="/pkg/testing/"><code>testing</code></a> package now automates the generation of allocation
+statistics in tests and benchmarks using the new
+<a href="/pkg/testing/#AllocsPerRun"><code>AllocsPerRun</code></a> function. And the
+<a href="/pkg/testing/#B.ReportAllocs"><code>ReportAllocs</code></a>
+method on <a href="/pkg/testing/#B"><code>testing.B</code></a> will enable printing of
+memory allocation statistics for the calling benchmark. It also introduces the
+<a href="/pkg/testing/#BenchmarkResult.AllocsPerOp"><code>AllocsPerOp</code></a> method of
+<a href="/pkg/testing/#BenchmarkResult"><code>BenchmarkResult</code></a>.
+There is also a new
+<a href="/pkg/testing/#Verbose"><code>Verbose</code></a> function to test the state of the <code>-v</code>
+command-line flag,
+and a new
+<a href="/pkg/testing/#B.Skip"><code>Skip</code></a> method of
+<a href="/pkg/testing/#B"><code>testing.B</code></a> and
+<a href="/pkg/testing/#T"><code>testing.T</code></a>
+to simplify skipping an inappropriate test.
+</li>
+
+<li>
+In the <a href="/pkg/text/template/"><code>text/template</code></a>
+and
+<a href="/pkg/html/template/"><code>html/template</code></a> packages,
+templates can now use parentheses to group the elements of pipelines, simplifying the construction of complex pipelines.
+Also, as part of the new parser, the
+<a href="/pkg/text/template/parse/#Node"><code>Node</code></a> interface got two new methods to provide
+better error reporting.
+Although this violates the Go 1 compatibility rules,
+no existing code should be affected because this interface is explicitly intended only to be used
+by the
+<a href="/pkg/text/template/"><code>text/template</code></a>
+and
+<a href="/pkg/html/template/"><code>html/template</code></a>
+packages and there are safeguards to guarantee that.
+</li>
+
+<li>
+The implementation of the <a href="/pkg/unicode/"><code>unicode</code></a> package has been updated to Unicode version 6.2.0.
+</li>
+
+<li>
+In the <a href="/pkg/unicode/utf8/"><code>unicode/utf8</code></a> package,
+the new function <a href="/pkg/unicode/utf8/#ValidRune"><code>ValidRune</code></a> reports whether the rune is a valid Unicode code point.
+To be valid, a rune must be in range and not be a surrogate half.
+</li>
+</ul>
+                                 root/go1.4/doc/go1.2.html                                                                           0100644 0000000 0000000 00000104267 12600426226 013353  0                                                                                                    ustar 00                                                                0000000 0000000                                                                                                                                                                        <!--{
+	"Title": "Go 1.2 Release Notes",
+	"Path":  "/doc/go1.2",
+	"Template": true
+}-->
+
+<h2 id="introduction">Introduction to Go 1.2</h2>
+
+<p>
+Since the release of <a href="/doc/go1.1.html">Go version 1.1</a> in April, 2013,
+the release schedule has been shortened to make the release process more efficient.
+This release, Go version 1.2 or Go 1.2 for short, arrives roughly six months after 1.1,
+while 1.1 took over a year to appear after 1.0.
+Because of the shorter time scale, 1.2 is a smaller delta than the step from 1.0 to 1.1,
+but it still has some significant developments, including
+a better scheduler and one new language feature.
+Of course, Go 1.2 keeps the <a href="/doc/go1compat.html">promise
+of compatibility</a>.
+The overwhelming majority of programs built with Go 1.1 (or 1.0 for that matter)
+will run without any changes whatsoever when moved to 1.2,
+although the introduction of one restriction
+to a corner of the language may expose already-incorrect code
+(see the discussion of the <a href="#use_of_nil">use of nil</a>).
+</p>
+
+<h2 id="language">Changes to the language</h2>
+
+<p>
+In the interest of firming up the specification, one corner case has been clarified,
+with consequences for programs.
+There is also one new language feature.
+</p>
+
+<h3 id="use_of_nil">Use of nil</h3>
+
+<p>
+The language now specifies that, for safety reasons,
+certain uses of nil pointers are guaranteed to trigger a run-time panic.
+For instance, in Go 1.0, given code like
+</p>
+
+<pre>
+type T struct {
+    X [1<<24]byte
+    Field int32
+}
+
+func main() {
+    var x *T
+    ...
+}
+</pre>
+
+<p>
+the <code>nil</code> pointer <code>x</code> could be used to access memory incorrectly:
+the expression <code>x.Field</code> could access memory at address <code>1<<24</code>.
+To prevent such unsafe behavior, in Go 1.2 the compilers now guarantee that any indirection through
+a nil pointer, such as illustrated here but also in nil pointers to arrays, nil interface values,
+nil slices, and so on, will either panic or return a correct, safe non-nil value.
+In short, any expression that explicitly or implicitly requires evaluation of a nil address is an error.
+The implementation may inject extra tests into the compiled program to enforce this behavior.
+</p>
+
+<p>
+Further details are in the
+<a href="//golang.org/s/go12nil">design document</a>.
+</p>
+
+<p>
+<em>Updating</em>:
+Most code that depended on the old behavior is erroneous and will fail when run.
+Such programs will need to be updated by hand.
+</p>
+
+<h3 id="three_index">Three-index slices</h3>
+
+<p>
+Go 1.2 adds the ability to specify the capacity as well as the length when using a slicing operation
+on an existing array or slice.
+A slicing operation creates a new slice by describing a contiguous section of an already-created array or slice:
+</p>
+
+<pre>
+var array [10]int
+slice := array[2:4]
+</pre>
+
+<p>
+The capacity of the slice is the maximum number of elements that the slice may hold, even after reslicing;
+it reflects the size of the underlying array.
+In this example, the capacity of the <code>slice</code> variable is 8.
+</p>
+
+<p>
+Go 1.2 adds new syntax to allow a slicing operation to specify the capacity as well as the length.
+A second
+colon introduces the capacity value, which must be less than or equal to the capacity of the
+source slice or array, adjusted for the origin. For instance,
+</p>
+
+<pre>
+slice = array[2:4:7]
+</pre>
+
+<p>
+sets the slice to have the same length as in the earlier example but its capacity is now only 5 elements (7-2).
+It is impossible to use this new slice value to access the last three elements of the original array.
+</p>
+
+<p>
+In this three-index notation, a missing first index (<code>[:i:j]</code>) defaults to zero but the other
+two indices must always be specified explicitly.
+It is possible that future releases of Go may introduce default values for these indices.
+</p>
+
+<p>
+Further details are in the
+<a href="//golang.org/s/go12slice">design document</a>.
+</p>
+
+<p>
+<em>Updating</em>:
+This is a backwards-compatible change that affects no existing programs.
+</p>
+
+<h2 id="impl">Changes to the implementations and tools</h2>
+
+<h3 id="preemption">Pre-emption in the scheduler</h3>
+
+<p>
+In prior releases, a goroutine that was looping forever could starve out other
+goroutines on the same thread, a serious problem when GOMAXPROCS
+provided only one user thread.
+In Go 1.2, this is partially addressed: The scheduler is invoked occasionally
+upon entry to a function.
+This means that any loop that includes a (non-inlined) function call can
+be pre-empted, allowing other goroutines to run on the same thread.
+</p>
+
+<h3 id="thread_limit">Limit on the number of threads</h3>
+
+<p>
+Go 1.2 introduces a configurable limit (default 10,000) to the total number of threads
+a single program may have in its address space, to avoid resource starvation
+issues in some environments.
+Note that goroutines are multiplexed onto threads so this limit does not directly
+limit the number of goroutines, only the number that may be simultaneously blocked
+in a system call.
+In practice, the limit is hard to reach.
+</p>
+
+<p>
+The new <a href="/pkg/runtime/debug/#SetMaxThreads"><code>SetMaxThreads</code></a> function in the
+<a href="/pkg/runtime/debug/"><code>runtime/debug</code></a> package controls the thread count limit.
+</p>
+
+<p>
+<em>Updating</em>:
+Few functions will be affected by the limit, but if a program dies because it hits the
+limit, it could be modified to call <code>SetMaxThreads</code> to set a higher count.
+Even better would be to refactor the program to need fewer threads, reducing consumption
+of kernel resources.
+</p>
+
+<h3 id="stack_size">Stack size</h3>
+
+<p>
+In Go 1.2, the minimum size of the stack when a goroutine is created has been lifted from 4KB to 8KB.
+Many programs were suffering performance problems with the old size, which had a tendency
+to introduce expensive stack-segment switching in performance-critical sections.
+The new number was determined by empirical testing.
+</p>
+
+<p>
+At the other end, the new function <a href="/pkg/runtime/debug/#SetMaxStack"><code>SetMaxStack</code></a>
+in the <a href="/pkg/runtime/debug"><code>runtime/debug</code></a> package controls
+the <em>maximum</em> size of a single goroutine's stack.
+The default is 1GB on 64-bit systems and 250MB on 32-bit systems.
+Before Go 1.2, it was too easy for a runaway recursion to consume all the memory on a machine.
+</p>
+
+<p>
+<em>Updating</em>:
+The increased minimum stack size may cause programs with many goroutines to use
+more memory. There is no workaround, but plans for future releases
+include new stack management technology that should address the problem better.
+</p>
+
+<h3 id="cgo_and_cpp">Cgo and C++</h3>
+
+<p>
+The <a href="/cmd/cgo/"><code>cgo</code></a> command will now invoke the C++
+compiler to build any pieces of the linked-to library that are written in C++;
+<a href="/cmd/cgo/">the documentation</a> has more detail.
+</p>
+
+<h3 id="go_tools_godoc">Godoc and vet moved to the go.tools subrepository</h3>
+
+<p>
+Both binaries are still included with the distribution, but the source code for the
+godoc and vet commands has moved to the
+<a href="//code.google.com/p/go.tools">go.tools</a> subrepository.
+</p>
+
+<p>
+Also, the core of the godoc program has been split into a
+<a href="https://code.google.com/p/go/source/browse/?repo=tools#hg%2Fgodoc">library</a>,
+while the command itself is in a separate
+<a href="https://code.google.com/p/go/source/browse/?repo=tools#hg%2Fcmd%2Fgodoc">directory</a>.
+The move allows the code to be updated easily and the separation into a library and command
+makes it easier to construct custom binaries for local sites and different deployment methods.
+</p>
+
+<p>
+<em>Updating</em>:
+Since godoc and vet are not part of the library,
+no client Go code depends on the their source and no updating is required.
+</p>
+
+<p>
+The binary distributions available from <a href="//golang.org">golang.org</a>
+include these binaries, so users of these distributions are unaffected.
+</p>
+
+<p>
+When building from source, users must use "go get" to install godoc and vet.
+(The binaries will continue to be installed in their usual locations, not
+<code>$GOPATH/bin</code>.)
+</p>
+
+<pre>
+$ go get code.google.com/p/go.tools/cmd/godoc
+$ go get code.google.com/p/go.tools/cmd/vet
+</pre>
+
+<h3 id="gccgo">Status of gccgo</h3>
+
+<p>
+We expect the future GCC 4.9 release to include gccgo with full
+support for Go 1.2.
+In the current (4.8.2) release of GCC, gccgo implements Go 1.1.2.
+</p>
+
+<h3 id="gc_changes">Changes to the gc compiler and linker</h3>
+
+<p>
+Go 1.2 has several semantic changes to the workings of the gc compiler suite.
+Most users will be unaffected by them.
+</p>
+
+<p>
+The <a href="/cmd/cgo/"><code>cgo</code></a> command now
+works when C++ is included in the library being linked against.
+See the <a href="/cmd/cgo/"><code>cgo</code></a> documentation
+for details.
+</p>
+
+<p>
+The gc compiler displayed a vestigial detail of its origins when
+a program had no <code>package</code> clause: it assumed
+the file was in package <code>main</code>.
+The past has been erased, and a missing <code>package</code> clause
+is now an error.
+</p>
+
+<p>
+On the ARM, the toolchain supports "external linking", which
+is a step towards being able to build shared libraries with the gc
+tool chain and to provide dynamic linking support for environments
+in which that is necessary.
+</p>
+
+<p>
+In the runtime for the ARM, with <code>5a</code>, it used to be possible to refer
+to the runtime-internal <code>m</code> (machine) and <code>g</code>
+(goroutine) variables using <code>R9</code> and <code>R10</code> directly.
+It is now necessary to refer to them by their proper names.
+</p>
+
+<p>
+Also on the ARM, the <code>5l</code> linker (sic) now defines the
+<code>MOVBS</code> and <code>MOVHS</code> instructions
+as synonyms of <code>MOVB</code> and <code>MOVH</code>,
+to make clearer the separation between signed and unsigned
+sub-word moves; the unsigned versions already existed with a
+<code>U</code> suffix.
+</p>
+
+<h3 id="cover">Test coverage</h3>
+
+<p>
+One major new feature of <a href="/pkg/go/"><code>go test</code></a> is
+that it can now compute and, with help from a new, separately installed
+"go tool cover" program, display test coverage results.
+</p>
+
+<p>
+The cover tool is part of the
+<a href="https://code.google.com/p/go/source/checkout?repo=tools"><code>go.tools</code></a>
+subrepository.
+It can be installed by running
+</p>
+
+<pre>
+$ go get code.google.com/p/go.tools/cmd/cover
+</pre>
+
+<p>
+The cover tool does two things.
+First, when "go test" is given the <code>-cover</code> flag, it is run automatically 
+to rewrite the source for the package and insert instrumentation statements.
+The test is then compiled and run as usual, and basic coverage statistics are reported:
+</p>
+
+<pre>
+$ go test -cover fmt
+ok  	fmt	0.060s	coverage: 91.4% of statements
+$
+</pre>
+
+<p>
+Second, for more detailed reports, different flags to "go test" can create a coverage profile file,
+which the cover program, invoked with "go tool cover", can then analyze.
+</p>
+
+<p>
+Details on how to generate and analyze coverage statistics can be found by running the commands
+</p>
+
+<pre>
+$ go help testflag
+$ go tool cover -help
+</pre>
+
+<h3 id="go_doc">The go doc command is deleted</h3>
+
+<p>
+The "go doc" command is deleted.
+Note that the <a href="/cmd/godoc/"><code>godoc</code></a> tool itself is not deleted,
+just the wrapping of it by the <a href="/cmd/go/"><code>go</code></a> command.
+All it did was show the documents for a package by package path,
+which godoc itself already does with more flexibility.
+It has therefore been deleted to reduce the number of documentation tools and,
+as part of the restructuring of godoc, encourage better options in future.
+</p>
+
+<p>
+<em>Updating</em>: For those who still need the precise functionality of running
+</p>
+
+<pre>
+$ go doc
+</pre>
+
+<p>
+in a directory, the behavior is identical to running
+</p>
+
+<pre>
+$ godoc .
+</pre>
+
+<h3 id="gocmd">Changes to the go command</h3>
+
+<p>
+The <a href="/cmd/go/"><code>go get</code></a> command
+now has a <code>-t</code> flag that causes it to download the dependencies
+of the tests run by the package, not just those of the package itself.
+By default, as before, dependencies of the tests are not downloaded.
+</p>
+
+<h2 id="performance">Performance</h2>
+
+<p>
+There are a number of significant performance improvements in the standard library; here are a few of them.
+</p>
+
+<ul> 
+
+<li>
+The <a href="/pkg/compress/bzip2/"><code>compress/bzip2</code></a>
+decompresses about 30% faster.
+</li>
+
+<li>
+The <a href="/pkg/crypto/des/"><code>crypto/des</code></a> package
+is about five times faster.
+</li>
+
+<li>
+The <a href="/pkg/encoding/json/"><code>encoding/json</code></a> package
+encodes about 30% faster.
+</li>
+
+<li>
+Networking performance on Windows and BSD systems is about 30% faster through the use
+of an integrated network poller in the runtime, similar to what was done for Linux and OS X
+in Go 1.1.
+</li>
+
+</ul>
+
+<h2 id="library">Changes to the standard library</h2>
+
+
+<h3 id="archive_tar_zip">The archive/tar and archive/zip packages</h3>
+
+<p>
+The
+<a href="/pkg/archive/tar/"><code>archive/tar</code></a>
+and
+<a href="/pkg/archive/zip/"><code>archive/zip</code></a>
+packages have had a change to their semantics that may break existing programs.
+The issue is that they both provided an implementation of the
+<a href="/pkg/os/#FileInfo"><code>os.FileInfo</code></a>
+interface that was not compliant with the specification for that interface.
+In particular, their <code>Name</code> method returned the full
+path name of the entry, but the interface specification requires that
+the method return only the base name (final path element).
+</p>
+
+<p>
+<em>Updating</em>: Since this behavior was newly implemented and
+a bit obscure, it is possible that no code depends on the broken behavior.
+If there are programs that do depend on it, they will need to be identified
+and fixed manually.
+</p>
+
+<h3 id="encoding">The new encoding package</h3>
+
+<p>
+There is a new package, <a href="/pkg/encoding/"><code>encoding</code></a>,
+that defines a set of standard encoding interfaces that may be used to
+build custom marshalers and unmarshalers for packages such as
+<a href="/pkg/encoding/xml/"><code>encoding/xml</code></a>,
+<a href="/pkg/encoding/json/"><code>encoding/json</code></a>,
+and
+<a href="/pkg/encoding/binary/"><code>encoding/binary</code></a>.
+These new interfaces have been used to tidy up some implementations in
+the standard library.
+</p>
+
+<p>
+The new interfaces are called
+<a href="/pkg/encoding/#BinaryMarshaler"><code>BinaryMarshaler</code></a>,
+<a href="/pkg/encoding/#BinaryUnmarshaler"><code>BinaryUnmarshaler</code></a>,
+<a href="/pkg/encoding/#TextMarshaler"><code>TextMarshaler</code></a>,
+and
+<a href="/pkg/encoding/#TextUnmarshaler"><code>TextUnmarshaler</code></a>.
+Full details are in the <a href="/pkg/encoding/">documentation</a> for the package
+and a separate <a href="//golang.org/s/go12encoding">design document</a>.
+</p>
+
+<h3 id="fmt_indexed_arguments">The fmt package</h3>
+
+<p>
+The <a href="/pkg/fmt/"><code>fmt</code></a> package's formatted print
+routines such as <a href="/pkg/fmt/#Printf"><code>Printf</code></a>
+now allow the data items to be printed to be accessed in arbitrary order
+by using an indexing operation in the formatting specifications.
+Wherever an argument is to be fetched from the argument list for formatting,
+either as the value to be formatted or as a width or specification integer,
+a new optional indexing notation <code>[</code><em>n</em><code>]</code>
+fetches argument <em>n</em> instead.
+The value of <em>n</em> is 1-indexed.
+After such an indexing operating, the next argument to be fetched by normal
+processing will be <em>n</em>+1.
+</p>
+
+<p>
+For example, the normal <code>Printf</code> call
+</p>
+
+<pre>
+fmt.Sprintf("%c %c %c\n", 'a', 'b', 'c')
+</pre>
+
+<p>
+would create the string <code>"a b c"</code>, but with indexing operations like this,
+</p>
+
+<pre>
+fmt.Sprintf("%[3]c %[1]c %c\n", 'a', 'b', 'c')
+</pre>
+
+<p>
+the result is "<code>"c a b"</code>. The <code>[3]</code> index accesses the third formatting
+argument, which is <code>'c'</code>, <code>[1]</code> accesses the first, <code>'a'</code>,
+and then the next fetch accesses the argument following that one, <code>'b'</code>.
+</p>
+
+<p>
+The motivation for this feature is programmable format statements to access
+the arguments in different order for localization, but it has other uses:
+</p>
+
+<pre>
+log.Printf("trace: value %v of type %[1]T\n", expensiveFunction(a.b[c]))
+</pre>
+
+<p>
+<em>Updating</em>: The change to the syntax of format specifications
+is strictly backwards compatible, so it affects no working programs.
+</p>
+
+<h3 id="text_template">The text/template and html/template packages</h3>
+
+<p>
+The
+<a href="/pkg/text/template/"><code>text/template</code></a> package
+has a couple of changes in Go 1.2, both of which are also mirrored in the
+<a href="/pkg/html/template/"><code>html/template</code></a> package.
+</p>
+
+<p>
+First, there are new default functions for comparing basic types.
+The functions are listed in this table, which shows their names and
+the associated familiar comparison operator.
+</p>
+
+<table cellpadding="0" summary="Template comparison functions">
+<tr>
+<th width="50"></th><th width="100">Name</th> <th width="50">Operator</th>
+</tr>
+<tr>
+<td></td><td><code>eq</code></td> <td><code>==</code></td>
+</tr>
+<tr>
+<td></td><td><code>ne</code></td> <td><code>!=</code></td>
+</tr>
+<tr>
+<td></td><td><code>lt</code></td> <td><code>&lt;</code></td>
+</tr>
+<tr>
+<td></td><td><code>le</code></td> <td><code>&lt;=</code></td>
+</tr>
+<tr>
+<td></td><td><code>gt</code></td> <td><code>&gt;</code></td>
+</tr>
+<tr>
+<td></td><td><code>ge</code></td> <td><code>&gt;=</code></td>
+</tr>
+</table>
+
+<p>
+These functions behave slightly differently from the corresponding Go operators.
+First, they operate only on basic types (<code>bool</code>, <code>int</code>,
+<code>float64</code>, <code>string</code>, etc.).
+(Go allows comparison of arrays and structs as well, under some circumstances.)
+Second, values can be compared as long as they are the same sort of value:
+any signed integer value can be compared to any other signed integer value for example. (Go
+does not permit comparing an <code>int8</code> and an <code>int16</code>).
+Finally, the <code>eq</code> function (only) allows comparison of the first
+argument with one or more following arguments. The template in this example,
+</p>
+
+<pre>
+{{"{{"}}if eq .A 1 2 3 {{"}}"}} equal {{"{{"}}else{{"}}"}} not equal {{"{{"}}end{{"}}"}}
+</pre>
+
+<p>
+reports "equal" if <code>.A</code> is equal to <em>any</em> of 1, 2, or 3.
+</p>
+
+<p>
+The second change is that a small addition to the grammar makes "if else if" chains easier to write.
+Instead of writing,
+</p>
+
+<pre>
+{{"{{"}}if eq .A 1{{"}}"}} X {{"{{"}}else{{"}}"}} {{"{{"}}if eq .A 2{{"}}"}} Y {{"{{"}}end{{"}}"}} {{"{{"}}end{{"}}"}} 
+</pre>
+
+<p>
+one can fold the second "if" into the "else" and have only one "end", like this:
+</p>
+
+<pre>
+{{"{{"}}if eq .A 1{{"}}"}} X {{"{{"}}else if eq .A 2{{"}}"}} Y {{"{{"}}end{{"}}"}}
+</pre>
+
+<p>
+The two forms are identical in effect; the difference is just in the syntax.
+</p>
+
+<p>
+<em>Updating</em>: Neither the "else if" change nor the comparison functions
+affect existing programs. Those that
+already define functions called <code>eq</code> and so on through a function
+map are unaffected because the associated function map will override the new
+default function definitions.
+</p>
+
+<h3 id="new_packages">New packages</h3>
+
+<p>
+There are two new packages.
+</p>
+
+<ul>
+<li>
+The <a href="/pkg/encoding/"><code>encoding</code></a> package is
+<a href="#encoding">described above</a>.
+</li>
+<li>
+The <a href="/pkg/image/color/palette/"><code>image/color/palette</code></a> package
+provides standard color palettes.
+</li>
+</ul>
+
+<h3 id="minor_library_changes">Minor changes to the library</h3>
+
+<p>
+The following list summarizes a number of minor changes to the library, mostly additions.
+See the relevant package documentation for more information about each change.
+</p>
+
+<ul>
+
+<li>
+The <a href="/pkg/archive/zip/"><code>archive/zip</code></a> package
+adds the
+<a href="/pkg/archive/zip/#File.DataOffset"><code>DataOffset</code></a> accessor
+to return the offset of a file's (possibly compressed) data within the archive.
+</li>
+
+<li>
+The <a href="/pkg/bufio/"><code>bufio</code></a> package
+adds <a href="/pkg/bufio/#Reader.Reset"><code>Reset</code></a>
+methods to <a href="/pkg/bufio/#Reader"><code>Reader</code></a> and
+<a href="/pkg/bufio/#Writer"><code>Writer</code></a>.
+These methods allow the <a href="/pkg/io/#Reader"><code>Readers</code></a>
+and <a href="/pkg/io/#Writer"><code>Writers</code></a>
+to be re-used on new input and output readers and writers, saving
+allocation overhead. 
+</li>
+
+<li>
+The <a href="/pkg/compress/bzip2/"><code>compress/bzip2</code></a>
+can now decompress concatenated archives.
+</li>
+
+<li>
+The <a href="/pkg/compress/flate/"><code>compress/flate</code></a>
+package adds a <a href="/pkg/compress/flate/#Writer.Reset"><code>Reset</code></a> 
+method on the <a href="/pkg/compress/flate/#Writer"><code>Writer</code></a>,
+to make it possible to reduce allocation when, for instance, constructing an
+archive to hold multiple compressed files.
+</li>
+
+<li>
+The <a href="/pkg/compress/gzip/"><code>compress/gzip</code></a> package's
+<a href="/pkg/compress/gzip/#Writer"><code>Writer</code></a> type adds a
+<a href="/pkg/compress/gzip/#Writer.Reset"><code>Reset</code></a>
+so it may be reused.
+</li>
+
+<li>
+The <a href="/pkg/compress/zlib/"><code>compress/zlib</code></a> package's
+<a href="/pkg/compress/zlib/#Writer"><code>Writer</code></a> type adds a
+<a href="/pkg/compress/zlib/#Writer.Reset"><code>Reset</code></a>
+so it may be reused.
+</li>
+
+<li>
+The <a href="/pkg/container/heap/"><code>container/heap</code></a> package
+adds a <a href="/pkg/container/heap/#Fix"><code>Fix</code></a>
+method to provide a more efficient way to update an item's position in the heap.
+</li>
+
+<li>
+The <a href="/pkg/container/list/"><code>container/list</code></a> package
+adds the <a href="/pkg/container/list/#List.MoveBefore"><code>MoveBefore</code></a>
+and
+<a href="/pkg/container/list/#List.MoveAfter"><code>MoveAfter</code></a>
+methods, which implement the obvious rearrangement.
+</li>
+
+<li>
+The <a href="/pkg/crypto/cipher/"><code>crypto/cipher</code></a> package
+adds the a new GCM mode (Galois Counter Mode), which is almost always
+used with AES encryption.
+</li>
+
+<li>
+The 
+<a href="/pkg/crypto/md5/"><code>crypto/md5</code></a> package
+adds a new <a href="/pkg/crypto/md5/#Sum"><code>Sum</code></a> function
+to simplify hashing without sacrificing performance.
+</li>
+
+<li>
+Similarly, the 
+<a href="/pkg/crypto/md5/"><code>crypto/sha1</code></a> package
+adds a new <a href="/pkg/crypto/sha1/#Sum"><code>Sum</code></a> function.
+</li>
+
+<li>
+Also, the
+<a href="/pkg/crypto/sha256/"><code>crypto/sha256</code></a> package
+adds <a href="/pkg/crypto/sha256/#Sum256"><code>Sum256</code></a>
+and <a href="/pkg/crypto/sha256/#Sum224"><code>Sum224</code></a> functions.
+</li>
+
+<li>
+Finally, the <a href="/pkg/crypto/sha512/"><code>crypto/sha512</code></a> package
+adds <a href="/pkg/crypto/sha512/#Sum512"><code>Sum512</code></a> and
+<a href="/pkg/crypto/sha512/#Sum384"><code>Sum384</code></a> functions.
+</li>
+
+<li>
+The <a href="/pkg/crypto/x509/"><code>crypto/x509</code></a> package
+adds support for reading and writing arbitrary extensions.
+</li>
+
+<li>
+The <a href="/pkg/crypto/tls/"><code>crypto/tls</code></a> package adds
+support for TLS 1.1, 1.2 and AES-GCM.
+</li>
+
+<li>
+The <a href="/pkg/database/sql/"><code>database/sql</code></a> package adds a
+<a href="/pkg/database/sql/#DB.SetMaxOpenConns"><code>SetMaxOpenConns</code></a>
+method on <a href="/pkg/database/sql/#DB"><code>DB</code></a> to limit the
+number of open connections to the database.
+</li>
+
+<li>
+The <a href="/pkg/encoding/csv/"><code>encoding/csv</code></a> package
+now always allows trailing commas on fields.
+</li>
+
+<li>
+The <a href="/pkg/encoding/gob/"><code>encoding/gob</code></a> package
+now treats channel and function fields of structures as if they were unexported,
+even if they are not. That is, it ignores them completely. Previously they would
+trigger an error, which could cause unexpected compatibility problems if an
+embedded structure added such a field.
+The package also now supports the generic <code>BinaryMarshaler</code> and
+<code>BinaryUnmarshaler</code> interfaces of the
+<a href="/pkg/encoding/"><code>encoding</code></a> package
+described above.
+</li>
+
+<li>
+The <a href="/pkg/encoding/json/"><code>encoding/json</code></a> package
+now will always escape ampersands as "\u0026" when printing strings.
+It will now accept but correct invalid UTF-8 in
+<a href="/pkg/encoding/json/#Marshal"><code>Marshal</code></a>
+(such input was previously rejected).
+Finally, it now supports the generic encoding interfaces of the
+<a href="/pkg/encoding/"><code>encoding</code></a> package
+described above.
+</li>
+
+<li>
+The <a href="/pkg/encoding/xml/"><code>encoding/xml</code></a> package
+now allows attributes stored in pointers to be marshaled.
+It also supports the generic encoding interfaces of the
+<a href="/pkg/encoding/"><code>encoding</code></a> package
+described above through the new
+<a href="/pkg/encoding/xml/#Marshaler"><code>Marshaler</code></a>,
+<a href="/pkg/encoding/xml/#Unmarshaler"><code>Unmarshaler</code></a>,
+and related
+<a href="/pkg/encoding/xml/#MarshalerAttr"><code>MarshalerAttr</code></a> and
+<a href="/pkg/encoding/xml/#UnmarshalerAttr"><code>UnmarshalerAttr</code></a>
+interfaces.
+The package also adds a
+<a href="/pkg/encoding/xml/#Encoder.Flush"><code>Flush</code></a> method
+to the
+<a href="/pkg/encoding/xml/#Encoder"><code>Encoder</code></a>
+type for use by custom encoders. See the documentation for
+<a href="/pkg/encoding/xml/#Encoder.EncodeToken"><code>EncodeToken</code></a>
+to see how to use it.
+</li>
+
+<li>
+The <a href="/pkg/flag/"><code>flag</code></a> package now
+has a <a href="/pkg/flag/#Getter"><code>Getter</code></a> interface
+to allow the value of a flag to be retrieved. Due to the
+Go 1 compatibility guidelines, this method cannot be added to the existing
+<a href="/pkg/flag/#Value"><code>Value</code></a>
+interface, but all the existing standard flag types implement it.
+The package also now exports the <a href="/pkg/flag/#CommandLine"><code>CommandLine</code></a>
+flag set, which holds the flags from the command line.
+</li>
+
+<li>
+The <a href="/pkg/go/ast/"><code>go/ast</code></a> package's
+<a href="/pkg/go/ast/#SliceExpr"><code>SliceExpr</code></a> struct
+has a new boolean field, <code>Slice3</code>, which is set to true
+when representing a slice expression with three indices (two colons).
+The default is false, representing the usual two-index form.
+</li>
+
+<li>
+The <a href="/pkg/go/build/"><code>go/build</code></a> package adds
+the <code>AllTags</code> field
+to the <a href="/pkg/go/build/#Package"><code>Package</code></a> type,
+to make it easier to process build tags.
+</li>
+
+<li>
+The <a href="/pkg/image/draw/"><code>image/draw</code></a> package now
+exports an interface, <a href="/pkg/image/draw/#Drawer"><code>Drawer</code></a>,
+that wraps the standard <a href="/pkg/image/draw/#Draw"><code>Draw</code></a> method.
+The Porter-Duff operators now implement this interface, in effect binding an operation to
+the draw operator rather than providing it explicitly.
+Given a paletted image as its destination, the new
+<a href="/pkg/image/draw/#FloydSteinberg"><code>FloydSteinberg</code></a>
+implementation of the
+<a href="/pkg/image/draw/#Drawer"><code>Drawer</code></a>
+interface will use the Floyd-Steinberg error diffusion algorithm to draw the image.
+To create palettes suitable for such processing, the new
+<a href="/pkg/image/draw/#Quantizer"><code>Quantizer</code></a> interface
+represents implementations of quantization algorithms that choose a palette
+given a full-color image.
+There are no implementations of this interface in the library.
+</li>
+
+<li>
+The <a href="/pkg/image/gif/"><code>image/gif</code></a> package
+can now create GIF files using the new
+<a href="/pkg/image/gif/#Encode"><code>Encode</code></a>
+and <a href="/pkg/image/gif/#EncodeAll"><code>EncodeAll</code></a>
+functions.
+Their options argument allows specification of an image
+<a href="/pkg/image/draw/#Quantizer"><code>Quantizer</code></a> to use;
+if it is <code>nil</code>, the generated GIF will use the 
+<a href="/pkg/image/color/palette/#Plan9"><code>Plan9</code></a>
+color map (palette) defined in the new
+<a href="/pkg/image/color/palette/"><code>image/color/palette</code></a> package.
+The options also specify a
+<a href="/pkg/image/draw/#Drawer"><code>Drawer</code></a>
+to use to create the output image;
+if it is <code>nil</code>, Floyd-Steinberg error diffusion is used.
+</li>
+
+<li>
+The <a href="/pkg/io/#Copy"><code>Copy</code></a> method of the
+<a href="/pkg/io/"><code>io</code></a> package now prioritizes its
+arguments differently.
+If one argument implements <a href="/pkg/io/#WriterTo"><code>WriterTo</code></a>
+and the other implements <a href="/pkg/io/#ReaderFrom"><code>ReaderFrom</code></a>,
+<a href="/pkg/io/#Copy"><code>Copy</code></a> will now invoke
+<a href="/pkg/io/#WriterTo"><code>WriterTo</code></a> to do the work,
+so that less intermediate buffering is required in general.
+</li>
+
+<li>
+The <a href="/pkg/net/"><code>net</code></a> package requires cgo by default
+because the host operating system must in general mediate network call setup.
+On some systems, though, it is possible to use the network without cgo, and useful
+to do so, for instance to avoid dynamic linking.
+The new build tag <code>netgo</code> (off by default) allows the construction of a
+<code>net</code> package in pure Go on those systems where it is possible.
+</li>
+
+<li>
+The <a href="/pkg/net/"><code>net</code></a> package adds a new field
+<code>DualStack</code> to the <a href="/pkg/net/#Dialer"><code>Dialer</code></a>
+struct for TCP connection setup using a dual IP stack as described in
+<a href="http://tools.ietf.org/html/rfc6555">RFC 6555</a>.
+</li>
+
+<li>
+The <a href="/pkg/net/http/"><code>net/http</code></a> package will no longer
+transmit cookies that are incorrect according to
+<a href="http://tools.ietf.org/html/rfc6265">RFC 6265</a>.
+It just logs an error and sends nothing.
+Also,
+the <a href="/pkg/net/http/"><code>net/http</code></a> package's
+<a href="/pkg/net/http/#ReadResponse"><code>ReadResponse</code></a>
+function now permits the <code>*Request</code> parameter to be <code>nil</code>,
+whereupon it assumes a GET request.
+Finally, an HTTP server will now serve HEAD
+requests transparently, without the need for special casing in handler code.
+While serving a HEAD request, writes to a 
+<a href="/pkg/net/http/#Handler"><code>Handler</code></a>'s
+<a href="/pkg/net/http/#ResponseWriter"><code>ResponseWriter</code></a>
+are absorbed by the
+<a href="/pkg/net/http/#Server"><code>Server</code></a>
+and the client receives an empty body as required by the HTTP specification.
+</li>
+
+<li>
+The <a href="/pkg/os/exec/"><code>os/exec</code></a> package's 
+<a href="/pkg/os/exec/#Cmd.StdinPipe"><code>Cmd.StdinPipe</code></a> method 
+returns an <code>io.WriteCloser</code>, but has changed its concrete
+implementation from <code>*os.File</code> to an unexported type that embeds
+<code>*os.File</code>, and it is now safe to close the returned value.
+Before Go 1.2, there was an unavoidable race that this change fixes.
+Code that needs access to the methods of <code>*os.File</code> can use an
+interface type assertion, such as <code>wc.(interface{ Sync() error })</code>.
+</li>
+
+<li>
+The <a href="/pkg/runtime/"><code>runtime</code></a> package relaxes
+the constraints on finalizer functions in
+<a href="/pkg/runtime/#SetFinalizer"><code>SetFinalizer</code></a>: the
+actual argument can now be any type that is assignable to the formal type of
+the function, as is the case for any normal function call in Go.
+</li>
+
+<li>
+The <a href="/pkg/sort/"><code>sort</code></a> package has a new
+<a href="/pkg/sort/#Stable"><code>Stable</code></a> function that implements
+stable sorting. It is less efficient than the normal sort algorithm, however.
+</li>
+
+<li>
+The <a href="/pkg/strings/"><code>strings</code></a> package adds
+an <a href="/pkg/strings/#IndexByte"><code>IndexByte</code></a>
+function for consistency with the <a href="/pkg/bytes/"><code>bytes</code></a> package.
+</li>
+
+<li>
+The <a href="/pkg/sync/atomic/"><code>sync/atomic</code></a> package
+adds a new set of swap functions that atomically exchange the argument with the
+value stored in the pointer, returning the old value.
+The functions are
+<a href="/pkg/sync/atomic/#SwapInt32"><code>SwapInt32</code></a>,
+<a href="/pkg/sync/atomic/#SwapInt64"><code>SwapInt64</code></a>,
+<a href="/pkg/sync/atomic/#SwapUint32"><code>SwapUint32</code></a>,
+<a href="/pkg/sync/atomic/#SwapUint64"><code>SwapUint64</code></a>,
+<a href="/pkg/sync/atomic/#SwapUintptr"><code>SwapUintptr</code></a>,
+and
+<a href="/pkg/sync/atomic/#SwapPointer"><code>SwapPointer</code></a>,
+which swaps an <code>unsafe.Pointer</code>.
+</li>
+
+<li>
+The <a href="/pkg/syscall/"><code>syscall</code></a> package now implements
+<a href="/pkg/syscall/#Sendfile"><code>Sendfile</code></a> for Darwin.
+</li>
+
+<li>
+The <a href="/pkg/testing/"><code>testing</code></a> package
+now exports the <a href="/pkg/testing/#TB"><code>TB</code></a> interface.
+It records the methods in common with the
+<a href="/pkg/testing/#T"><code>T</code></a>
+and
+<a href="/pkg/testing/#B"><code>B</code></a> types,
+to make it easier to share code between tests and benchmarks.
+Also, the
+<a href="/pkg/testing/#AllocsPerRun"><code>AllocsPerRun</code></a>
+function now quantizes the return value to an integer (although it
+still has type <code>float64</code>), to round off any error caused by
+initialization and make the result more repeatable. 
+</li>
+
+<li>
+The <a href="/pkg/text/template/"><code>text/template</code></a> package
+now automatically dereferences pointer values when evaluating the arguments
+to "escape" functions such as "html", to bring the behavior of such functions
+in agreement with that of other printing functions such as "printf".
+</li>
+
+<li>
+In the <a href="/pkg/time/"><code>time</code></a> package, the
+<a href="/pkg/time/#Parse"><code>Parse</code></a> function
+and
+<a href="/pkg/time/#Time.Format"><code>Format</code></a>
+method
+now handle time zone offsets with seconds, such as in the historical
+date "1871-01-01T05:33:02+00:34:08".
+Also, pattern matching in the formats for those routines is stricter: a non-lowercase letter
+must now follow the standard words such as "Jan" and "Mon".
+</li>
+
+<li>
+The <a href="/pkg/unicode/"><code>unicode</code></a> package
+adds <a href="/pkg/unicode/#In"><code>In</code></a>,
+a nicer-to-use but equivalent version of the original
+<a href="/pkg/unicode/#IsOneOf"><code>IsOneOf</code></a>,
+to see whether a character is a member of a Unicode category.
+</li>
+
+</ul>
+                                                                                                                                                                                                                                                                                                                                         root/go1.4/doc/go1.3.html                                                                           0100644 0000000 0000000 00000055115 12600426226 013351  0                                                                                                    ustar 00                                                                0000000 0000000                                                                                                                                                                        <!--{
+	"Title": "Go 1.3 Release Notes",
+	"Path":  "/doc/go1.3",
+	"Template": true
+}-->
+
+<h2 id="introduction">Introduction to Go 1.3</h2>
+
+<p>
+The latest Go release, version 1.3, arrives six months after 1.2,
+and contains no language changes.
+It focuses primarily on implementation work, providing 
+precise garbage collection,
+a major refactoring of the compiler tool chain that results in
+faster builds, especially for large projects,
+significant performance improvements across the board,
+and support for DragonFly BSD, Solaris, Plan 9 and Google's Native Client architecture (NaCl).
+It also has an important refinement to the memory model regarding synchronization.
+As always, Go 1.3 keeps the <a href="/doc/go1compat.html">promise
+of compatibility</a>,
+and almost everything 
+will continue to compile and run without change when moved to 1.3.
+</p>
+
+<h2 id="os">Changes to the supported operating systems and architectures</h2>
+
+<h3 id="win2000">Removal of support for Windows 2000</h3>
+
+<p>
+Microsoft stopped supporting Windows 2000 in 2010.
+Since it has <a href="https://codereview.appspot.com/74790043">implementation difficulties</a>
+regarding exception handling (signals in Unix terminology),
+as of Go 1.3 it is not supported by Go either.
+</p>
+
+<h3 id="dragonfly">Support for DragonFly BSD</h3>
+
+<p>
+Go 1.3 now includes experimental support for DragonFly BSD on the <code>amd64</code> (64-bit x86) and <code>386</code> (32-bit x86) architectures.
+It uses DragonFly BSD 3.6 or above.
+</p>
+
+<h3 id="freebsd">Support for FreeBSD</h3>
+
+<p>
+It was not announced at the time, but since the release of Go 1.2, support for Go on FreeBSD
+requires FreeBSD 8 or above.
+</p>
+
+<p>
+As of Go 1.3, support for Go on FreeBSD requires that the kernel be compiled with the
+<code>COMPAT_FREEBSD32</code> flag configured.
+</p>
+
+<p>
+In concert with the switch to EABI syscalls for ARM platforms, Go 1.3 will run only on FreeBSD 10.
+The x86 platforms, 386 and amd64, are unaffected.
+</p>
+
+<h3 id="nacl">Support for Native Client</h3>
+
+<p>
+Support for the Native Client virtual machine architecture has returned to Go with the 1.3 release.
+It runs on the 32-bit Intel architectures (<code>GOARCH=386</code>) and also on 64-bit Intel, but using
+32-bit pointers (<code>GOARCH=amd64p32</code>).
+There is not yet support for Native Client on ARM.
+Note that this is Native Client (NaCl), not Portable Native Client (PNaCl).
+Details about Native Client are <a href="https://developers.google.com/native-client/dev/">here</a>;
+how to set up the Go version is described <a href="//golang.org/wiki/NativeClient">here</a>.
+</p>
+
+<h3 id="netbsd">Support for NetBSD</h3>
+
+<p>
+As of Go 1.3, support for Go on NetBSD requires NetBSD 6.0 or above.
+</p>
+
+<h3 id="openbsd">Support for OpenBSD</h3>
+
+<p>
+As of Go 1.3, support for Go on OpenBSD requires OpenBSD 5.5 or above.
+</p>
+
+<h3 id="plan9">Support for Plan 9</h3>
+
+<p>
+Go 1.3 now includes experimental support for Plan 9 on the <code>386</code> (32-bit x86) architecture.
+It requires the <code>Tsemacquire</code> syscall, which has been in Plan 9 since June, 2012.
+</p>
+
+<h3 id="solaris">Support for Solaris</h3>
+
+<p>
+Go 1.3 now includes experimental support for Solaris on the <code>amd64</code> (64-bit x86) architecture.
+It requires illumos, Solaris 11 or above.
+</p>
+
+<h2 id="memory">Changes to the memory model</h2>
+
+<p>
+The Go 1.3 memory model <a href="https://codereview.appspot.com/75130045">adds a new rule</a>
+concerning sending and receiving on buffered channels,
+to make explicit that a buffered channel can be used as a simple
+semaphore, using a send into the
+channel to acquire and a receive from the channel to release.
+This is not a language change, just a clarification about an expected property of communication.
+</p>
+
+<h2 id="impl">Changes to the implementations and tools</h2>
+
+<h3 id="stacks">Stack</h3>
+
+<p>
+Go 1.3 has changed the implementation of goroutine stacks away from the old,
+"segmented" model to a contiguous model.
+When a goroutine needs more stack
+than is available, its stack is transferred to a larger single block of memory.
+The overhead of this transfer operation amortizes well and eliminates the old "hot spot"
+problem when a calculation repeatedly steps across a segment boundary.
+Details including performance numbers are in this
+<a href="//golang.org/s/contigstacks">design document</a>.
+</p>
+
+<h3 id="garbage_collector">Changes to the garbage collector</h3>
+
+<p>
+For a while now, the garbage collector has been <em>precise</em> when examining
+values in the heap; the Go 1.3 release adds equivalent precision to values on the stack.
+This means that a non-pointer Go value such as an integer will never be mistaken for a
+pointer and prevent unused memory from being reclaimed.
+</p>
+
+<p>
+Starting with Go 1.3, the runtime assumes that values with pointer type
+contain pointers and other values do not.
+This assumption is fundamental to the precise behavior of both stack expansion
+and garbage collection.
+Programs that use <a href="/pkg/unsafe/">package unsafe</a>
+to store integers in pointer-typed values are illegal and will crash if the runtime detects the behavior.
+Programs that use <a href="/pkg/unsafe/">package unsafe</a> to store pointers
+in integer-typed values are also illegal but more difficult to diagnose during execution.
+Because the pointers are hidden from the runtime, a stack expansion or garbage collection
+may reclaim the memory they point at, creating
+<a href="//en.wikipedia.org/wiki/Dangling_pointer">dangling pointers</a>.
+</p>
+
+<p>
+<em>Updating</em>: Code that uses <code>unsafe.Pointer</code> to convert
+an integer-typed value held in memory into a pointer is illegal and must be rewritten.
+Such code can be identified by <code>go vet</code>.
+</p>
+
+<h3 id="map">Map iteration</h3>
+
+<p>
+Iterations over small maps no longer happen in a consistent order.
+Go 1 defines that &ldquo;<a href="//golang.org/ref/spec#For_statements">The iteration order over maps
+is not specified and is not guaranteed to be the same from one iteration to the next.</a>&rdquo;
+To keep code from depending on map iteration order,
+Go 1.0 started each map iteration at a random index in the map.
+A new map implementation introduced in Go 1.1 neglected to randomize
+iteration for maps with eight or fewer entries, although the iteration order
+can still vary from system to system.
+This has allowed people to write Go 1.1 and Go 1.2 programs that
+depend on small map iteration order and therefore only work reliably on certain systems.
+Go 1.3 reintroduces random iteration for small maps in order to flush out these bugs.
+</p>
+
+<p>
+<em>Updating</em>: If code assumes a fixed iteration order for small maps,
+it will break and must be rewritten not to make that assumption.
+Because only small maps are affected, the problem arises most often in tests.
+</p>
+
+<h3 id="liblink">The linker</h3>
+
+<p>
+As part of the general <a href="//golang.org/s/go13linker">overhaul</a> to
+the Go linker, the compilers and linkers have been refactored.
+The linker is still a C program, but now the instruction selection phase that
+was part of the linker has been moved to the compiler through the creation of a new
+library called <code>liblink</code>.
+By doing instruction selection only once, when the package is first compiled,
+this can speed up compilation of large projects significantly.
+</p>
+
+<p>
+<em>Updating</em>: Although this is a major internal change, it should have no
+effect on programs.
+</p>
+
+<h3 id="gccgo">Status of gccgo</h3>
+
+<p>
+GCC release 4.9 will contain the Go 1.2 (not 1.3) version of gccgo.
+The release schedules for the GCC and Go projects do not coincide,
+which means that 1.3 will be available in the development branch but
+that the next GCC release, 4.10, will likely have the Go 1.4 version of gccgo.
+</p>
+
+<h3 id="gocmd">Changes to the go command</h3>
+
+<p>
+The <a href="/cmd/go/"><code>cmd/go</code></a> command has several new
+features.
+The <a href="/cmd/go/"><code>go run</code></a> and
+<a href="/cmd/go/"><code>go test</code></a> subcommands
+support a new <code>-exec</code> option to specify an alternate
+way to run the resulting binary.
+Its immediate purpose is to support NaCl.
+</p>
+
+<p>
+The test coverage support of the <a href="/cmd/go/"><code>go test</code></a>
+subcommand now automatically sets the coverage mode to <code>-atomic</code>
+when the race detector is enabled, to eliminate false reports about unsafe
+access to coverage counters.
+</p>
+
+<p>
+The <a href="/cmd/go/"><code>go test</code></a> subcommand
+now always builds the package, even if it has no test files.
+Previously, it would do nothing if no test files were present.
+</p>
+
+<p>
+The <a href="/cmd/go/"><code>go build</code></a> subcommand
+supports a new <code>-i</code> option to install dependencies
+of the specified target, but not the target itself.
+</p>
+
+<p>
+Cross compiling with <a href="/cmd/cgo/"><code>cgo</code></a> enabled
+is now supported.
+The CC_FOR_TARGET and CXX_FOR_TARGET environment
+variables are used when running all.bash to specify the cross compilers
+for C and C++ code, respectively.
+</p>
+
+<p>
+Finally, the go command now supports packages that import Objective-C
+files (suffixed <code>.m</code>) through cgo.
+</p>
+
+<h3 id="cgo">Changes to cgo</h3>
+
+<p>
+The <a href="/cmd/cgo/"><code>cmd/cgo</code></a> command,
+which processes <code>import "C"</code> declarations in Go packages,
+has corrected a serious bug that may cause some packages to stop compiling.
+Previously, all pointers to incomplete struct types translated to the Go type <code>*[0]byte</code>,
+with the effect that the Go compiler could not diagnose passing one kind of struct pointer
+to a function expecting another.
+Go 1.3 corrects this mistake by translating each different
+incomplete struct to a different named type.
+</p>
+
+<p>
+Given the C declaration <code>typedef struct S T</code> for an incomplete <code>struct S</code>,
+some Go code used this bug to refer to the types <code>C.struct_S</code> and <code>C.T</code> interchangeably.
+Cgo now explicitly allows this use, even for completed struct types.
+However, some Go code also used this bug to pass (for example) a <code>*C.FILE</code>
+from one package to another.
+This is not legal and no longer works: in general Go packages
+should avoid exposing C types and names in their APIs.
+</p>
+
+<p>
+<em>Updating</em>: Code confusing pointers to incomplete types or
+passing them across package boundaries will no longer compile
+and must be rewritten.
+If the conversion is correct and must be preserved,
+use an explicit conversion via <a href="/pkg/unsafe/#Pointer"><code>unsafe.Pointer</code></a>.
+</p>
+
+<h3 id="swig">SWIG 3.0 required for programs that use SWIG</h3>
+
+<p>
+For Go programs that use SWIG, SWIG version 3.0 is now required.
+The <a href="/cmd/go"><code>cmd/go</code></a> command will now link the
+SWIG generated object files directly into the binary, rather than
+building and linking with a shared library.
+</p>
+
+<h3 id="gc_flag">Command-line flag parsing</h3>
+
+<p>
+In the gc tool chain, the assemblers now use the
+same command-line flag parsing rules as the Go flag package, a departure
+from the traditional Unix flag parsing.
+This may affect scripts that invoke the tool directly.
+For example,
+<code>go tool 6a -SDfoo</code> must now be written
+<code>go tool 6a -S -D foo</code>.
+(The same change was made to the compilers and linkers in <a href="/doc/go1.1#gc_flag">Go 1.1</a>.)
+</p>
+
+<h3 id="godoc">Changes to godoc</h3>
+<p>
+When invoked with the <code>-analysis</code> flag, 
+<a href="//godoc.org/golang.org/x/tools/cmd/godoc">godoc</a>
+now performs sophisticated <a href="/lib/godoc/analysis/help.html">static
+analysis</a> of the code it indexes.  
+The results of analysis are presented in both the source view and the
+package documentation view, and include the call graph of each package
+and the relationships between 
+definitions and references,
+types and their methods,
+interfaces and their implementations,
+send and receive operations on channels,
+functions and their callers, and
+call sites and their callees.
+</p>
+
+<h3 id="misc">Miscellany</h3>
+
+<p>
+The program <code>misc/benchcmp</code> that compares
+performance across benchmarking runs has been rewritten.
+Once a shell and awk script in the main repository, it is now a Go program in the <code>go.tools</code> repo.
+Documentation is <a href="//godoc.org/golang.org/x/tools/cmd/benchcmp">here</a>.
+</p>
+
+<p>
+For the few of us that build Go distributions, the tool <code>misc/dist</code> has been
+moved and renamed; it now lives in <code>misc/makerelease</code>, still in the main repository.
+</p>
+
+<h2 id="performance">Performance</h2>
+
+<p>
+The performance of Go binaries for this release has improved in many cases due to changes
+in the runtime and garbage collection, plus some changes to libraries.
+Significant instances include:
+</p>
+
+<ul> 
+
+<li>
+The runtime handles defers more efficiently, reducing the memory footprint by about two kilobytes
+per goroutine that calls defer.
+</li>
+
+<li>
+The garbage collector has been sped up, using a concurrent sweep algorithm,
+better parallelization, and larger pages.
+The cumulative effect can be a 50-70% reduction in collector pause time.
+</li>
+
+<li>
+The race detector (see <a href="/doc/articles/race_detector.html">this guide</a>)
+is now about 40% faster.
+</li>
+
+<li>
+The regular expression package <a href="/pkg/regexp/"><code>regexp</code></a>
+is now significantly faster for certain simple expressions due to the implementation of
+a second, one-pass execution engine.
+The choice of which engine to use is automatic;
+the details are hidden from the user.
+</li>
+
+</ul>
+
+<p>
+Also, the runtime now includes in stack dumps how long a goroutine has been blocked,
+which can be useful information when debugging deadlocks or performance issues.
+</p>
+
+<h2 id="library">Changes to the standard library</h2>
+
+<h3 id="new_packages">New packages</h3>
+
+<p>
+A new package <a href="/pkg/debug/plan9obj/"><code>debug/plan9obj</code></a> was added to the standard library.
+It implements access to Plan 9 <a href="http://plan9.bell-labs.com/magic/man2html/6/a.out">a.out</a> object files.
+</p>
+
+<h3 id="major_library_changes">Major changes to the library</h3>
+
+<p>
+A previous bug in <a href="/pkg/crypto/tls/"><code>crypto/tls</code></a>
+made it possible to skip verification in TLS inadvertently.
+In Go 1.3, the bug is fixed: one must specify either ServerName or
+InsecureSkipVerify, and if ServerName is specified it is enforced.
+This may break existing code that incorrectly depended on insecure
+behavior.
+</p>
+
+<p>
+There is an important new type added to the standard library: <a href="/pkg/sync/#Pool"><code>sync.Pool</code></a>.
+It provides an efficient mechanism for implementing certain types of caches whose memory
+can be reclaimed automatically by the system.
+</p>
+
+<p>
+The <a href="/pkg/testing/"><code>testing</code></a> package's benchmarking helper,
+<a href="/pkg/testing/#B"><code>B</code></a>, now has a
+<a href="/pkg/testing/#B.RunParallel"><code>RunParallel</code></a> method
+to make it easier to run benchmarks that exercise multiple CPUs.
+</p>
+
+<p>
+<em>Updating</em>: The crypto/tls fix may break existing code, but such
+code was erroneous and should be updated.
+</p>
+
+<h3 id="minor_library_changes">Minor changes to the library</h3>
+
+<p>
+The following list summarizes a number of minor changes to the library, mostly additions.
+See the relevant package documentation for more information about each change.
+</p>
+
+<ul>
+
+<li> In the <a href="/pkg/crypto/tls/"><code>crypto/tls</code></a> package,
+a new <a href="/pkg/crypto/tls/#DialWithDialer"><code>DialWithDialer</code></a>
+function lets one establish a TLS connection using an existing dialer, making it easier
+to control dial options such as timeouts.
+The package also now reports the TLS version used by the connection in the
+<a href="/pkg/crypto/tls/#ConnectionState"><code>ConnectionState</code></a>
+struct.
+</li>
+
+<li> The <a href="/pkg/crypto/x509/#CreateCertificate"><code>CreateCertificate</code></a>
+function of the <a href="/pkg/crypto/tls/"><code>crypto/tls</code></a> package
+now supports parsing (and elsewhere, serialization) of PKCS #10 certificate
+signature requests.
+</li>
+
+<li>
+The formatted print functions of the <code>fmt</code> package now define <code>%F</code>
+as a synonym for <code>%f</code> when printing floating-point values.
+</li>
+
+<li>
+The <a href="/pkg/math/big/"><code>math/big</code></a> package's
+<a href="/pkg/math/big/#Int"><code>Int</code></a> and
+<a href="/pkg/math/big/#Rat"><code>Rat</code></a> types
+now implement
+<a href="/pkg/encoding/#TextMarshaler"><code>encoding.TextMarshaler</code></a> and
+<a href="/pkg/encoding/#TextUnmarshaler"><code>encoding.TextUnmarshaler</code></a>.
+</li>
+
+<li>
+The complex power function, <a href="/pkg/math/cmplx/#Pow"><code>Pow</code></a>,
+now specifies the behavior when the first argument is zero.
+It was undefined before.
+The details are in the <a href="/pkg/math/cmplx/#Pow">documentation for the function</a>.
+</li>
+
+<li>
+The <a href="/pkg/net/http/"><code>net/http</code></a> package now exposes the
+properties of a TLS connection used to make a client request in the new
+<a href="/pkg/net/http/#Response"><code>Response.TLS</code></a> field.
+</li>
+
+<li>
+The <a href="/pkg/net/http/"><code>net/http</code></a> package now
+allows setting an optional server error logger
+with <a href="/pkg/net/http/#Server"><code>Server.ErrorLog</code></a>.
+The default is still that all errors go to stderr.
+</li>
+
+<li>
+The <a href="/pkg/net/http/"><code>net/http</code></a> package now
+supports disabling HTTP keep-alive connections on the server
+with <a href="/pkg/net/http/#Server.SetKeepAlivesEnabled"><code>Server.SetKeepAlivesEnabled</code></a>.
+The default continues to be that the server does keep-alive (reuses
+connections for multiple requests) by default.
+Only resource-constrained servers or those in the process of graceful
+shutdown will want to disable them.
+</li>
+
+<li>
+The <a href="/pkg/net/http/"><code>net/http</code></a> package adds an optional
+<a href="/pkg/net/http/#Transport"><code>Transport.TLSHandshakeTimeout</code></a>
+setting to cap the amount of time HTTP client requests will wait for
+TLS handshakes to complete.
+It's now also set by default
+on <a href="/pkg/net/http#DefaultTransport"><code>DefaultTransport</code></a>.
+</li>
+
+<li>
+The <a href="/pkg/net/http/"><code>net/http</code></a> package's
+<a href="/pkg/net/http/#DefaultTransport"><code>DefaultTransport</code></a>,
+used by the HTTP client code, now
+enables <a href="http://en.wikipedia.org/wiki/Keepalive#TCP_keepalive">TCP
+keep-alives</a> by default.
+Other <a href="/pkg/net/http/#Transport"><code>Transport</code></a>
+values with a nil <code>Dial</code> field continue to function the same
+as before: no TCP keep-alives are used.
+</li>
+
+<li>
+The <a href="/pkg/net/http/"><code>net/http</code></a> package
+now enables <a href="http://en.wikipedia.org/wiki/Keepalive#TCP_keepalive">TCP
+keep-alives</a> for incoming server requests when
+<a href="/pkg/net/http/#ListenAndServe"><code>ListenAndServe</code></a>
+or
+<a href="/pkg/net/http/#ListenAndServeTLS"><code>ListenAndServeTLS</code></a>
+are used.
+When a server is started otherwise, TCP keep-alives are not enabled.
+</li>
+
+<li>
+The <a href="/pkg/net/http/"><code>net/http</code></a> package now
+provides an
+optional <a href="/pkg/net/http/#Server"><code>Server.ConnState</code></a>
+callback to hook various phases of a server connection's lifecycle
+(see <a href="/pkg/net/http/#ConnState"><code>ConnState</code></a>).
+This can be used to implement rate limiting or graceful shutdown.
+</li>
+
+<li>
+The <a href="/pkg/net/http/"><code>net/http</code></a> package's HTTP
+client now has an
+optional <a href="/pkg/net/http/#Client"><code>Client.Timeout</code></a>
+field to specify an end-to-end timeout on requests made using the
+client.
+</li>
+
+<li>
+The <a href="/pkg/net/http/"><code>net/http</code></a> package's
+<a href="/pkg/net/http/#Request.ParseMultipartForm"><code>Request.ParseMultipartForm</code></a>
+method will now return an error if the body's <code>Content-Type</code>
+is not <code>mutipart/form-data</code>.
+Prior to Go 1.3 it would silently fail and return <code>nil</code>.
+Code that relies on the previous behavior should be updated.
+</li>
+
+<li> In the <a href="/pkg/net/"><code>net</code></a> package,
+the <a href="/pkg/net/#Dialer"><code>Dialer</code></a> struct now
+has a <code>KeepAlive</code> option to specify a keep-alive period for the connection.
+</li>
+
+<li>
+The <a href="/pkg/net/http/"><code>net/http</code></a> package's 
+<a href="/pkg/net/http/#Transport"><code>Transport</code></a>
+now closes <a href="/pkg/net/http/#Request"><code>Request.Body</code></a>
+consistently, even on error.
+</li>
+
+<li>
+The <a href="/pkg/os/exec/"><code>os/exec</code></a> package now implements
+what the documentation has always said with regard to relative paths for the binary.
+In particular, it only calls <a href="/pkg/os/exec/#LookPath"><code>LookPath</code></a>
+when the binary's file name contains no path separators.
+</li>
+
+<li>
+The <a href="/pkg/reflect/#Value.SetMapIndex"><code>SetMapIndex</code></a>
+function in the <a href="/pkg/reflect/"><code>reflect</code></a> package
+no longer panics when deleting from a <code>nil</code> map.
+</li>
+
+<li>
+If the main goroutine calls 
+<a href="/pkg/runtime/#Goexit"><code>runtime.Goexit</code></a>
+and all other goroutines finish execution, the program now always crashes,
+reporting a detected deadlock.
+Earlier versions of Go handled this situation inconsistently: most instances
+were reported as deadlocks, but some trivial cases exited cleanly instead.
+</li>
+
+<li>
+The runtime/debug package now has a new function
+<a href="/pkg/runtime/debug/#WriteHeapDump"><code>debug.WriteHeapDump</code></a>
+that writes out a description of the heap.
+</li>
+
+<li>
+The <a href="/pkg/strconv/#CanBackquote"><code>CanBackquote</code></a>
+function in the <a href="/pkg/strconv/"><code>strconv</code></a> package
+now considers the <code>DEL</code> character, <code>U+007F</code>, to be
+non-printing.
+</li>
+
+<li>
+The <a href="/pkg/syscall/"><code>syscall</code></a> package now provides
+<a href="/pkg/syscall/#SendmsgN"><code>SendmsgN</code></a>
+as an alternate version of
+<a href="/pkg/syscall/#Sendmsg"><code>Sendmsg</code></a>
+that returns the number of bytes written.
+</li>
+
+<li>
+On Windows, the <a href="/pkg/syscall/"><code>syscall</code></a> package now
+supports the cdecl calling convention through the addition of a new function
+<a href="/pkg/syscall/#NewCallbackCDecl"><code>NewCallbackCDecl</code></a>
+alongside the existing function
+<a href="/pkg/syscall/#NewCallback"><code>NewCallback</code></a>.
+</li>
+
+<li>
+The <a href="/pkg/testing/"><code>testing</code></a> package now
+diagnoses tests that call <code>panic(nil)</code>, which are almost always erroneous.
+Also, tests now write profiles (if invoked with profiling flags) even on failure.
+</li>
+
+<li>
+The <a href="/pkg/unicode/"><code>unicode</code></a> package and associated
+support throughout the system has been upgraded from
+Unicode 6.2.0 to <a href="http://www.unicode.org/versions/Unicode6.3.0/">Unicode 6.3.0</a>.
+</li>
+
+</ul>
+                                                                                                                                                                                                                                                                                                                                                                                                                                                   root/go1.4/doc/go1.4.html                                                                           0100644 0000000 0000000 00000101371 12600426226 013346  0                                                                                                    ustar 00                                                                0000000 0000000                                                                                                                                                                        <!--{
+	"Title": "Go 1.4 Release Notes",
+	"Path":  "/doc/go1.4",
+	"Template": true
+}-->
+
+<h2 id="introduction">Introduction to Go 1.4</h2>
+
+<p>
+The latest Go release, version 1.4, arrives as scheduled six months after 1.3.
+</p>
+
+<p>
+It contains only one tiny language change,
+in the form of a backwards-compatible simple variant of <code>for</code>-<code>range</code> loop,
+and a possibly breaking change to the compiler involving methods on pointers-to-pointers.
+</p>
+
+<p>
+The release focuses primarily on implementation work, improving the garbage collector
+and preparing the ground for a fully concurrent collector to be rolled out in the
+next few releases.
+Stacks are now contiguous, reallocated when necessary rather than linking on new
+"segments";
+this release therefore eliminates the notorious "hot stack split" problem.
+There are some new tools available including support in the <code>go</code> command
+for build-time source code generation.
+The release also adds support for ARM processors on Android and Native Client (NaCl)
+and for AMD64 on Plan 9.
+</p>
+
+<p>
+As always, Go 1.4 keeps the <a href="/doc/go1compat.html">promise
+of compatibility</a>,
+and almost everything 
+will continue to compile and run without change when moved to 1.4.
+</p>
+
+<h2 id="language">Changes to the language</h2>
+
+<h3 id="forrange">For-range loops</h3>
+<p>
+Up until Go 1.3, <code>for</code>-<code>range</code> loop had two forms
+</p>
+
+<pre>
+for i, v := range x {
+	...
+}
+</pre>
+
+<p>
+and
+</p>
+
+<pre>
+for i := range x {
+	...
+}
+</pre>
+
+<p>
+If one was not interested in the loop values, only the iteration itself, it was still
+necessary to mention a variable (probably the <a href="/ref/spec#Blank_identifier">blank identifier</a>, as in
+<code>for</code> <code>_</code> <code>=</code> <code>range</code> <code>x</code>), because
+the form
+</p>
+
+<pre>
+for range x {
+	...
+}
+</pre>
+
+<p>
+was not syntactically permitted.
+</p>
+
+<p>
+This situation seemed awkward, so as of Go 1.4 the variable-free form is now legal.
+The pattern arises rarely but the code can be cleaner when it does.
+</p>
+
+<p>
+<em>Updating</em>: The change is strictly backwards compatible to existing Go
+programs, but tools that analyze Go parse trees may need to be modified to accept
+this new form as the
+<code>Key</code> field of <a href="/pkg/go/ast/#RangeStmt"><code>RangeStmt</code></a>
+may now be <code>nil</code>.
+</p>
+
+<h3 id="methodonpointertopointer">Method calls on **T</h3>
+
+<p>
+Given these declarations,
+</p>
+
+<pre>
+type T int
+func (T) M() {}
+var x **T
+</pre>
+
+<p>
+both <code>gc</code> and <code>gccgo</code> accepted the method call
+</p>
+
+<pre>
+x.M()
+</pre>
+
+<p>
+which is a double dereference of the pointer-to-pointer <code>x</code>.
+The Go specification allows a single dereference to be inserted automatically,
+but not two, so this call is erroneous according to the language definition.
+It has therefore been disallowed in Go 1.4, which is a breaking change,
+although very few programs will be affected.
+</p>
+
+<p>
+<em>Updating</em>: Code that depends on the old, erroneous behavior will no longer
+compile but is easy to fix by adding an explicit dereference.
+</p>
+
+<h2 id="os">Changes to the supported operating systems and architectures</h2>
+
+<h3 id="android">Android</h3>
+
+<p>
+Go 1.4 can build binaries for ARM processors running the Android operating system.
+It can also build a <code>.so</code> library that can be loaded by an Android application
+using the supporting packages in the <a href="https://golang.org/x/mobile">mobile</a> subrepository.
+A brief description of the plans for this experimental port are available
+<a href="https://golang.org/s/go14android">here</a>.
+</p>
+
+<h3 id="naclarm">NaCl on ARM</h3>
+
+<p>
+The previous release introduced Native Client (NaCl) support for the 32-bit x86
+(<code>GOARCH=386</code>)
+and 64-bit x86 using 32-bit pointers (GOARCH=amd64p32).
+The 1.4 release adds NaCl support for ARM (GOARCH=arm).
+</p>
+
+<h3 id="plan9amd64">Plan9 on AMD64</h3>
+
+<p>
+This release adds support for the Plan 9 operating system on AMD64 processors,
+provided the kernel supports the <code>nsec</code> system call and uses 4K pages.
+</p>
+
+<h2 id="compatibility">Changes to the compatibility guidelines</h2>
+
+<p>
+The <a href="/pkg/unsafe/"><code>unsafe</code></a> package allows one
+to defeat Go's type system by exploiting internal details of the implementation
+or machine representation of data.
+It was never explicitly specified what use of <code>unsafe</code> meant
+with respect to compatibility as specified in the
+<a href="go1compat.html">Go compatibility guidelines</a>.
+The answer, of course, is that we can make no promise of compatibility
+for code that does unsafe things.
+</p>
+
+<p>
+We have clarified this situation in the documentation included in the release.
+The <a href="go1compat.html">Go compatibility guidelines</a> and the
+docs for the <a href="/pkg/unsafe/"><code>unsafe</code></a> package
+are now explicit that unsafe code is not guaranteed to remain compatible.
+</p>
+  
+<p>
+<em>Updating</em>: Nothing technical has changed; this is just a clarification
+of the documentation.
+</p>
+
+
+<h2 id="impl">Changes to the implementations and tools</h2>
+
+<h3 id="runtime">Changes to the runtime</h3>
+
+<p>
+Prior to Go 1.4, the runtime (garbage collector, concurrency support, interface management,
+maps, slices, strings, ...) was mostly written in C, with some assembler support.
+In 1.4, much of the code has been translated to Go so that the garbage collector can scan
+the stacks of programs in the runtime and get accurate information about what variables
+are active.
+This change was large but should have no semantic effect on programs.
+</p>
+
+<p>
+This rewrite allows the garbage collector in 1.4 to be fully precise,
+meaning that it is aware of the location of all active pointers in the program.
+This means the heap will be smaller as there will be no false positives keeping non-pointers alive.
+Other related changes also reduce the heap size, which is smaller by 10%-30% overall
+relative to the previous release.
+</p>
+
+<p>
+A consequence is that stacks are no longer segmented, eliminating the "hot split" problem.
+When a stack limit is reached, a new, larger stack is allocated, all active frames for
+the goroutine are copied there, and any pointers into the stack are updated.
+Performance can be noticeably better in some cases and is always more predictable.
+Details are available in <a href="https://golang.org/s/contigstacks">the design document</a>.
+</p>
+
+<p>
+The use of contiguous stacks means that stacks can start smaller without triggering performance issues,
+so the default starting size for a goroutine's stack in 1.4 has been reduced from 8192 bytes to 2048 bytes.
+</p>
+
+<p>
+As preparation for the concurrent garbage collector scheduled for the 1.5 release,
+writes to pointer values in the heap are now done by a function call,
+called a write barrier, rather than directly from the function updating the value.
+In this next release, this will permit the garbage collector to mediate writes to the heap while it is running.
+This change has no semantic effect on programs in 1.4, but was
+included in the release to test the compiler and the resulting performance.
+</p>
+
+<p>
+The implementation of interface values has been modified.
+In earlier releases, the interface contained a word that was either a pointer or a one-word
+scalar value, depending on the type of the concrete object stored.
+This implementation was problematical for the garbage collector,
+so as of 1.4 interface values always hold a pointer.
+In running programs, most interface values were pointers anyway,
+so the effect is minimal, but programs that store integers (for example) in
+interfaces will see more allocations.
+</p>
+
+<p>
+As of Go 1.3, the runtime crashes if it finds a memory word that should contain
+a valid pointer but instead contains an obviously invalid pointer (for example, the value 3).
+Programs that store integers in pointer values may run afoul of this check and crash.
+In Go 1.4, setting the <a href="/pkg/runtime/"><code>GODEBUG</code></a> variable
+<code>invalidptr=0</code> disables
+the crash as a workaround, but we cannot guarantee that future releases will be
+able to avoid the crash; the correct fix is to rewrite code not to alias integers and pointers.
+</p>
+
+<h3 id="asm">Assembly</h3>
+
+<p>
+The language accepted by the assemblers <code>cmd/5a</code>, <code>cmd/6a</code>
+and <code>cmd/8a</code> has had several changes,
+mostly to make it easier to deliver type information to the runtime.
+</p>
+
+<p>
+First, the <code>textflag.h</code> file that defines flags for <code>TEXT</code> directives
+has been copied from the linker source directory to a standard location so it can be
+included with the simple directive
+</p>
+
+<pre>
+#include "textflag.h"
+</pre>
+
+<p>
+The more important changes are in how assembler source can define the necessary
+type information.
+For most programs it will suffice to move data
+definitions (<code>DATA</code> and <code>GLOBL</code> directives)
+out of assembly into Go files
+and to write a Go declaration for each assembly function.
+The <a href="/doc/asm#runtime">assembly document</a> describes what to do.
+</p>
+
+<p>
+<em>Updating</em>:
+Assembly files that include <code>textflag.h</code> from its old
+location will still work, but should be updated.
+For the type information, most assembly routines will need no change,
+but all should be examined.
+Assembly source files that define data,
+functions with non-empty stack frames, or functions that return pointers
+need particular attention.
+A description of the necessary (but simple) changes
+is in the <a href="/doc/asm#runtime">assembly document</a>.
+</p>
+
+<p>
+More information about these changes is in the <a href="/doc/asm">assembly document</a>.
+</p>
+
+<h3 id="gccgo">Status of gccgo</h3>
+
+<p>
+The release schedules for the GCC and Go projects do not coincide.
+GCC release 4.9 contains the Go 1.2 version of gccgo.
+The next release, GCC 5, will likely have the Go 1.4 version of gccgo.
+</p>
+
+<h3 id="internalpackages">Internal packages</h3>
+
+<p>
+Go's package system makes it easy to structure programs into components with clean boundaries,
+but there are only two forms of access: local (unexported) and global (exported).
+Sometimes one wishes to have components that are not exported,
+for instance to avoid acquiring clients of interfaces to code that is part of a public repository
+but not intended for use outside the program to which it belongs.
+</p>
+
+<p>
+The Go language does not have the power to enforce this distinction, but as of Go 1.4 the
+<a href="/cmd/go/"><code>go</code></a> command introduces
+a mechanism to define "internal" packages that may not be imported by packages outside
+the source subtree in which they reside.
+</p>
+
+<p>
+To create such a package, place it in a directory named <code>internal</code> or in a subdirectory of a directory
+named internal.
+When the <code>go</code> command sees an import of a package with <code>internal</code> in its path,
+it verifies that the package doing the import
+is within the tree rooted at the parent of the <code>internal</code> directory.
+For example, a package <code>.../a/b/c/internal/d/e/f</code>
+can be imported only by code in the directory tree rooted at <code>.../a/b/c</code>.
+It cannot be imported by code in <code>.../a/b/g</code> or in any other repository.
+</p>
+
+<p>
+For Go 1.4, the internal package mechanism is enforced for the main Go repository;
+from 1.5 and onward it will be enforced for any repository.
+</p>
+
+<p>
+Full details of the mechanism are in
+<a href="https://golang.org/s/go14internal">the design document</a>.
+</p>
+
+<h3 id="canonicalimports">Canonical import paths</h3>
+
+<p>
+Code often lives in repositories hosted by public services such as <code>github.com</code>,
+meaning that the import paths for packages begin with the name of the hosting service,
+<code>github.com/rsc/pdf</code> for example.
+One can use
+<a href="/cmd/go/#hdr-Remote_import_paths">an existing mechanism</a>
+to provide a "custom" or "vanity" import path such as
+<code>rsc.io/pdf</code>, but
+that creates two valid import paths for the package.
+That is a problem: one may inadvertently import the package through the two
+distinct paths in a single program, which is wasteful;
+miss an update to a package because the path being used is not recognized to be
+out of date;
+or break clients using the old path by moving the package to a different hosting service.
+</p>
+
+<p>
+Go 1.4 introduces an annotation for package clauses in Go source that identify a canonical
+import path for the package.
+If an import is attempted using a path that is not canonical,
+the <a href="/cmd/go/"><code>go</code></a> command
+will refuse to compile the importing package.
+</p>
+
+<p>
+The syntax is simple: put an identifying comment on the package line.
+For our example, the package clause would read:
+</p>
+
+<pre>
+package pdf // import "rsc.io/pdf"
+</pre>
+
+<p>
+With this in place,
+the <code>go</code> command will
+refuse to compile a package that imports <code>github.com/rsc/pdf</code>, 
+ensuring that the code can be moved without breaking users.
+</p>
+
+<p>
+The check is at build time, not download time, so if <code>go</code> <code>get</code>
+fails because of this check, the mis-imported package has been copied to the local machine
+and should be removed manually.
+</p>
+
+<p>
+To complement this new feature, a check has been added at update time to verify
+that the local package's remote repository matches that of its custom import.
+The <code>go</code> <code>get</code> <code>-u</code> command will fail to
+update a package if its remote repository has changed since it was first
+downloaded.
+The new <code>-f</code> flag overrides this check.
+</p>
+
+<p>
+Further information is in
+<a href="https://golang.org/s/go14customimport">the design document</a>.
+</p>
+
+<h3 id="subrepo">Import paths for the subrepositories</h3>
+
+<p>
+The Go project subrepositories (<code>code.google.com/p/go.tools</code> and so on)
+are now available under custom import paths replacing <code>code.google.com/p/go.</code> with <code>golang.org/x/</code>,
+as in <code>golang.org/x/tools</code>.
+We will add canonical import comments to the code around June 1, 2015,
+at which point Go 1.4 and later will stop accepting the old <code>code.google.com</code> paths.
+</p>
+
+<p>
+<em>Updating</em>: All code that imports from subrepositories should change
+to use the new <code>golang.org</code> paths.
+Go 1.0 and later can resolve and import the new paths, so updating will not break
+compatibility with older releases.
+Code that has not updated will stop compiling with Go 1.4 around June 1, 2015.
+</p>
+
+<h3 id="gogenerate">The go generate subcommand</h3>
+
+<p>
+The <a href="/cmd/go/"><code>go</code></a> command has a new subcommand,
+<a href="/cmd/go/#hdr-Generate_Go_files_by_processing_source"><code>go generate</code></a>,
+to automate the running of tools to generate source code before compilation.
+For example, it can be used to run the <a href="/cmd/yacc"><code>yacc</code></a>
+compiler-compiler on a <code>.y</code> file to produce the Go source file implementing the grammar,
+or to automate the generation of <code>String</code> methods for typed constants using the new
+<a href="http://godoc.org/golang.org/x/tools/cmd/stringer">stringer</a>
+tool in the <code>golang.org/x/tools</code> subrepository.
+</p>
+
+<p>
+For more information, see the 
+<a href="https://golang.org/s/go1.4-generate">design document</a>.
+</p>
+
+<h3 id="filenames">Change to file name handling</h3>
+
+<p>
+Build constraints, also known as build tags, control compilation by including or excluding files
+(see the documentation <a href="/pkg/go/build/"><code>/go/build</code></a>).
+Compilation can also be controlled by the name of the file itself by "tagging" the file with
+a suffix (before the <code>.go</code> or <code>.s</code> extension) with an underscore
+and the name of the architecture or operating system.
+For instance, the file <code>gopher_arm.go</code> will only be compiled if the target
+processor is an ARM.
+</p>
+
+<p>
+Before Go 1.4, a file called just <code>arm.go</code> was similarly tagged, but this behavior
+can break sources when new architectures are added, causing files to suddenly become tagged.
+In 1.4, therefore, a file will be tagged in this manner only if the tag (architecture or operating
+system name) is preceded by an underscore.
+</p>
+
+<p>
+<em>Updating</em>: Packages that depend on the old behavior will no longer compile correctly.
+Files with names like <code>windows.go</code> or <code>amd64.go</code> should either
+have explicit build tags added to the source or be renamed to something like
+<code>os_windows.go</code> or <code>support_amd64.go</code>.
+</p>
+
+<h3 id="gocmd">Other changes to the go command</h3>
+
+<p>
+There were a number of minor changes to the
+<a href="/cmd/go/"><code>cmd/go</code></a>
+command worth noting.
+</p>
+
+<ul>
+
+<li>
+Unless <a href="/cmd/cgo/"><code>cgo</code></a> is being used to build the package,
+the <code>go</code> command now refuses to compile C source files,
+since the relevant C compilers
+(<a href="/cmd/6c/"><code>6c</code></a> etc.)
+are intended to be removed from the installation in some future release.
+(They are used today only to build part of the runtime.)
+It is difficult to use them correctly in any case, so any extant uses are likely incorrect,
+so we have disabled them.
+</li>
+
+<li>
+The <a href="/cmd/go/#hdr-Test_packages"><code>go</code> <code>test</code></a>
+subcommand has a new flag, <code>-o</code>, to set the name of the resulting binary,
+corresponding to the same flag in other subcommands.
+The non-functional <code>-file</code> flag has been removed.
+</li>
+
+<li>
+The <a href="/cmd/go/#hdr-Test_packages"><code>go</code> <code>test</code></a>
+subcommand will compile and link all <code>*_test.go</code> files in the package,
+even when there are no <code>Test</code> functions in them. 
+It previously ignored such files.
+</li>
+
+<li>
+The behavior of the
+<a href="/cmd/go/#hdr-Test_packages"><code>go</code> <code>build</code></a>
+subcommand's
+<code>-a</code> flag has been changed for non-development installations.
+For installations running a released distribution, the <code>-a</code> flag will no longer
+rebuild the standard library and commands, to avoid overwriting the installation's files.
+</li>
+
+</ul>
+
+<h3 id="pkg">Changes to package source layout</h3>
+
+<p>
+In the main Go source repository, the source code for the packages was kept in
+the directory <code>src/pkg</code>, which made sense but differed from
+other repositories, including the Go subrepositories.
+In Go 1.4, the<code> pkg</code> level of the source tree is now gone, so for example
+the <a href="/pkg/fmt/"><code>fmt</code></a> package's source, once kept in
+directory <code>src/pkg/fmt</code>, now lives one level higher in <code>src/fmt</code>.
+</p>
+
+<p>
+<em>Updating</em>: Tools like <code>godoc</code> that discover source code
+need to know about the new location. All tools and services maintained by the Go team
+have been updated.
+</p>
+
+
+<h3 id="swig">SWIG</h3>
+
+<p>
+Due to runtime changes in this release, Go 1.4 requires SWIG 3.0.3.
+</p>
+
+<h3 id="misc">Miscellany</h3>
+
+<p>
+The standard repository's top-level <code>misc</code> directory used to contain
+Go support for editors and IDEs: plugins, initialization scripts and so on.
+Maintaining these was becoming time-consuming
+and needed external help because many of the editors listed were not used by
+members of the core team.
+It also required us to make decisions about which plugin was best for a given
+editor, even for editors we do not use.
+</p>
+
+<p>
+The Go community at large is much better suited to managing this information.
+In Go 1.4, therefore, this support has been removed from the repository.
+Instead, there is a curated, informative list of what's available on
+a <a href="//golang.org/wiki/IDEsAndTextEditorPlugins">wiki page</a>.
+</p>
+
+<h2 id="performance">Performance</h2>
+
+<p>
+Most programs will run about the same speed or slightly faster in 1.4 than in 1.3;
+some will be slightly slower.
+There are many changes, making it hard to be precise about what to expect.
+</p>
+
+<p>
+As mentioned above, much of the runtime was translated to Go from C,
+which led to some reduction in heap sizes.
+It also improved performance slightly because the Go compiler is better
+at optimization, due to things like inlining, than the C compiler used to build
+the runtime.
+</p>
+
+<p>
+The garbage collector was sped up, leading to measurable improvements for
+garbage-heavy programs.
+On the other hand, the new write barriers slow things down again, typically
+by about the same amount but, depending on their behavior, some programs
+may be somewhat slower or faster.
+</p>
+
+<p>
+Library changes that affect performance are documented below.
+</p>
+
+<h2 id="library">Changes to the standard library</h2>
+
+<h3 id="new_packages">New packages</h3>
+
+<p>
+There are no new packages in this release.
+</p>
+
+<h3 id="major_library_changes">Major changes to the library</h3>
+
+<h4 id="scanner">bufio.Scanner</h4>
+
+<p>
+The <a href="/pkg/bufio/#Scanner"><code>Scanner</code></a> type in the
+<a href="/pkg/bufio/"><code>bufio</code></a> package
+has had a bug fixed that may require changes to custom
+<a href="/pkg/bufio/#SplitFunc"><code>split functions</code></a>. 
+The bug made it impossible to generate an empty token at EOF; the fix
+changes the end conditions seen by the split function.
+Previously, scanning stopped at EOF if there was no more data.
+As of 1.4, the split function will be called once at EOF after input is exhausted,
+so the split function can generate a final empty token
+as the documentation already promised.
+</p>
+
+<p>
+<em>Updating</em>: Custom split functions may need to be modified to
+handle empty tokens at EOF as desired.
+</p>
+
+<h4 id="syscall">syscall</h4>
+
+<p>
+The <a href="/pkg/syscall/"><code>syscall</code></a> package is now frozen except
+for changes needed to maintain the core repository.
+In particular, it will no longer be extended to support new or different system calls
+that are not used by the core.
+The reasons are described at length in <a href="https://golang.org/s/go1.4-syscall">a
+separate document</a>.
+</p>
+
+<p>
+A new subrepository, <a href="https://golang.org/x/sys">golang.org/x/sys</a>,
+has been created to serve as the location for new developments to support system
+calls on all kernels.
+It has a nicer structure, with three packages that each hold the implementation of
+system calls for one of
+<a href="http://godoc.org/golang.org/x/sys/unix">Unix</a>,
+<a href="http://godoc.org/golang.org/x/sys/windows">Windows</a> and
+<a href="http://godoc.org/golang.org/x/sys/plan9">Plan 9</a>.
+These packages will be curated more generously, accepting all reasonable changes
+that reflect kernel interfaces in those operating systems.
+See the documentation and the article mentioned above for more information.
+</p>
+
+<p>
+<em>Updating</em>: Existing programs are not affected as the <code>syscall</code>
+package is largely unchanged from the 1.3 release.
+Future development that requires system calls not in the <code>syscall</code> package
+should build on <code>golang.org/x/sys</code> instead.
+</p>
+
+<h3 id="minor_library_changes">Minor changes to the library</h3>
+
+<p>
+The following list summarizes a number of minor changes to the library, mostly additions.
+See the relevant package documentation for more information about each change.
+</p>
+
+<ul>
+
+<li>
+The <a href="/pkg/archive/zip/"><code>archive/zip</code></a> package's
+<a href="/pkg/archive/zip/#Writer"><code>Writer</code></a> now supports a
+<a href="/pkg/archive/zip/#Writer.Flush"><code>Flush</code></a> method.
+</li>
+
+<li>
+The <a href="/pkg/compress/flate/"><code>compress/flate</code></a>,
+<a href="/pkg/compress/gzip/"><code>compress/gzip</code></a>,
+and <a href="/pkg/compress/zlib/"><code>compress/zlib</code></a>
+packages now support a <code>Reset</code> method
+for the decompressors, allowing them to reuse buffers and improve performance.
+The <a href="/pkg/compress/gzip/"><code>compress/gzip</code></a> package also has a
+<a href="/pkg/compress/gzip/#Reader.Multistream"><code>Multistream</code></a> method to control support
+for multistream files.
+</li>
+
+<li>
+The <a href="/pkg/crypto/"><code>crypto</code></a> package now has a
+<a href="/pkg/crypto/#Signer"><code>Signer</code></a> interface, implemented by the
+<code>PrivateKey</code> types in
+<a href="/pkg/crypto/ecdsa"><code>crypto/ecdsa</code></a> and
+<a href="/pkg/crypto/rsa"><code>crypto/rsa</code></a>.
+</li>
+
+<li>
+The <a href="/pkg/crypto/tls/"><code>crypto/tls</code></a> package
+now supports ALPN as defined in <a href="http://tools.ietf.org/html/rfc7301">RFC 7301</a>.
+</li>
+
+<li>
+The <a href="/pkg/crypto/tls/"><code>crypto/tls</code></a> package
+now supports programmatic selection of server certificates
+through the new <a href="/pkg/crypto/tls/#Config.CertificateForName"><code>CertificateForName</code></a> function
+of the <a href="/pkg/crypo/tls/#Config"><code>Config</code></a> struct.
+</li>
+
+<li>
+Also in the crypto/tls package, the server now supports 
+<a href="https://tools.ietf.org/html/draft-ietf-tls-downgrade-scsv-00">TLS_FALLBACK_SCSV</a>
+to help clients detect fallback attacks.
+(The Go client does not support fallback at all, so it is not vulnerable to
+those attacks.)
+</li>
+
+<li>
+The <a href="/pkg/database/sql/"><code>database/sql</code></a> package can now list all registered
+<a href="/pkg/database/sql/#Drivers"><code>Drivers</code></a>.
+</li>
+
+<li>
+The <a href="/pkg/debug/dwarf/"><code>debug/dwarf</code></a> package now supports
+<a href="/pkg/debug/dwarf/#UnspecifiedType"><code>UnspecifiedType</code></a>s.
+</li>
+
+<li>
+In the <a href="/pkg/encoding/asn1/"><code>encoding/asn1</code></a> package,
+optional elements with a default value will now only be omitted if they have that value.
+</li>
+
+<li>
+The <a href="/pkg/encoding/csv/"><code>encoding/csv</code></a> package no longer
+quotes empty strings but does quote the end-of-data marker <code>\.</code> (backslash dot).
+This is permitted by the definition of CSV and allows it to work better with Postgres.
+</li>
+
+<li>
+The <a href="/pkg/encoding/gob/"><code>encoding/gob</code></a> package has been rewritten to eliminate
+the use of unsafe operations, allowing it to be used in environments that do not permit use of the
+<a href="/pkg/unsafe/"><code>unsafe</code></a> package.
+For typical uses it will be 10-30% slower, but the delta is dependent on the type of the data and
+in some cases, especially involving arrays, it can be faster.
+There is no functional change.
+</li>
+
+<li>
+The <a href="/pkg/encoding/xml/"><code>encoding/xml</code></a> package's
+<a href="/pkg/encoding/xml/#Decoder"><code>Decoder</code></a> can now report its input offset.
+</li>
+
+<li>
+In the <a href="/pkg/fmt/"><code>fmt</code></a> package,
+formatting of pointers to maps has changed to be consistent with that of pointers
+to structs, arrays, and so on.
+For instance, <code>&amp;map[string]int{"one":</code> <code>1}</code> now prints by default as
+<code>&amp;map[one:</code> <code>1]</code> rather than as a hexadecimal pointer value.
+</li>
+
+<li>
+The <a href="/pkg/image/"><code>image</code></a> package's
+<a href="/pkg/image/#Image"><code>Image</code></a>
+implementations like
+<a href="/pkg/image/#RGBA"><code>RGBA</code></a> and
+<a href="/pkg/image/#Gray"><code>Gray</code></a> have specialized
+<a href="/pkg/image/#RGBA.RGBAAt"><code>RGBAAt</code></a> and
+<a href="/pkg/image/#Gray.GrayAt"><code>GrayAt</code></a> methods alongside the general
+<a href="/pkg/image/#Image.At"><code>At</code></a> method.
+</li>
+
+<li>
+The <a href="/pkg/image/png/"><code>image/png</code></a> package now has an
+<a href="/pkg/image/png/#Encoder"><code>Encoder</code></a>
+type to control the compression level used for encoding.
+</li>
+
+<li>
+The <a href="/pkg/math/"><code>math</code></a> package now has a
+<a href="/pkg/math/#Nextafter32"><code>Nextafter32</code><a/> function.
+</li>
+
+<li>
+The <a href="/pkg/net/http/"><code>net/http</code></a> package's
+<a href="/pkg/net/http/#Request"><code>Request</code></a> type
+has a new <a href="/pkg/net/http/#Request.BasicAuth"><code>BasicAuth</code></a> method
+that returns the username and password from authenticated requests using the
+HTTP Basic Authentication
+Scheme.
+</li>
+
+<li>The <a href="/pkg/net/http/"><code>net/http</code></a> package's
+<a href="/pkg/net/http/#Request"><code>Transport</code></a> type
+has a new <a href="/pkg/net/http/#Transport.DialTLS"><code>DialTLS</code></a> hook
+that allows customizing the behavior of outbound TLS connections.
+</li>
+
+<li>
+The <a href="/pkg/net/http/httputil/"><code>net/http/httputil</code></a> package's
+<a href="/pkg/net/http/httputil/#ReverseProxy"><code>ReverseProxy</code></a> type
+has a new field,
+<a href="/pkg/net/http/#ReverseProxy.ErrorLog"><code>ErrorLog</code></a>, that
+provides user control of logging.
+</li>
+
+<li>
+The <a href="/pkg/os/"><code>os</code></a> package
+now implements symbolic links on the Windows operating system
+through the <a href="/pkg/os/#Symlink"><code>Symlink</code></a> function.
+Other operating systems already have this functionality.
+There is also a new <a href="/pkg/os/#Unsetenv"><code>Unsetenv</code></a> function.
+</li>
+
+<li>
+The <a href="/pkg/reflect/"><code>reflect</code></a> package's
+<a href="/pkg/reflect/#Type"><code>Type</code></a> interface
+has a new method, <a href="/pkg/reflect/#type.Comparable"><code>Comparable</code></a>,
+that reports whether the type implements general comparisons.
+</li>
+
+<li>
+Also in the <a href="/pkg/reflect/"><code>reflect</code></a> package, the
+<a href="/pkg/reflect/#Value"><code>Value</code></a> interface is now three instead of four words
+because of changes to the implementation of interfaces in the runtime.
+This saves memory but has no semantic effect.
+</li>
+
+<li>
+The <a href="/pkg/runtime/"><code>runtime</code></a> package
+now implements monotonic clocks on Windows,
+as it already did for the other systems.
+</li>
+
+<li>
+The <a href="/pkg/runtime/"><code>runtime</code></a> package's
+<a href="/pkg/runtime/#MemStats.Mallocs"><code>Mallocs</code></a> counter
+now counts very small allocations that were missed in Go 1.3.
+This may break tests using <a href="/pkg/runtime/#ReadMemStats"><code>ReadMemStats</code></a>
+or <a href="/pkg/testing/#AllocsPerRun"><code>AllocsPerRun</code></a>
+due to the more accurate answer.
+</li>
+
+<li>
+In the <a href="/pkg/runtime/"><code>runtime</code></a> package,
+an array <a href="/pkg/runtime/#MemStats.PauseEnd"><code>PauseEnd</code></a>
+has been added to the
+<a href="/pkg/runtime/#MemStats"><code>MemStats</code></a>
+and <a href="/pkg/runtime/#GCStats"><code>GCStats</code></a> structs.
+This array is a circular buffer of times when garbage collection pauses ended.
+The corresponding pause durations are already recorded in
+<a href="/pkg/runtime/#MemStats.PauseNs"><code>PauseNs</code></a>
+</li>
+
+<li>
+The <a href="/pkg/runtime/race/"><code>runtime/race</code></a> package
+now supports FreeBSD, which means the
+<a href="/pkg/cmd/go/"><code>go</code></a> command's <code>-race</code>
+flag now works on FreeBSD.
+</li>
+
+<li>
+The <a href="/pkg/sync/atomic/"><code>sync/atomic</code></a> package
+has a new type, <a href="/pkg/sync/atomic/#Value"><code>Value</code></a>.
+<code>Value</code> provides an efficient mechanism for atomic loads and
+stores of values of arbitrary type.
+</li>
+
+<li>
+In the <a href="/pkg/syscall/"><code>syscall</code></a> package's
+implementation on Linux, the
+<a href="/pkg/syscall/#Setuid"><code>Setuid</code></a>
+and <a href="/pkg/syscall/#Setgid"><code>Setgid</code></a> have been disabled
+because those system calls operate on the calling thread, not the whole process, which is
+different from other platforms and not the expected result.
+</li>
+
+<li>
+The <a href="/pkg/testing/"><code>testing</code></a> package
+has a new facility to provide more control over running a set of tests.
+If the test code contains a function
+<pre>
+func TestMain(m *<a href="/pkg/testing/#M"><code>testing.M</code></a>) 
+</pre>
+
+that function will be called instead of running the tests directly.
+The <code>M</code> struct contains methods to access and run the tests.
+</li>
+
+<li>
+Also in the <a href="/pkg/testing/"><code>testing</code></a> package,
+a new <a href="/pkg/testing/#Coverage"><code>Coverage</code></a>
+function reports the current test coverage fraction,
+enabling individual tests to report how much they are contributing to the
+overall coverage.
+</li>
+
+<li>
+The <a href="/pkg/text/scanner/"><code>text/scanner</code></a> package's
+<a href="/pkg/text/scanner/#Scanner"><code>Scanner</code></a> type
+has a new function,
+<a href="/pkg/text/scanner/#Scanner.IsIdentRune"><code>IsIdentRune</code></a>,
+allowing one to control the definition of an identifier when scanning.
+</li>
+
+<li>
+The <a href="/pkg/text/template/"><code>text/template</code></a> package's boolean
+functions <code>eq</code>, <code>lt</code>, and so on have been generalized to allow comparison
+of signed and unsigned integers, simplifying their use in practice.
+(Previously one could only compare values of the same signedness.)
+All negative values compare less than all unsigned values.
+</li>
+
+<li>
+The <code>time</code> package now uses the standard symbol for the micro prefix,
+the micro symbol (U+00B5 'Âµ'), to print microsecond durations.
+<a href="/pkg/time/#ParseDuration"><code>ParseDuration</code></a> still accepts <code>us</code>
+but the package no longer prints microseconds as <code>us</code>.
+<br>
+<em>Updating</em>: Code that depends on the output format of durations
+but does not use ParseDuration will need to be updated.
+</li>
+
+</ul>
+                                                                                                                                                                                                                                                                       root/go1.4/doc/go1.html                                                                             0100644 0000000 0000000 00000213474 12600426226 013214  0                                                                                                    ustar 00                                                                0000000 0000000                                                                                                                                                                        <!--{
+	"Title": "Go 1 Release Notes",
+	"Path":  "/doc/go1",
+	"Template": true
+}-->
+
+<h2 id="introduction">Introduction to Go 1</h2>
+
+<p>
+Go version 1, Go 1 for short, defines a language and a set of core libraries
+that provide a stable foundation for creating reliable products, projects, and
+publications.
+</p>
+
+<p>
+The driving motivation for Go 1 is stability for its users. People should be able to
+write Go programs and expect that they will continue to compile and run without
+change, on a time scale of years, including in production environments such as
+Google App Engine. Similarly, people should be able to write books about Go, be
+able to say which version of Go the book is describing, and have that version
+number still be meaningful much later.
+</p>
+
+<p>
+Code that compiles in Go 1 should, with few exceptions, continue to compile and
+run throughout the lifetime of that version, even as we issue updates and bug
+fixes such as Go version 1.1, 1.2, and so on. Other than critical fixes, changes
+made to the language and library for subsequent releases of Go 1 may
+add functionality but will not break existing Go 1 programs.
+<a href="go1compat.html">The Go 1 compatibility document</a>
+explains the compatibility guidelines in more detail.
+</p>
+
+<p>
+Go 1 is a representation of Go as it used today, not a wholesale rethinking of
+the language. We avoided designing new features and instead focused on cleaning
+up problems and inconsistencies and improving portability. There are a number
+changes to the Go language and packages that we had considered for some time and
+prototyped but not released primarily because they are significant and
+backwards-incompatible. Go 1 was an opportunity to get them out, which is
+helpful for the long term, but also means that Go 1 introduces incompatibilities
+for old programs. Fortunately, the <code>go</code> <code>fix</code> tool can
+automate much of the work needed to bring programs up to the Go 1 standard.
+</p>
+
+<p>
+This document outlines the major changes in Go 1 that will affect programmers
+updating existing code; its reference point is the prior release, r60 (tagged as
+r60.3). It also explains how to update code from r60 to run under Go 1.
+</p>
+
+<h2 id="language">Changes to the language</h2>
+
+<h3 id="append">Append</h3>
+
+<p>
+The <code>append</code> predeclared variadic function makes it easy to grow a slice
+by adding elements to the end.
+A common use is to add bytes to the end of a byte slice when generating output.
+However, <code>append</code> did not provide a way to append a string to a <code>[]byte</code>,
+which is another common case.
+</p>
+
+{{code "/doc/progs/go1.go" `/greeting := ..byte/` `/append.*hello/`}}
+
+<p>
+By analogy with the similar property of <code>copy</code>, Go 1
+permits a string to be appended (byte-wise) directly to a byte
+slice, reducing the friction between strings and byte slices.
+The conversion is no longer necessary:
+</p>
+
+{{code "/doc/progs/go1.go" `/append.*world/`}}
+
+<p>
+<em>Updating</em>:
+This is a new feature, so existing code needs no changes.
+</p>
+
+<h3 id="close">Close</h3>
+
+<p>
+The <code>close</code> predeclared function provides a mechanism
+for a sender to signal that no more values will be sent.
+It is important to the implementation of <code>for</code> <code>range</code>
+loops over channels and is helpful in other situations.
+Partly by design and partly because of race conditions that can occur otherwise,
+it is intended for use only by the goroutine sending on the channel,
+not by the goroutine receiving data.
+However, before Go 1 there was no compile-time checking that <code>close</code>
+was being used correctly.
+</p>
+
+<p>
+To close this gap, at least in part, Go 1 disallows <code>close</code> on receive-only channels.
+Attempting to close such a channel is a compile-time error.
+</p>
+
+<pre>
+    var c chan int
+    var csend chan&lt;- int = c
+    var crecv &lt;-chan int = c
+    close(c)     // legal
+    close(csend) // legal
+    close(crecv) // illegal
+</pre>
+
+<p>
+<em>Updating</em>:
+Existing code that attempts to close a receive-only channel was
+erroneous even before Go 1 and should be fixed.  The compiler will
+now reject such code.
+</p>
+
+<h3 id="literals">Composite literals</h3>
+
+<p>
+In Go 1, a composite literal of array, slice, or map type can elide the
+type specification for the elements' initializers if they are of pointer type.
+All four of the initializations in this example are legal; the last one was illegal before Go 1.
+</p>
+
+{{code "/doc/progs/go1.go" `/type Date struct/` `/STOP/`}}
+
+<p>
+<em>Updating</em>:
+This change has no effect on existing code, but the command
+<code>gofmt</code> <code>-s</code> applied to existing source
+will, among other things, elide explicit element types wherever permitted.
+</p>
+
+
+<h3 id="init">Goroutines during init</h3>
+
+<p>
+The old language defined that <code>go</code> statements executed during initialization created goroutines but that they did not begin to run until initialization of the entire program was complete.
+This introduced clumsiness in many places and, in effect, limited the utility
+of the <code>init</code> construct:
+if it was possible for another package to use the library during initialization, the library
+was forced to avoid goroutines.
+This design was done for reasons of simplicity and safety but,
+as our confidence in the language grew, it seemed unnecessary.
+Running goroutines during initialization is no more complex or unsafe than running them during normal execution.
+</p>
+
+<p>
+In Go 1, code that uses goroutines can be called from
+<code>init</code> routines and global initialization expressions
+without introducing a deadlock.
+</p>
+
+{{code "/doc/progs/go1.go" `/PackageGlobal/` `/^}/`}}
+
+<p>
+<em>Updating</em>:
+This is a new feature, so existing code needs no changes,
+although it's possible that code that depends on goroutines not starting before <code>main</code> will break.
+There was no such code in the standard repository.
+</p>
+
+<h3 id="rune">The rune type</h3>
+
+<p>
+The language spec allows the <code>int</code> type to be 32 or 64 bits wide, but current implementations set <code>int</code> to 32 bits even on 64-bit platforms.
+It would be preferable to have <code>int</code> be 64 bits on 64-bit platforms.
+(There are important consequences for indexing large slices.)
+However, this change would waste space when processing Unicode characters with
+the old language because the <code>int</code> type was also used to hold Unicode code points: each code point would waste an extra 32 bits of storage if <code>int</code> grew from 32 bits to 64.
+</p>
+
+<p>
+To make changing to 64-bit <code>int</code> feasible,
+Go 1 introduces a new basic type, <code>rune</code>, to represent
+individual Unicode code points.
+It is an alias for <code>int32</code>, analogous to <code>byte</code>
+as an alias for <code>uint8</code>.
+</p>
+
+<p>
+Character literals such as <code>'a'</code>, <code>'èªž'</code>, and <code>'\u0345'</code>
+now have default type <code>rune</code>,
+analogous to <code>1.0</code> having default type <code>float64</code>.
+A variable initialized to a character constant will therefore
+have type <code>rune</code> unless otherwise specified.
+</p>
+
+<p>
+Libraries have been updated to use <code>rune</code> rather than <code>int</code>
+when appropriate. For instance, the functions <code>unicode.ToLower</code> and
+relatives now take and return a <code>rune</code>.
+</p>
+
+{{code "/doc/progs/go1.go" `/STARTRUNE/` `/ENDRUNE/`}}
+
+<p>
+<em>Updating</em>:
+Most source code will be unaffected by this because the type inference from
+<code>:=</code> initializers introduces the new type silently, and it propagates
+from there.
+Some code may get type errors that a trivial conversion will resolve.
+</p>
+
+<h3 id="error">The error type</h3>
+
+<p>
+Go 1 introduces a new built-in type, <code>error</code>, which has the following definition:
+</p>
+
+<pre>
+    type error interface {
+        Error() string
+    }
+</pre>
+
+<p>
+Since the consequences of this type are all in the package library,
+it is discussed <a href="#errors">below</a>.
+</p>
+
+<h3 id="delete">Deleting from maps</h3>
+
+<p>
+In the old language, to delete the entry with key <code>k</code> from map <code>m</code>, one wrote the statement,
+</p>
+
+<pre>
+    m[k] = value, false
+</pre>
+
+<p>
+This syntax was a peculiar special case, the only two-to-one assignment.
+It required passing a value (usually ignored) that is evaluated but discarded,
+plus a boolean that was nearly always the constant <code>false</code>.
+It did the job but was odd and a point of contention.
+</p>
+
+<p>
+In Go 1, that syntax has gone; instead there is a new built-in
+function, <code>delete</code>.  The call
+</p>
+
+{{code "/doc/progs/go1.go" `/delete\(m, k\)/`}}
+
+<p>
+will delete the map entry retrieved by the expression <code>m[k]</code>.
+There is no return value. Deleting a non-existent entry is a no-op.
+</p>
+
+<p>
+<em>Updating</em>:
+Running <code>go</code> <code>fix</code> will convert expressions of the form <code>m[k] = value,
+false</code> into <code>delete(m, k)</code> when it is clear that
+the ignored value can be safely discarded from the program and
+<code>false</code> refers to the predefined boolean constant.
+The fix tool
+will flag other uses of the syntax for inspection by the programmer.
+</p>
+
+<h3 id="iteration">Iterating in maps</h3>
+
+<p>
+The old language specification did not define the order of iteration for maps,
+and in practice it differed across hardware platforms.
+This caused tests that iterated over maps to be fragile and non-portable, with the
+unpleasant property that a test might always pass on one machine but break on another.
+</p>
+
+<p>
+In Go 1, the order in which elements are visited when iterating
+over a map using a <code>for</code> <code>range</code> statement
+is defined to be unpredictable, even if the same loop is run multiple
+times with the same map.
+Code should not assume that the elements are visited in any particular order.
+</p>
+
+<p>
+This change means that code that depends on iteration order is very likely to break early and be fixed long before it becomes a problem.
+Just as important, it allows the map implementation to ensure better map balancing even when programs are using range loops to select an element from a map.
+</p>
+
+{{code "/doc/progs/go1.go" `/Sunday/` `/^	}/`}}
+
+<p>
+<em>Updating</em>:
+This is one change where tools cannot help.  Most existing code
+will be unaffected, but some programs may break or misbehave; we
+recommend manual checking of all range statements over maps to
+verify they do not depend on iteration order. There were a few such
+examples in the standard repository; they have been fixed.
+Note that it was already incorrect to depend on the iteration order, which
+was unspecified. This change codifies the unpredictability.
+</p>
+
+<h3 id="multiple_assignment">Multiple assignment</h3>
+
+<p>
+The language specification has long guaranteed that in assignments
+the right-hand-side expressions are all evaluated before any left-hand-side expressions are assigned.
+To guarantee predictable behavior,
+Go 1 refines the specification further.
+</p>
+
+<p>
+If the left-hand side of the assignment
+statement contains expressions that require evaluation, such as
+function calls or array indexing operations, these will all be done
+using the usual left-to-right rule before any variables are assigned
+their value.  Once everything is evaluated, the actual assignments
+proceed in left-to-right order.
+</p>
+
+<p>
+These examples illustrate the behavior.
+</p>
+
+{{code "/doc/progs/go1.go" `/sa :=/` `/then sc.0. = 2/`}}
+
+<p>
+<em>Updating</em>:
+This is one change where tools cannot help, but breakage is unlikely.
+No code in the standard repository was broken by this change, and code
+that depended on the previous unspecified behavior was already incorrect.
+</p>
+
+<h3 id="shadowing">Returns and shadowed variables</h3>
+
+<p>
+A common mistake is to use <code>return</code> (without arguments) after an assignment to a variable that has the same name as a result variable but is not the same variable.
+This situation is called <em>shadowing</em>: the result variable has been shadowed by another variable with the same name declared in an inner scope.
+</p>
+
+<p>
+In functions with named return values,
+the Go 1 compilers disallow return statements without arguments if any of the named return values is shadowed at the point of the return statement.
+(It isn't part of the specification, because this is one area we are still exploring;
+the situation is analogous to the compilers rejecting functions that do not end with an explicit return statement.)
+</p>
+
+<p>
+This function implicitly returns a shadowed return value and will be rejected by the compiler:
+</p>
+
+<pre>
+    func Bug() (i, j, k int) {
+        for i = 0; i &lt; 5; i++ {
+            for j := 0; j &lt; 5; j++ { // Redeclares j.
+                k += i*j
+                if k > 100 {
+                    return // Rejected: j is shadowed here.
+                }
+            }
+        }
+        return // OK: j is not shadowed here.
+    }
+</pre>
+
+<p>
+<em>Updating</em>:
+Code that shadows return values in this way will be rejected by the compiler and will need to be fixed by hand.
+The few cases that arose in the standard repository were mostly bugs.
+</p>
+
+<h3 id="unexported">Copying structs with unexported fields</h3>
+
+<p>
+The old language did not allow a package to make a copy of a struct value containing unexported fields belonging to a different package.
+There was, however, a required exception for a method receiver;
+also, the implementations of <code>copy</code> and <code>append</code> have never honored the restriction.
+</p>
+
+<p>
+Go 1 will allow packages to copy struct values containing unexported fields from other packages.
+Besides resolving the inconsistency,
+this change admits a new kind of API: a package can return an opaque value without resorting to a pointer or interface.
+The new implementations of <code>time.Time</code> and
+<code>reflect.Value</code> are examples of types taking advantage of this new property.
+</p>
+
+<p>
+As an example, if package <code>p</code> includes the definitions,
+</p>
+
+<pre>
+    type Struct struct {
+        Public int
+        secret int
+    }
+    func NewStruct(a int) Struct {  // Note: not a pointer.
+        return Struct{a, f(a)}
+    }
+    func (s Struct) String() string {
+        return fmt.Sprintf("{%d (secret %d)}", s.Public, s.secret)
+    }
+</pre>
+
+<p>
+a package that imports <code>p</code> can assign and copy values of type
+<code>p.Struct</code> at will.
+Behind the scenes the unexported fields will be assigned and copied just
+as if they were exported,
+but the client code will never be aware of them. The code
+</p>
+
+<pre>
+    import "p"
+
+    myStruct := p.NewStruct(23)
+    copyOfMyStruct := myStruct
+    fmt.Println(myStruct, copyOfMyStruct)
+</pre>
+
+<p>
+will show that the secret field of the struct has been copied to the new value.
+</p>
+
+<p>
+<em>Updating</em>:
+This is a new feature, so existing code needs no changes.
+</p>
+
+<h3 id="equality">Equality</h3>
+
+<p>
+Before Go 1, the language did not define equality on struct and array values.
+This meant,
+among other things, that structs and arrays could not be used as map keys.
+On the other hand, Go did define equality on function and map values.
+Function equality was problematic in the presence of closures
+(when are two closures equal?)
+while map equality compared pointers, not the maps' content, which was usually
+not what the user would want.
+</p>
+
+<p>
+Go 1 addressed these issues.
+First, structs and arrays can be compared for equality and inequality
+(<code>==</code> and <code>!=</code>),
+and therefore be used as map keys,
+provided they are composed from elements for which equality is also defined,
+using element-wise comparison.
+</p>
+
+{{code "/doc/progs/go1.go" `/type Day struct/` `/Printf/`}}
+
+<p>
+Second, Go 1 removes the definition of equality for function values,
+except for comparison with <code>nil</code>.
+Finally, map equality is gone too, also except for comparison with <code>nil</code>.
+</p>
+
+<p>
+Note that equality is still undefined for slices, for which the
+calculation is in general infeasible.  Also note that the ordered
+comparison operators (<code>&lt;</code> <code>&lt;=</code>
+<code>&gt;</code> <code>&gt;=</code>) are still undefined for
+structs and arrays.
+
+<p>
+<em>Updating</em>:
+Struct and array equality is a new feature, so existing code needs no changes.
+Existing code that depends on function or map equality will be
+rejected by the compiler and will need to be fixed by hand.
+Few programs will be affected, but the fix may require some
+redesign.
+</p>
+
+<h2 id="packages">The package hierarchy</h2>
+
+<p>
+Go 1 addresses many deficiencies in the old standard library and
+cleans up a number of packages, making them more internally consistent
+and portable.
+</p>
+
+<p>
+This section describes how the packages have been rearranged in Go 1.
+Some have moved, some have been renamed, some have been deleted.
+New packages are described in later sections.
+</p>
+
+<h3 id="hierarchy">The package hierarchy</h3>
+
+<p>
+Go 1 has a rearranged package hierarchy that groups related items
+into subdirectories. For instance, <code>utf8</code> and
+<code>utf16</code> now occupy subdirectories of <code>unicode</code>.
+Also, <a href="#subrepo">some packages</a> have moved into
+subrepositories of
+<a href="//code.google.com/p/go"><code>code.google.com/p/go</code></a>
+while <a href="#deleted">others</a> have been deleted outright.
+</p>
+
+<table class="codetable" frame="border" summary="Moved packages">
+<colgroup align="left" width="60%"></colgroup>
+<colgroup align="left" width="40%"></colgroup>
+<tr>
+<th align="left">Old path</th>
+<th align="left">New path</th>
+</tr>
+<tr>
+<td colspan="2"><hr></td>
+</tr>
+<tr><td>asn1</td> <td>encoding/asn1</td></tr>
+<tr><td>csv</td> <td>encoding/csv</td></tr>
+<tr><td>gob</td> <td>encoding/gob</td></tr>
+<tr><td>json</td> <td>encoding/json</td></tr>
+<tr><td>xml</td> <td>encoding/xml</td></tr>
+<tr>
+<td colspan="2"><hr></td>
+</tr>
+<tr><td>exp/template/html</td> <td>html/template</td></tr>
+<tr>
+<td colspan="2"><hr></td>
+</tr>
+<tr><td>big</td> <td>math/big</td></tr>
+<tr><td>cmath</td> <td>math/cmplx</td></tr>
+<tr><td>rand</td> <td>math/rand</td></tr>
+<tr>
+<td colspan="2"><hr></td>
+</tr>
+<tr><td>http</td> <td>net/http</td></tr>
+<tr><td>http/cgi</td> <td>net/http/cgi</td></tr>
+<tr><td>http/fcgi</td> <td>net/http/fcgi</td></tr>
+<tr><td>http/httptest</td> <td>net/http/httptest</td></tr>
+<tr><td>http/pprof</td> <td>net/http/pprof</td></tr>
+<tr><td>mail</td> <td>net/mail</td></tr>
+<tr><td>rpc</td> <td>net/rpc</td></tr>
+<tr><td>rpc/jsonrpc</td> <td>net/rpc/jsonrpc</td></tr>
+<tr><td>smtp</td> <td>net/smtp</td></tr>
+<tr><td>url</td> <td>net/url</td></tr>
+<tr>
+<td colspan="2"><hr></td>
+</tr>
+<tr><td>exec</td> <td>os/exec</td></tr>
+<tr>
+<td colspan="2"><hr></td>
+</tr>
+<tr><td>scanner</td> <td>text/scanner</td></tr>
+<tr><td>tabwriter</td> <td>text/tabwriter</td></tr>
+<tr><td>template</td> <td>text/template</td></tr>
+<tr><td>template/parse</td> <td>text/template/parse</td></tr>
+<tr>
+<td colspan="2"><hr></td>
+</tr>
+<tr><td>utf8</td> <td>unicode/utf8</td></tr>
+<tr><td>utf16</td> <td>unicode/utf16</td></tr>
+</table>
+
+<p>
+Note that the package names for the old <code>cmath</code> and
+<code>exp/template/html</code> packages have changed to <code>cmplx</code>
+and <code>template</code>.
+</p>
+
+<p>
+<em>Updating</em>:
+Running <code>go</code> <code>fix</code> will update all imports and package renames for packages that
+remain inside the standard repository.  Programs that import packages
+that are no longer in the standard repository will need to be edited
+by hand.
+</p>
+
+<h3 id="exp">The package tree exp</h3>
+
+<p>
+Because they are not standardized, the packages under the <code>exp</code> directory will not be available in the
+standard Go 1 release distributions, although they will be available in source code form
+in <a href="//code.google.com/p/go/">the repository</a> for
+developers who wish to use them.
+</p>
+
+<p>
+Several packages have moved under <code>exp</code> at the time of Go 1's release:
+</p>
+
+<ul>
+<li><code>ebnf</code></li>
+<li><code>html</code><sup>&#8224;</sup></li>
+<li><code>go/types</code></li>
+</ul>
+
+<p>
+(<sup>&#8224;</sup>The <code>EscapeString</code> and <code>UnescapeString</code> types remain
+in package <code>html</code>.)
+</p>
+
+<p>
+All these packages are available under the same names, with the prefix <code>exp/</code>: <code>exp/ebnf</code> etc.
+</p>
+
+<p>
+Also, the <code>utf8.String</code> type has been moved to its own package, <code>exp/utf8string</code>.
+</p>
+
+<p>
+Finally, the <code>gotype</code> command now resides in <code>exp/gotype</code>, while
+<code>ebnflint</code> is now in <code>exp/ebnflint</code>.
+If they are installed, they now reside in <code>$GOROOT/bin/tool</code>.
+</p>
+
+<p>
+<em>Updating</em>:
+Code that uses packages in <code>exp</code> will need to be updated by hand,
+or else compiled from an installation that has <code>exp</code> available.
+The <code>go</code> <code>fix</code> tool or the compiler will complain about such uses.
+</p>
+
+<h3 id="old">The package tree old</h3>
+
+<p>
+Because they are deprecated, the packages under the <code>old</code> directory will not be available in the
+standard Go 1 release distributions, although they will be available in source code form for
+developers who wish to use them.
+</p>
+
+<p>
+The packages in their new locations are:
+</p>
+
+<ul>
+<li><code>old/netchan</code></li>
+</ul>
+
+<p>
+<em>Updating</em>:
+Code that uses packages now in <code>old</code> will need to be updated by hand,
+or else compiled from an installation that has <code>old</code> available.
+The <code>go</code> <code>fix</code> tool will warn about such uses.
+</p>
+
+<h3 id="deleted">Deleted packages</h3>
+
+<p>
+Go 1 deletes several packages outright:
+</p>
+
+<ul>
+<li><code>container/vector</code></li>
+<li><code>exp/datafmt</code></li>
+<li><code>go/typechecker</code></li>
+<li><code>old/regexp</code></li>
+<li><code>old/template</code></li>
+<li><code>try</code></li>
+</ul>
+
+<p>
+and also the command <code>gotry</code>.
+</p>
+
+<p>
+<em>Updating</em>:
+Code that uses <code>container/vector</code> should be updated to use
+slices directly.  See
+<a href="//code.google.com/p/go-wiki/wiki/SliceTricks">the Go
+Language Community Wiki</a> for some suggestions.
+Code that uses the other packages (there should be almost zero) will need to be rethought.
+</p>
+
+<h3 id="subrepo">Packages moving to subrepositories</h3>
+
+<p>
+Go 1 has moved a number of packages into other repositories, usually sub-repositories of
+<a href="//code.google.com/p/go/">the main Go repository</a>.
+This table lists the old and new import paths:
+
+<table class="codetable" frame="border" summary="Sub-repositories">
+<colgroup align="left" width="40%"></colgroup>
+<colgroup align="left" width="60%"></colgroup>
+<tr>
+<th align="left">Old</th>
+<th align="left">New</th>
+</tr>
+<tr>
+<td colspan="2"><hr></td>
+</tr>
+<tr><td>crypto/bcrypt</td> <td>code.google.com/p/go.crypto/bcrypt</tr>
+<tr><td>crypto/blowfish</td> <td>code.google.com/p/go.crypto/blowfish</tr>
+<tr><td>crypto/cast5</td> <td>code.google.com/p/go.crypto/cast5</tr>
+<tr><td>crypto/md4</td> <td>code.google.com/p/go.crypto/md4</tr>
+<tr><td>crypto/ocsp</td> <td>code.google.com/p/go.crypto/ocsp</tr>
+<tr><td>crypto/openpgp</td> <td>code.google.com/p/go.crypto/openpgp</tr>
+<tr><td>crypto/openpgp/armor</td> <td>code.google.com/p/go.crypto/openpgp/armor</tr>
+<tr><td>crypto/openpgp/elgamal</td> <td>code.google.com/p/go.crypto/openpgp/elgamal</tr>
+<tr><td>crypto/openpgp/errors</td> <td>code.google.com/p/go.crypto/openpgp/errors</tr>
+<tr><td>crypto/openpgp/packet</td> <td>code.google.com/p/go.crypto/openpgp/packet</tr>
+<tr><td>crypto/openpgp/s2k</td> <td>code.google.com/p/go.crypto/openpgp/s2k</tr>
+<tr><td>crypto/ripemd160</td> <td>code.google.com/p/go.crypto/ripemd160</tr>
+<tr><td>crypto/twofish</td> <td>code.google.com/p/go.crypto/twofish</tr>
+<tr><td>crypto/xtea</td> <td>code.google.com/p/go.crypto/xtea</tr>
+<tr><td>exp/ssh</td> <td>code.google.com/p/go.crypto/ssh</tr>
+<tr>
+<td colspan="2"><hr></td>
+</tr>
+<tr><td>image/bmp</td> <td>code.google.com/p/go.image/bmp</tr>
+<tr><td>image/tiff</td> <td>code.google.com/p/go.image/tiff</tr>
+<tr>
+<td colspan="2"><hr></td>
+</tr>
+<tr><td>net/dict</td> <td>code.google.com/p/go.net/dict</tr>
+<tr><td>net/websocket</td> <td>code.google.com/p/go.net/websocket</tr>
+<tr><td>exp/spdy</td> <td>code.google.com/p/go.net/spdy</tr>
+<tr>
+<td colspan="2"><hr></td>
+</tr>
+<tr><td>encoding/git85</td> <td>code.google.com/p/go.codereview/git85</tr>
+<tr><td>patch</td> <td>code.google.com/p/go.codereview/patch</tr>
+<tr>
+<td colspan="2"><hr></td>
+</tr>
+<tr><td>exp/wingui</td> <td>code.google.com/p/gowingui</tr>
+</table>
+
+<p>
+<em>Updating</em>:
+Running <code>go</code> <code>fix</code> will update imports of these packages to use the new import paths.
+Installations that depend on these packages will need to install them using
+a <code>go get</code> command.
+</p>
+
+<h2 id="major">Major changes to the library</h2>
+
+<p>
+This section describes significant changes to the core libraries, the ones that
+affect the most programs.
+</p>
+
+<h3 id="errors">The error type and errors package</h3>
+
+<p>
+The placement of <code>os.Error</code> in package <code>os</code> is mostly historical: errors first came up when implementing package <code>os</code>, and they seemed system-related at the time.
+Since then it has become clear that errors are more fundamental than the operating system.  For example, it would be nice to use <code>Errors</code> in packages that <code>os</code> depends on, like <code>syscall</code>.
+Also, having <code>Error</code> in <code>os</code> introduces many dependencies on <code>os</code> that would otherwise not exist.
+</p>
+
+<p>
+Go 1 solves these problems by introducing a built-in <code>error</code> interface type and a separate <code>errors</code> package (analogous to <code>bytes</code> and <code>strings</code>) that contains utility functions.
+It replaces <code>os.NewError</code> with
+<a href="/pkg/errors/#New"><code>errors.New</code></a>,
+giving errors a more central place in the environment.
+</p>
+
+<p>
+So the widely-used <code>String</code> method does not cause accidental satisfaction
+of the <code>error</code> interface, the <code>error</code> interface uses instead
+the name <code>Error</code> for that method:
+</p>
+
+<pre>
+    type error interface {
+        Error() string
+    }
+</pre>
+
+<p>
+The <code>fmt</code> library automatically invokes <code>Error</code>, as it already
+does for <code>String</code>, for easy printing of error values.
+</p>
+
+{{code "/doc/progs/go1.go" `/START ERROR EXAMPLE/` `/END ERROR EXAMPLE/`}}
+
+<p>
+All standard packages have been updated to use the new interface; the old <code>os.Error</code> is gone.
+</p>
+
+<p>
+A new package, <a href="/pkg/errors/"><code>errors</code></a>, contains the function
+</p>
+
+<pre>
+func New(text string) error
+</pre>
+
+<p>
+to turn a string into an error. It replaces the old <code>os.NewError</code>.
+</p>
+
+{{code "/doc/progs/go1.go" `/ErrSyntax/`}}
+		
+<p>
+<em>Updating</em>:
+Running <code>go</code> <code>fix</code> will update almost all code affected by the change.
+Code that defines error types with a <code>String</code> method will need to be updated
+by hand to rename the methods to <code>Error</code>.
+</p>
+
+<h3 id="errno">System call errors</h3>
+
+<p>
+The old <code>syscall</code> package, which predated <code>os.Error</code>
+(and just about everything else),
+returned errors as <code>int</code> values.
+In turn, the <code>os</code> package forwarded many of these errors, such
+as <code>EINVAL</code>, but using a different set of errors on each platform.
+This behavior was unpleasant and unportable.
+</p>
+
+<p>
+In Go 1, the
+<a href="/pkg/syscall/"><code>syscall</code></a>
+package instead returns an <code>error</code> for system call errors.
+On Unix, the implementation is done by a
+<a href="/pkg/syscall/#Errno"><code>syscall.Errno</code></a> type
+that satisfies <code>error</code> and replaces the old <code>os.Errno</code>.
+</p>
+
+<p>
+The changes affecting <code>os.EINVAL</code> and relatives are
+described <a href="#os">elsewhere</a>.
+
+<p>
+<em>Updating</em>:
+Running <code>go</code> <code>fix</code> will update almost all code affected by the change.
+Regardless, most code should use the <code>os</code> package
+rather than <code>syscall</code> and so will be unaffected.
+</p>
+
+<h3 id="time">Time</h3>
+
+<p>
+Time is always a challenge to support well in a programming language.
+The old Go <code>time</code> package had <code>int64</code> units, no
+real type safety,
+and no distinction between absolute times and durations.
+</p>
+
+<p>
+One of the most sweeping changes in the Go 1 library is therefore a
+complete redesign of the
+<a href="/pkg/time/"><code>time</code></a> package.
+Instead of an integer number of nanoseconds as an <code>int64</code>,
+and a separate <code>*time.Time</code> type to deal with human
+units such as hours and years,
+there are now two fundamental types:
+<a href="/pkg/time/#Time"><code>time.Time</code></a>
+(a value, so the <code>*</code> is gone), which represents a moment in time;
+and <a href="/pkg/time/#Duration"><code>time.Duration</code></a>,
+which represents an interval.
+Both have nanosecond resolution.
+A <code>Time</code> can represent any time into the ancient
+past and remote future, while a <code>Duration</code> can
+span plus or minus only about 290 years.
+There are methods on these types, plus a number of helpful
+predefined constant durations such as <code>time.Second</code>.
+</p>
+
+<p>
+Among the new methods are things like
+<a href="/pkg/time/#Time.Add"><code>Time.Add</code></a>,
+which adds a <code>Duration</code> to a <code>Time</code>, and
+<a href="/pkg/time/#Time.Sub"><code>Time.Sub</code></a>,
+which subtracts two <code>Times</code> to yield a <code>Duration</code>.
+</p>
+
+<p>
+The most important semantic change is that the Unix epoch (Jan 1, 1970) is now
+relevant only for those functions and methods that mention Unix:
+<a href="/pkg/time/#Unix"><code>time.Unix</code></a>
+and the <a href="/pkg/time/#Time.Unix"><code>Unix</code></a>
+and <a href="/pkg/time/#Time.UnixNano"><code>UnixNano</code></a> methods
+of the <code>Time</code> type.
+In particular,
+<a href="/pkg/time/#Now"><code>time.Now</code></a>
+returns a <code>time.Time</code> value rather than, in the old
+API, an integer nanosecond count since the Unix epoch.
+</p>
+
+{{code "/doc/progs/go1.go" `/sleepUntil/` `/^}/`}}
+
+<p>
+The new types, methods, and constants have been propagated through
+all the standard packages that use time, such as <code>os</code> and
+its representation of file time stamps.
+</p>
+
+<p>
+<em>Updating</em>:
+The <code>go</code> <code>fix</code> tool will update many uses of the old <code>time</code> package to use the new
+types and methods, although it does not replace values such as <code>1e9</code>
+representing nanoseconds per second.
+Also, because of type changes in some of the values that arise,
+some of the expressions rewritten by the fix tool may require
+further hand editing; in such cases the rewrite will include
+the correct function or method for the old functionality, but
+may have the wrong type or require further analysis.
+</p>
+
+<h2 id="minor">Minor changes to the library</h2>
+
+<p>
+This section describes smaller changes, such as those to less commonly
+used packages or that affect
+few programs beyond the need to run <code>go</code> <code>fix</code>.
+This category includes packages that are new in Go 1.
+Collectively they improve portability, regularize behavior, and
+make the interfaces more modern and Go-like.
+</p>
+
+<h3 id="archive_zip">The archive/zip package</h3>
+
+<p>
+In Go 1, <a href="/pkg/archive/zip/#Writer"><code>*zip.Writer</code></a> no
+longer has a <code>Write</code> method. Its presence was a mistake.
+</p>
+
+<p>
+<em>Updating</em>:
+What little code is affected will be caught by the compiler and must be updated by hand.
+</p>
+
+<h3 id="bufio">The bufio package</h3>
+
+<p>
+In Go 1, <a href="/pkg/bufio/#NewReaderSize"><code>bufio.NewReaderSize</code></a>
+and
+<a href="/pkg/bufio/#NewWriterSize"><code>bufio.NewWriterSize</code></a>
+functions no longer return an error for invalid sizes.
+If the argument size is too small or invalid, it is adjusted.
+</p>
+
+<p>
+<em>Updating</em>:
+Running <code>go</code> <code>fix</code> will update calls that assign the error to _.
+Calls that aren't fixed will be caught by the compiler and must be updated by hand.
+</p>
+
+<h3 id="compress">The compress/flate, compress/gzip and compress/zlib packages</h3>
+
+<p>
+In Go 1, the <code>NewWriterXxx</code> functions in
+<a href="/pkg/compress/flate"><code>compress/flate</code></a>,
+<a href="/pkg/compress/gzip"><code>compress/gzip</code></a> and
+<a href="/pkg/compress/zlib"><code>compress/zlib</code></a>
+all return <code>(*Writer, error)</code> if they take a compression level,
+and <code>*Writer</code> otherwise. Package <code>gzip</code>'s
+<code>Compressor</code> and <code>Decompressor</code> types have been renamed
+to <code>Writer</code> and <code>Reader</code>. Package <code>flate</code>'s
+<code>WrongValueError</code> type has been removed.
+</p>
+
+<p>
+<em>Updating</em>
+Running <code>go</code> <code>fix</code> will update old names and calls that assign the error to _.
+Calls that aren't fixed will be caught by the compiler and must be updated by hand.
+</p>
+
+<h3 id="crypto_aes_des">The crypto/aes and crypto/des packages</h3>
+
+<p>
+In Go 1, the <code>Reset</code> method has been removed. Go does not guarantee
+that memory is not copied and therefore this method was misleading.
+</p>
+
+<p>
+The cipher-specific types <code>*aes.Cipher</code>, <code>*des.Cipher</code>,
+and <code>*des.TripleDESCipher</code> have been removed in favor of
+<code>cipher.Block</code>.
+</p>
+
+<p>
+<em>Updating</em>:
+Remove the calls to Reset. Replace uses of the specific cipher types with
+cipher.Block.
+</p>
+
+<h3 id="crypto_elliptic">The crypto/elliptic package</h3>
+
+<p>
+In Go 1, <a href="/pkg/crypto/elliptic/#Curve"><code>elliptic.Curve</code></a>
+has been made an interface to permit alternative implementations. The curve
+parameters have been moved to the
+<a href="/pkg/crypto/elliptic/#CurveParams"><code>elliptic.CurveParams</code></a>
+structure.
+</p>
+
+<p>
+<em>Updating</em>:
+Existing users of <code>*elliptic.Curve</code> will need to change to
+simply <code>elliptic.Curve</code>. Calls to <code>Marshal</code>,
+<code>Unmarshal</code> and <code>GenerateKey</code> are now functions
+in <code>crypto/elliptic</code> that take an <code>elliptic.Curve</code>
+as their first argument.
+</p>
+
+<h3 id="crypto_hmac">The crypto/hmac package</h3>
+
+<p>
+In Go 1, the hash-specific functions, such as <code>hmac.NewMD5</code>, have
+been removed from <code>crypto/hmac</code>. Instead, <code>hmac.New</code> takes
+a function that returns a <code>hash.Hash</code>, such as <code>md5.New</code>.
+</p>
+
+<p>
+<em>Updating</em>:
+Running <code>go</code> <code>fix</code> will perform the needed changes.
+</p>
+
+<h3 id="crypto_x509">The crypto/x509 package</h3>
+
+<p>
+In Go 1, the
+<a href="/pkg/crypto/x509/#CreateCertificate"><code>CreateCertificate</code></a>
+function and
+<a href="/pkg/crypto/x509/#Certificate.CreateCRL"><code>CreateCRL</code></a>
+method in <code>crypto/x509</code> have been altered to take an
+<code>interface{}</code> where they previously took a <code>*rsa.PublicKey</code>
+or <code>*rsa.PrivateKey</code>. This will allow other public key algorithms
+to be implemented in the future.
+</p>
+
+<p>
+<em>Updating</em>:
+No changes will be needed.
+</p>
+
+<h3 id="encoding_binary">The encoding/binary package</h3>
+
+<p>
+In Go 1, the <code>binary.TotalSize</code> function has been replaced by
+<a href="/pkg/encoding/binary/#Size"><code>Size</code></a>,
+which takes an <code>interface{}</code> argument rather than
+a <code>reflect.Value</code>.
+</p>
+
+<p>
+<em>Updating</em>:
+What little code is affected will be caught by the compiler and must be updated by hand.
+</p>
+
+<h3 id="encoding_xml">The encoding/xml package</h3>
+
+<p>
+In Go 1, the <a href="/pkg/encoding/xml/"><code>xml</code></a> package
+has been brought closer in design to the other marshaling packages such
+as <a href="/pkg/encoding/gob/"><code>encoding/gob</code></a>.
+</p>
+
+<p>
+The old <code>Parser</code> type is renamed
+<a href="/pkg/encoding/xml/#Decoder"><code>Decoder</code></a> and has a new
+<a href="/pkg/encoding/xml/#Decoder.Decode"><code>Decode</code></a> method. An
+<a href="/pkg/encoding/xml/#Encoder"><code>Encoder</code></a> type was also introduced.
+</p>
+
+<p>
+The functions <a href="/pkg/encoding/xml/#Marshal"><code>Marshal</code></a>
+and <a href="/pkg/encoding/xml/#Unmarshal"><code>Unmarshal</code></a>
+work with <code>[]byte</code> values now. To work with streams,
+use the new <a href="/pkg/encoding/xml/#Encoder"><code>Encoder</code></a>
+and <a href="/pkg/encoding/xml/#Decoder"><code>Decoder</code></a> types.
+</p>
+
+<p>
+When marshaling or unmarshaling values, the format of supported flags in
+field tags has changed to be closer to the
+<a href="/pkg/encoding/json"><code>json</code></a> package
+(<code>`xml:"name,flag"`</code>). The matching done between field tags, field
+names, and the XML attribute and element names is now case-sensitive.
+The <code>XMLName</code> field tag, if present, must also match the name
+of the XML element being marshaled.
+</p>
+
+<p>
+<em>Updating</em>:
+Running <code>go</code> <code>fix</code> will update most uses of the package except for some calls to
+<code>Unmarshal</code>. Special care must be taken with field tags,
+since the fix tool will not update them and if not fixed by hand they will
+misbehave silently in some cases. For example, the old
+<code>"attr"</code> is now written <code>",attr"</code> while plain
+<code>"attr"</code> remains valid but with a different meaning.
+</p>
+
+<h3 id="expvar">The expvar package</h3>
+
+<p>
+In Go 1, the <code>RemoveAll</code> function has been removed.
+The <code>Iter</code> function and Iter method on <code>*Map</code> have
+been replaced by
+<a href="/pkg/expvar/#Do"><code>Do</code></a>
+and
+<a href="/pkg/expvar/#Map.Do"><code>(*Map).Do</code></a>.
+</p>
+
+<p>
+<em>Updating</em>:
+Most code using <code>expvar</code> will not need changing. The rare code that used
+<code>Iter</code> can be updated to pass a closure to <code>Do</code> to achieve the same effect.
+</p>
+
+<h3 id="flag">The flag package</h3>
+
+<p>
+In Go 1, the interface <a href="/pkg/flag/#Value"><code>flag.Value</code></a> has changed slightly.
+The <code>Set</code> method now returns an <code>error</code> instead of
+a <code>bool</code> to indicate success or failure.
+</p>
+
+<p>
+There is also a new kind of flag, <code>Duration</code>, to support argument
+values specifying time intervals.
+Values for such flags must be given units, just as <code>time.Duration</code>
+formats them: <code>10s</code>, <code>1h30m</code>, etc.
+</p>
+
+{{code "/doc/progs/go1.go" `/timeout/`}}
+
+<p>
+<em>Updating</em>:
+Programs that implement their own flags will need minor manual fixes to update their
+<code>Set</code> methods.
+The <code>Duration</code> flag is new and affects no existing code.
+</p>
+
+
+<h3 id="go">The go/* packages</h3>
+
+<p>
+Several packages under <code>go</code> have slightly revised APIs.
+</p>
+
+<p>
+A concrete <code>Mode</code> type was introduced for configuration mode flags
+in the packages
+<a href="/pkg/go/scanner/"><code>go/scanner</code></a>,
+<a href="/pkg/go/parser/"><code>go/parser</code></a>,
+<a href="/pkg/go/printer/"><code>go/printer</code></a>, and
+<a href="/pkg/go/doc/"><code>go/doc</code></a>.
+</p>
+
+<p>
+The modes <code>AllowIllegalChars</code> and <code>InsertSemis</code> have been removed
+from the <a href="/pkg/go/scanner/"><code>go/scanner</code></a> package. They were mostly
+useful for scanning text other then Go source files. Instead, the
+<a href="/pkg/text/scanner/"><code>text/scanner</code></a> package should be used
+for that purpose.
+</p>
+
+<p>
+The <a href="/pkg/go/scanner/#ErrorHandler"><code>ErrorHandler</code></a> provided
+to the scanner's <a href="/pkg/go/scanner/#Scanner.Init"><code>Init</code></a> method is
+now simply a function rather than an interface. The <code>ErrorVector</code> type has
+been removed in favor of the (existing) <a href="/pkg/go/scanner/#ErrorList"><code>ErrorList</code></a>
+type, and the <code>ErrorVector</code> methods have been migrated. Instead of embedding
+an <code>ErrorVector</code> in a client of the scanner, now a client should maintain
+an <code>ErrorList</code>.
+</p>
+
+<p>
+The set of parse functions provided by the <a href="/pkg/go/parser/"><code>go/parser</code></a>
+package has been reduced to the primary parse function
+<a href="/pkg/go/parser/#ParseFile"><code>ParseFile</code></a>, and a couple of
+convenience functions <a href="/pkg/go/parser/#ParseDir"><code>ParseDir</code></a>
+and <a href="/pkg/go/parser/#ParseExpr"><code>ParseExpr</code></a>.
+</p>
+
+<p>
+The <a href="/pkg/go/printer/"><code>go/printer</code></a> package supports an additional
+configuration mode <a href="/pkg/go/printer/#Mode"><code>SourcePos</code></a>;
+if set, the printer will emit <code>//line</code> comments such that the generated
+output contains the original source code position information. The new type
+<a href="/pkg/go/printer/#CommentedNode"><code>CommentedNode</code></a> can be
+used to provide comments associated with an arbitrary
+<a href="/pkg/go/ast/#Node"><code>ast.Node</code></a> (until now only
+<a href="/pkg/go/ast/#File"><code>ast.File</code></a> carried comment information).
+</p>
+
+<p>
+The type names of the <a href="/pkg/go/doc/"><code>go/doc</code></a> package have been
+streamlined by removing the <code>Doc</code> suffix: <code>PackageDoc</code>
+is now <code>Package</code>, <code>ValueDoc</code> is <code>Value</code>, etc.
+Also, all types now consistently have a <code>Name</code> field (or <code>Names</code>,
+in the case of type <code>Value</code>) and <code>Type.Factories</code> has become
+<code>Type.Funcs</code>.
+Instead of calling <code>doc.NewPackageDoc(pkg, importpath)</code>,
+documentation for a package is created with:
+</p>
+
+<pre>
+    doc.New(pkg, importpath, mode)
+</pre>
+
+<p>
+where the new <code>mode</code> parameter specifies the operation mode:
+if set to <a href="/pkg/go/doc/#AllDecls"><code>AllDecls</code></a>, all declarations
+(not just exported ones) are considered.
+The function <code>NewFileDoc</code> was removed, and the function
+<code>CommentText</code> has become the method
+<a href="/pkg/go/ast/#CommentGroup.Text"><code>Text</code></a> of
+<a href="/pkg/go/ast/#CommentGroup"><code>ast.CommentGroup</code></a>.
+</p>
+
+<p>
+In package <a href="/pkg/go/token/"><code>go/token</code></a>, the
+<a href="/pkg/go/token/#FileSet"><code>token.FileSet</code></a> method <code>Files</code>
+(which originally returned a channel of <code>*token.File</code>s) has been replaced
+with the iterator <a href="/pkg/go/token/#FileSet.Iterate"><code>Iterate</code></a> that
+accepts a function argument instead.
+</p>
+
+<p>
+In package <a href="/pkg/go/build/"><code>go/build</code></a>, the API
+has been nearly completely replaced.
+The package still computes Go package information
+but it does not run the build: the <code>Cmd</code> and <code>Script</code>
+types are gone.
+(To build code, use the new
+<a href="/cmd/go/"><code>go</code></a> command instead.)
+The <code>DirInfo</code> type is now named
+<a href="/pkg/go/build/#Package"><code>Package</code></a>.
+<code>FindTree</code> and <code>ScanDir</code> are replaced by
+<a href="/pkg/go/build/#Import"><code>Import</code></a>
+and
+<a href="/pkg/go/build/#ImportDir"><code>ImportDir</code></a>.
+</p>
+
+<p>
+<em>Updating</em>:
+Code that uses packages in <code>go</code> will have to be updated by hand; the
+compiler will reject incorrect uses. Templates used in conjunction with any of the
+<code>go/doc</code> types may need manual fixes; the renamed fields will lead
+to run-time errors.
+</p>
+
+<h3 id="hash">The hash package</h3>
+
+<p>
+In Go 1, the definition of <a href="/pkg/hash/#Hash"><code>hash.Hash</code></a> includes
+a new method, <code>BlockSize</code>.  This new method is used primarily in the
+cryptographic libraries.
+</p>
+
+<p>
+The <code>Sum</code> method of the
+<a href="/pkg/hash/#Hash"><code>hash.Hash</code></a> interface now takes a
+<code>[]byte</code> argument, to which the hash value will be appended.
+The previous behavior can be recreated by adding a <code>nil</code> argument to the call.
+</p>
+
+<p>
+<em>Updating</em>:
+Existing implementations of <code>hash.Hash</code> will need to add a
+<code>BlockSize</code> method.  Hashes that process the input one byte at
+a time can implement <code>BlockSize</code> to return 1.
+Running <code>go</code> <code>fix</code> will update calls to the <code>Sum</code> methods of the various
+implementations of <code>hash.Hash</code>.
+</p>
+
+<p>
+<em>Updating</em>:
+Since the package's functionality is new, no updating is necessary.
+</p>
+
+<h3 id="http">The http package</h3>
+
+<p>
+In Go 1 the <a href="/pkg/net/http/"><code>http</code></a> package is refactored,
+putting some of the utilities into a
+<a href="/pkg/net/http/httputil/"><code>httputil</code></a> subdirectory.
+These pieces are only rarely needed by HTTP clients.
+The affected items are:
+</p>
+
+<ul>
+<li>ClientConn</li>
+<li>DumpRequest</li>
+<li>DumpRequestOut</li>
+<li>DumpResponse</li>
+<li>NewChunkedReader</li>
+<li>NewChunkedWriter</li>
+<li>NewClientConn</li>
+<li>NewProxyClientConn</li>
+<li>NewServerConn</li>
+<li>NewSingleHostReverseProxy</li>
+<li>ReverseProxy</li>
+<li>ServerConn</li>
+</ul>
+
+<p>
+The <code>Request.RawURL</code> field has been removed; it was a
+historical artifact.
+</p>
+
+<p>
+The <code>Handle</code> and <code>HandleFunc</code>
+functions, and the similarly-named methods of <code>ServeMux</code>,
+now panic if an attempt is made to register the same pattern twice.
+</p>
+
+<p>
+<em>Updating</em>:
+Running <code>go</code> <code>fix</code> will update the few programs that are affected except for
+uses of <code>RawURL</code>, which must be fixed by hand.
+</p>
+
+<h3 id="image">The image package</h3>
+
+<p>
+The <a href="/pkg/image/"><code>image</code></a> package has had a number of
+minor changes, rearrangements and renamings.
+</p>
+
+<p>
+Most of the color handling code has been moved into its own package,
+<a href="/pkg/image/color/"><code>image/color</code></a>.
+For the elements that moved, a symmetry arises; for instance,
+each pixel of an
+<a href="/pkg/image/#RGBA"><code>image.RGBA</code></a>
+is a
+<a href="/pkg/image/color/#RGBA"><code>color.RGBA</code></a>.
+</p>
+
+<p>
+The old <code>image/ycbcr</code> package has been folded, with some
+renamings, into the
+<a href="/pkg/image/"><code>image</code></a>
+and
+<a href="/pkg/image/color/"><code>image/color</code></a>
+packages.
+</p>
+
+<p>
+The old <code>image.ColorImage</code> type is still in the <code>image</code>
+package but has been renamed
+<a href="/pkg/image/#Uniform"><code>image.Uniform</code></a>,
+while <code>image.Tiled</code> has been removed.
+</p>
+
+<p>
+This table lists the renamings.
+</p>
+
+<table class="codetable" frame="border" summary="image renames">
+<colgroup align="left" width="50%"></colgroup>
+<colgroup align="left" width="50%"></colgroup>
+<tr>
+<th align="left">Old</th>
+<th align="left">New</th>
+</tr>
+<tr>
+<td colspan="2"><hr></td>
+</tr>
+<tr><td>image.Color</td> <td>color.Color</td></tr>
+<tr><td>image.ColorModel</td> <td>color.Model</td></tr>
+<tr><td>image.ColorModelFunc</td> <td>color.ModelFunc</td></tr>
+<tr><td>image.PalettedColorModel</td> <td>color.Palette</td></tr>
+<tr>
+<td colspan="2"><hr></td>
+</tr>
+<tr><td>image.RGBAColor</td> <td>color.RGBA</td></tr>
+<tr><td>image.RGBA64Color</td> <td>color.RGBA64</td></tr>
+<tr><td>image.NRGBAColor</td> <td>color.NRGBA</td></tr>
+<tr><td>image.NRGBA64Color</td> <td>color.NRGBA64</td></tr>
+<tr><td>image.AlphaColor</td> <td>color.Alpha</td></tr>
+<tr><td>image.Alpha16Color</td> <td>color.Alpha16</td></tr>
+<tr><td>image.GrayColor</td> <td>color.Gray</td></tr>
+<tr><td>image.Gray16Color</td> <td>color.Gray16</td></tr>
+<tr>
+<td colspan="2"><hr></td>
+</tr>
+<tr><td>image.RGBAColorModel</td> <td>color.RGBAModel</td></tr>
+<tr><td>image.RGBA64ColorModel</td> <td>color.RGBA64Model</td></tr>
+<tr><td>image.NRGBAColorModel</td> <td>color.NRGBAModel</td></tr>
+<tr><td>image.NRGBA64ColorModel</td> <td>color.NRGBA64Model</td></tr>
+<tr><td>image.AlphaColorModel</td> <td>color.AlphaModel</td></tr>
+<tr><td>image.Alpha16ColorModel</td> <td>color.Alpha16Model</td></tr>
+<tr><td>image.GrayColorModel</td> <td>color.GrayModel</td></tr>
+<tr><td>image.Gray16ColorModel</td> <td>color.Gray16Model</td></tr>
+<tr>
+<td colspan="2"><hr></td>
+</tr>
+<tr><td>ycbcr.RGBToYCbCr</td> <td>color.RGBToYCbCr</td></tr>
+<tr><td>ycbcr.YCbCrToRGB</td> <td>color.YCbCrToRGB</td></tr>
+<tr><td>ycbcr.YCbCrColorModel</td> <td>color.YCbCrModel</td></tr>
+<tr><td>ycbcr.YCbCrColor</td> <td>color.YCbCr</td></tr>
+<tr><td>ycbcr.YCbCr</td> <td>image.YCbCr</td></tr>
+<tr>
+<td colspan="2"><hr></td>
+</tr>
+<tr><td>ycbcr.SubsampleRatio444</td> <td>image.YCbCrSubsampleRatio444</td></tr>
+<tr><td>ycbcr.SubsampleRatio422</td> <td>image.YCbCrSubsampleRatio422</td></tr>
+<tr><td>ycbcr.SubsampleRatio420</td> <td>image.YCbCrSubsampleRatio420</td></tr>
+<tr>
+<td colspan="2"><hr></td>
+</tr>
+<tr><td>image.ColorImage</td> <td>image.Uniform</td></tr>
+</table>
+
+<p>
+The image package's <code>New</code> functions
+(<a href="/pkg/image/#NewRGBA"><code>NewRGBA</code></a>,
+<a href="/pkg/image/#NewRGBA64"><code>NewRGBA64</code></a>, etc.)
+take an <a href="/pkg/image/#Rectangle"><code>image.Rectangle</code></a> as an argument
+instead of four integers.
+</p>
+
+<p>
+Finally, there are new predefined <code>color.Color</code> variables
+<a href="/pkg/image/color/#Black"><code>color.Black</code></a>,
+<a href="/pkg/image/color/#White"><code>color.White</code></a>,
+<a href="/pkg/image/color/#Opaque"><code>color.Opaque</code></a>
+and
+<a href="/pkg/image/color/#Transparent"><code>color.Transparent</code></a>.
+</p>
+
+<p>
+<em>Updating</em>:
+Running <code>go</code> <code>fix</code> will update almost all code affected by the change.
+</p>
+
+<h3 id="log_syslog">The log/syslog package</h3>
+
+<p>
+In Go 1, the <a href="/pkg/log/syslog/#NewLogger"><code>syslog.NewLogger</code></a>
+function returns an error as well as a <code>log.Logger</code>.
+</p>
+
+<p>
+<em>Updating</em>:
+What little code is affected will be caught by the compiler and must be updated by hand.
+</p>
+
+<h3 id="mime">The mime package</h3>
+
+<p>
+In Go 1, the <a href="/pkg/mime/#FormatMediaType"><code>FormatMediaType</code></a> function
+of the <code>mime</code> package has  been simplified to make it
+consistent with
+<a href="/pkg/mime/#ParseMediaType"><code>ParseMediaType</code></a>.
+It now takes <code>"text/html"</code> rather than <code>"text"</code> and <code>"html"</code>.
+</p>
+
+<p>
+<em>Updating</em>:
+What little code is affected will be caught by the compiler and must be updated by hand.
+</p>
+
+<h3 id="net">The net package</h3>
+
+<p>
+In Go 1, the various <code>SetTimeout</code>,
+<code>SetReadTimeout</code>, and <code>SetWriteTimeout</code> methods
+have been replaced with
+<a href="/pkg/net/#IPConn.SetDeadline"><code>SetDeadline</code></a>,
+<a href="/pkg/net/#IPConn.SetReadDeadline"><code>SetReadDeadline</code></a>, and
+<a href="/pkg/net/#IPConn.SetWriteDeadline"><code>SetWriteDeadline</code></a>,
+respectively.  Rather than taking a timeout value in nanoseconds that
+apply to any activity on the connection, the new methods set an
+absolute deadline (as a <code>time.Time</code> value) after which
+reads and writes will time out and no longer block.
+</p>
+
+<p>
+There are also new functions
+<a href="/pkg/net/#DialTimeout"><code>net.DialTimeout</code></a>
+to simplify timing out dialing a network address and
+<a href="/pkg/net/#ListenMulticastUDP"><code>net.ListenMulticastUDP</code></a>
+to allow multicast UDP to listen concurrently across multiple listeners.
+The <code>net.ListenMulticastUDP</code> function replaces the old
+<code>JoinGroup</code> and <code>LeaveGroup</code> methods.
+</p>
+
+<p>
+<em>Updating</em>:
+Code that uses the old methods will fail to compile and must be updated by hand.
+The semantic change makes it difficult for the fix tool to update automatically.
+</p>
+
+<h3 id="os">The os package</h3>
+
+<p>
+The <code>Time</code> function has been removed; callers should use
+the <a href="/pkg/time/#Time"><code>Time</code></a> type from the
+<code>time</code> package.
+</p>
+
+<p>
+The <code>Exec</code> function has been removed; callers should use
+<code>Exec</code> from the <code>syscall</code> package, where available.
+</p>
+
+<p>
+The <code>ShellExpand</code> function has been renamed to <a
+href="/pkg/os/#ExpandEnv"><code>ExpandEnv</code></a>.
+</p>
+
+<p>
+The <a href="/pkg/os/#NewFile"><code>NewFile</code></a> function
+now takes a <code>uintptr</code> fd, instead of an <code>int</code>.
+The <a href="/pkg/os/#File.Fd"><code>Fd</code></a> method on files now
+also returns a <code>uintptr</code>.
+</p>
+
+<p>
+There are no longer error constants such as <code>EINVAL</code>
+in the <code>os</code> package, since the set of values varied with
+the underlying operating system. There are new portable functions like
+<a href="/pkg/os/#IsPermission"><code>IsPermission</code></a>
+to test common error properties, plus a few new error values
+with more Go-like names, such as
+<a href="/pkg/os/#ErrPermission"><code>ErrPermission</code></a>
+and
+<a href="/pkg/os/#ErrNotExist"><code>ErrNotExist</code></a>.
+</p>
+
+<p>
+The <code>Getenverror</code> function has been removed. To distinguish
+between a non-existent environment variable and an empty string,
+use <a href="/pkg/os/#Environ"><code>os.Environ</code></a> or
+<a href="/pkg/syscall/#Getenv"><code>syscall.Getenv</code></a>.
+</p>
+
+
+<p>
+The <a href="/pkg/os/#Process.Wait"><code>Process.Wait</code></a> method has
+dropped its option argument and the associated constants are gone
+from the package.
+Also, the function <code>Wait</code> is gone; only the method of
+the <code>Process</code> type persists.
+</p>
+
+<p>
+The <code>Waitmsg</code> type returned by
+<a href="/pkg/os/#Process.Wait"><code>Process.Wait</code></a>
+has been replaced with a more portable
+<a href="/pkg/os/#ProcessState"><code>ProcessState</code></a>
+type with accessor methods to recover information about the
+process.
+Because of changes to <code>Wait</code>, the <code>ProcessState</code>
+value always describes an exited process.
+Portability concerns simplified the interface in other ways, but the values returned by the
+<a href="/pkg/os/#ProcessState.Sys"><code>ProcessState.Sys</code></a> and
+<a href="/pkg/os/#ProcessState.SysUsage"><code>ProcessState.SysUsage</code></a>
+methods can be type-asserted to underlying system-specific data structures such as
+<a href="/pkg/syscall/#WaitStatus"><code>syscall.WaitStatus</code></a> and
+<a href="/pkg/syscall/#Rusage"><code>syscall.Rusage</code></a> on Unix.
+</p>
+
+<p>
+<em>Updating</em>:
+Running <code>go</code> <code>fix</code> will drop a zero argument to <code>Process.Wait</code>.
+All other changes will be caught by the compiler and must be updated by hand.
+</p>
+
+<h4 id="os_fileinfo">The os.FileInfo type</h4>
+
+<p>
+Go 1 redefines the <a href="/pkg/os/#FileInfo"><code>os.FileInfo</code></a> type,
+changing it from a struct to an interface:
+</p>
+
+<pre>
+    type FileInfo interface {
+        Name() string       // base name of the file
+        Size() int64        // length in bytes
+        Mode() FileMode     // file mode bits
+        ModTime() time.Time // modification time
+        IsDir() bool        // abbreviation for Mode().IsDir()
+        Sys() interface{}   // underlying data source (can return nil)
+    }
+</pre>
+
+<p>
+The file mode information has been moved into a subtype called
+<a href="/pkg/os/#FileMode"><code>os.FileMode</code></a>,
+a simple integer type with <code>IsDir</code>, <code>Perm</code>, and <code>String</code>
+methods.
+</p>
+
+<p>
+The system-specific details of file modes and properties such as (on Unix)
+i-number have been removed from <code>FileInfo</code> altogether.
+Instead, each operating system's <code>os</code> package provides an
+implementation of the <code>FileInfo</code> interface, which
+has a <code>Sys</code> method that returns the
+system-specific representation of file metadata.
+For instance, to discover the i-number of a file on a Unix system, unpack
+the <code>FileInfo</code> like this:
+</p>
+
+<pre>
+    fi, err := os.Stat("hello.go")
+    if err != nil {
+        log.Fatal(err)
+    }
+    // Check that it's a Unix file.
+    unixStat, ok := fi.Sys().(*syscall.Stat_t)
+    if !ok {
+        log.Fatal("hello.go: not a Unix file")
+    }
+    fmt.Printf("file i-number: %d\n", unixStat.Ino)
+</pre>
+
+<p>
+Assuming (which is unwise) that <code>"hello.go"</code> is a Unix file,
+the i-number expression could be contracted to
+</p>
+
+<pre>
+    fi.Sys().(*syscall.Stat_t).Ino
+</pre>
+
+<p>
+The vast majority of uses of <code>FileInfo</code> need only the methods
+of the standard interface.
+</p>
+
+<p>
+The <code>os</code> package no longer contains wrappers for the POSIX errors
+such as <code>ENOENT</code>.
+For the few programs that need to verify particular error conditions, there are
+now the boolean functions
+<a href="/pkg/os/#IsExist"><code>IsExist</code></a>,
+<a href="/pkg/os/#IsNotExist"><code>IsNotExist</code></a>
+and
+<a href="/pkg/os/#IsPermission"><code>IsPermission</code></a>.
+</p>
+
+{{code "/doc/progs/go1.go" `/os\.Open/` `/}/`}}
+
+<p>
+<em>Updating</em>:
+Running <code>go</code> <code>fix</code> will update code that uses the old equivalent of the current <code>os.FileInfo</code>
+and <code>os.FileMode</code> API.
+Code that needs system-specific file details will need to be updated by hand.
+Code that uses the old POSIX error values from the <code>os</code> package
+will fail to compile and will also need to be updated by hand.
+</p>
+
+<h3 id="os_signal">The os/signal package</h3>
+
+<p>
+The <code>os/signal</code> package in Go 1 replaces the
+<code>Incoming</code> function, which returned a channel
+that received all incoming signals,
+with the selective <code>Notify</code> function, which asks
+for delivery of specific signals on an existing channel.
+</p>
+
+<p>
+<em>Updating</em>:
+Code must be updated by hand.
+A literal translation of
+</p>
+<pre>
+c := signal.Incoming()
+</pre>
+<p>
+is
+</p>
+<pre>
+c := make(chan os.Signal)
+signal.Notify(c) // ask for all signals
+</pre>
+<p>
+but most code should list the specific signals it wants to handle instead:
+</p>
+<pre>
+c := make(chan os.Signal)
+signal.Notify(c, syscall.SIGHUP, syscall.SIGQUIT)
+</pre>
+
+<h3 id="path_filepath">The path/filepath package</h3>
+
+<p>
+In Go 1, the <a href="/pkg/path/filepath/#Walk"><code>Walk</code></a> function of the
+<code>path/filepath</code> package
+has been changed to take a function value of type
+<a href="/pkg/path/filepath/#WalkFunc"><code>WalkFunc</code></a>
+instead of a <code>Visitor</code> interface value.
+<code>WalkFunc</code> unifies the handling of both files and directories.
+</p>
+
+<pre>
+    type WalkFunc func(path string, info os.FileInfo, err error) error
+</pre>
+
+<p>
+The <code>WalkFunc</code> function will be called even for files or directories that could not be opened;
+in such cases the error argument will describe the failure.
+If a directory's contents are to be skipped,
+the function should return the value <a href="/pkg/path/filepath/#pkg-variables"><code>filepath.SkipDir</code></a>
+</p>
+
+{{code "/doc/progs/go1.go" `/STARTWALK/` `/ENDWALK/`}}
+
+<p>
+<em>Updating</em>:
+The change simplifies most code but has subtle consequences, so affected programs
+will need to be updated by hand.
+The compiler will catch code using the old interface.
+</p>
+
+<h3 id="regexp">The regexp package</h3>
+
+<p>
+The <a href="/pkg/regexp/"><code>regexp</code></a> package has been rewritten.
+It has the same interface but the specification of the regular expressions
+it supports has changed from the old "egrep" form to that of
+<a href="//code.google.com/p/re2/">RE2</a>.
+</p>
+
+<p>
+<em>Updating</em>:
+Code that uses the package should have its regular expressions checked by hand.
+</p>
+
+<h3 id="runtime">The runtime package</h3>
+
+<p>
+In Go 1, much of the API exported by package
+<code>runtime</code> has been removed in favor of
+functionality provided by other packages.
+Code using the <code>runtime.Type</code> interface
+or its specific concrete type implementations should
+now use package <a href="/pkg/reflect/"><code>reflect</code></a>.
+Code using <code>runtime.Semacquire</code> or <code>runtime.Semrelease</code>
+should use channels or the abstractions in package <a href="/pkg/sync/"><code>sync</code></a>.
+The <code>runtime.Alloc</code>, <code>runtime.Free</code>,
+and <code>runtime.Lookup</code> functions, an unsafe API created for
+debugging the memory allocator, have no replacement.
+</p>
+
+<p>
+Before, <code>runtime.MemStats</code> was a global variable holding
+statistics about memory allocation, and calls to <code>runtime.UpdateMemStats</code>
+ensured that it was up to date.
+In Go 1, <code>runtime.MemStats</code> is a struct type, and code should use
+<a href="/pkg/runtime/#ReadMemStats"><code>runtime.ReadMemStats</code></a>
+to obtain the current statistics.
+</p>
+
+<p>
+The package adds a new function,
+<a href="/pkg/runtime/#NumCPU"><code>runtime.NumCPU</code></a>, that returns the number of CPUs available
+for parallel execution, as reported by the operating system kernel.
+Its value can inform the setting of <code>GOMAXPROCS</code>.
+The <code>runtime.Cgocalls</code> and <code>runtime.Goroutines</code> functions
+have been renamed to <code>runtime.NumCgoCall</code> and <code>runtime.NumGoroutine</code>.
+</p>
+
+<p>
+<em>Updating</em>:
+Running <code>go</code> <code>fix</code> will update code for the function renamings.
+Other code will need to be updated by hand.
+</p>
+
+<h3 id="strconv">The strconv package</h3>
+
+<p>
+In Go 1, the
+<a href="/pkg/strconv/"><code>strconv</code></a>
+package has been significantly reworked to make it more Go-like and less C-like,
+although <code>Atoi</code> lives on (it's similar to
+<code>int(ParseInt(x, 10, 0))</code>, as does
+<code>Itoa(x)</code> (<code>FormatInt(int64(x), 10)</code>).
+There are also new variants of some of the functions that append to byte slices rather than
+return strings, to allow control over allocation.
+</p>
+
+<p>
+This table summarizes the renamings; see the
+<a href="/pkg/strconv/">package documentation</a>
+for full details.
+</p>
+
+<table class="codetable" frame="border" summary="strconv renames">
+<colgroup align="left" width="50%"></colgroup>
+<colgroup align="left" width="50%"></colgroup>
+<tr>
+<th align="left">Old call</th>
+<th align="left">New call</th>
+</tr>
+<tr>
+<td colspan="2"><hr></td>
+</tr>
+<tr><td>Atob(x)</td> <td>ParseBool(x)</td></tr>
+<tr>
+<td colspan="2"><hr></td>
+</tr>
+<tr><td>Atof32(x)</td> <td>ParseFloat(x, 32)Â§</td></tr>
+<tr><td>Atof64(x)</td> <td>ParseFloat(x, 64)</td></tr>
+<tr><td>AtofN(x, n)</td> <td>ParseFloat(x, n)</td></tr>
+<tr>
+<td colspan="2"><hr></td>
+</tr>
+<tr><td>Atoi(x)</td> <td>Atoi(x)</td></tr>
+<tr><td>Atoi(x)</td> <td>ParseInt(x, 10, 0)Â§</td></tr>
+<tr><td>Atoi64(x)</td> <td>ParseInt(x, 10, 64)</td></tr>
+<tr>
+<td colspan="2"><hr></td>
+</tr>
+<tr><td>Atoui(x)</td> <td>ParseUint(x, 10, 0)Â§</td></tr>
+<tr><td>Atoui64(x)</td> <td>ParseUint(x, 10, 64)</td></tr>
+<tr>
+<td colspan="2"><hr></td>
+</tr>
+<tr><td>Btoi64(x, b)</td> <td>ParseInt(x, b, 64)</td></tr>
+<tr><td>Btoui64(x, b)</td> <td>ParseUint(x, b, 64)</td></tr>
+<tr>
+<td colspan="2"><hr></td>
+</tr>
+<tr><td>Btoa(x)</td> <td>FormatBool(x)</td></tr>
+<tr>
+<td colspan="2"><hr></td>
+</tr>
+<tr><td>Ftoa32(x, f, p)</td> <td>FormatFloat(float64(x), f, p, 32)</td></tr>
+<tr><td>Ftoa64(x, f, p)</td> <td>FormatFloat(x, f, p, 64)</td></tr>
+<tr><td>FtoaN(x, f, p, n)</td> <td>FormatFloat(x, f, p, n)</td></tr>
+<tr>
+<td colspan="2"><hr></td>
+</tr>
+<tr><td>Itoa(x)</td> <td>Itoa(x)</td></tr>
+<tr><td>Itoa(x)</td> <td>FormatInt(int64(x), 10)</td></tr>
+<tr><td>Itoa64(x)</td> <td>FormatInt(x, 10)</td></tr>
+<tr>
+<td colspan="2"><hr></td>
+</tr>
+<tr><td>Itob(x, b)</td> <td>FormatInt(int64(x), b)</td></tr>
+<tr><td>Itob64(x, b)</td> <td>FormatInt(x, b)</td></tr>
+<tr>
+<td colspan="2"><hr></td>
+</tr>
+<tr><td>Uitoa(x)</td> <td>FormatUint(uint64(x), 10)</td></tr>
+<tr><td>Uitoa64(x)</td> <td>FormatUint(x, 10)</td></tr>
+<tr>
+<td colspan="2"><hr></td>
+</tr>
+<tr><td>Uitob(x, b)</td> <td>FormatUint(uint64(x), b)</td></tr>
+<tr><td>Uitob64(x, b)</td> <td>FormatUint(x, b)</td></tr>
+</table>
+		
+<p>
+<em>Updating</em>:
+Running <code>go</code> <code>fix</code> will update almost all code affected by the change.
+<br>
+Â§ <code>Atoi</code> persists but <code>Atoui</code> and <code>Atof32</code> do not, so
+they may require
+a cast that must be added by hand; the <code>go</code> <code>fix</code> tool will warn about it.
+</p>
+
+
+<h3 id="templates">The template packages</h3>
+
+<p>
+The <code>template</code> and <code>exp/template/html</code> packages have moved to 
+<a href="/pkg/text/template/"><code>text/template</code></a> and
+<a href="/pkg/html/template/"><code>html/template</code></a>.
+More significant, the interface to these packages has been simplified.
+The template language is the same, but the concept of "template set" is gone
+and the functions and methods of the packages have changed accordingly,
+often by elimination.
+</p>
+
+<p>
+Instead of sets, a <code>Template</code> object
+may contain multiple named template definitions,
+in effect constructing
+name spaces for template invocation.
+A template can invoke any other template associated with it, but only those
+templates associated with it.
+The simplest way to associate templates is to parse them together, something
+made easier with the new structure of the packages.
+</p>
+
+<p>
+<em>Updating</em>:
+The imports will be updated by fix tool.
+Single-template uses will be otherwise be largely unaffected.
+Code that uses multiple templates in concert will need to be updated by hand.
+The <a href="/pkg/text/template/#pkg-examples">examples</a> in
+the documentation for <code>text/template</code> can provide guidance.
+</p>
+
+<h3 id="testing">The testing package</h3>
+
+<p>
+The testing package has a type, <code>B</code>, passed as an argument to benchmark functions.
+In Go 1, <code>B</code> has new methods, analogous to those of <code>T</code>, enabling
+logging and failure reporting.
+</p>
+
+{{code "/doc/progs/go1.go" `/func.*Benchmark/` `/^}/`}}
+
+<p>
+<em>Updating</em>:
+Existing code is unaffected, although benchmarks that use <code>println</code>
+or <code>panic</code> should be updated to use the new methods.
+</p>
+
+<h3 id="testing_script">The testing/script package</h3>
+
+<p>
+The testing/script package has been deleted. It was a dreg.
+</p>
+
+<p>
+<em>Updating</em>:
+No code is likely to be affected.
+</p>
+
+<h3 id="unsafe">The unsafe package</h3>
+
+<p>
+In Go 1, the functions
+<code>unsafe.Typeof</code>, <code>unsafe.Reflect</code>,
+<code>unsafe.Unreflect</code>, <code>unsafe.New</code>, and
+<code>unsafe.NewArray</code> have been removed;
+they duplicated safer functionality provided by
+package <a href="/pkg/reflect/"><code>reflect</code></a>.
+</p>
+
+<p>
+<em>Updating</em>:
+Code using these functions must be rewritten to use
+package <a href="/pkg/reflect/"><code>reflect</code></a>.
+The changes to <a href="//golang.org/change/2646dc956207">encoding/gob</a> and the <a href="//code.google.com/p/goprotobuf/source/detail?r=5340ad310031">protocol buffer library</a>
+may be helpful as examples.
+</p>
+
+<h3 id="url">The url package</h3>
+
+<p>
+In Go 1 several fields from the <a href="/pkg/net/url/#URL"><code>url.URL</code></a> type
+were removed or replaced.
+</p>
+
+<p>
+The <a href="/pkg/net/url/#URL.String"><code>String</code></a> method now
+predictably rebuilds an encoded URL string using all of <code>URL</code>'s
+fields as necessary. The resulting string will also no longer have
+passwords escaped.
+</p>
+
+<p>
+The <code>Raw</code> field has been removed. In most cases the <code>String</code>
+method may be used in its place.
+</p>
+
+<p>
+The old <code>RawUserinfo</code> field is replaced by the <code>User</code>
+field, of type <a href="/pkg/net/url/#Userinfo"><code>*net.Userinfo</code></a>.
+Values of this type may be created using the new <a href="/pkg/net/url/#User"><code>net.User</code></a>
+and <a href="/pkg/net/url/#UserPassword"><code>net.UserPassword</code></a>
+functions. The <code>EscapeUserinfo</code> and <code>UnescapeUserinfo</code>
+functions are also gone.
+</p>
+
+<p>
+The <code>RawAuthority</code> field has been removed. The same information is
+available in the <code>Host</code> and <code>User</code> fields.
+</p>
+
+<p>
+The <code>RawPath</code> field and the <code>EncodedPath</code> method have
+been removed. The path information in rooted URLs (with a slash following the
+schema) is now available only in decoded form in the <code>Path</code> field.
+Occasionally, the encoded data may be required to obtain information that
+was lost in the decoding process. These cases must be handled by accessing
+the data the URL was built from.
+</p>
+
+<p>
+URLs with non-rooted paths, such as <code>"mailto:dev@golang.org?subject=Hi"</code>,
+are also handled differently. The <code>OpaquePath</code> boolean field has been
+removed and a new <code>Opaque</code> string field introduced to hold the encoded
+path for such URLs. In Go 1, the cited URL parses as:
+</p>
+
+<pre>
+    URL{
+        Scheme: "mailto",
+        Opaque: "dev@golang.org",
+        RawQuery: "subject=Hi",
+    }
+</pre>
+
+<p>
+A new <a href="/pkg/net/url/#URL.RequestURI"><code>RequestURI</code></a> method was
+added to <code>URL</code>.
+</p>
+
+<p>
+The <code>ParseWithReference</code> function has been renamed to <code>ParseWithFragment</code>.
+</p>
+
+<p>
+<em>Updating</em>:
+Code that uses the old fields will fail to compile and must be updated by hand.
+The semantic changes make it difficult for the fix tool to update automatically.
+</p>
+
+<h2 id="cmd_go">The go command</h2>
+
+<p>
+Go 1 introduces the <a href="/cmd/go/">go command</a>, a tool for fetching,
+building, and installing Go packages and commands. The <code>go</code> command
+does away with makefiles, instead using Go source code to find dependencies and
+determine build conditions. Most existing Go programs will no longer require
+makefiles to be built.
+</p>
+
+<p>
+See <a href="/doc/code.html">How to Write Go Code</a> for a primer on the
+<code>go</code> command and the <a href="/cmd/go/">go command documentation</a>
+for the full details.
+</p>
+
+<p>
+<em>Updating</em>:
+Projects that depend on the Go project's old makefile-based build
+infrastructure (<code>Make.pkg</code>, <code>Make.cmd</code>, and so on) should
+switch to using the <code>go</code> command for building Go code and, if
+necessary, rewrite their makefiles to perform any auxiliary build tasks.
+</p>
+
+<h2 id="cmd_cgo">The cgo command</h2>
+
+<p>
+In Go 1, the <a href="/cmd/cgo">cgo command</a>
+uses a different <code>_cgo_export.h</code>
+file, which is generated for packages containing <code>//export</code> lines.
+The <code>_cgo_export.h</code> file now begins with the C preamble comment,
+so that exported function definitions can use types defined there.
+This has the effect of compiling the preamble multiple times, so a
+package using <code>//export</code> must not put function definitions
+or variable initializations in the C preamble.
+</p>
+
+<h2 id="releases">Packaged releases</h2>
+
+<p>
+One of the most significant changes associated with Go 1 is the availability
+of prepackaged, downloadable distributions.
+They are available for many combinations of architecture and operating system
+(including Windows) and the list will grow.
+Installation details are described on the
+<a href="/doc/install">Getting Started</a> page, while
+the distributions themselves are listed on the
+<a href="https://golang.org/dl/">downloads page</a>.
+                                                                                                                                                                                                    root/go1.4/doc/go1compat.html                                                                       0100644 0000000 0000000 00000015234 12600426226 014412  0                                                                                                    ustar 00                                                                0000000 0000000                                                                                                                                                                        <!--{
+	"Title": "Go 1 and the Future of Go Programs",
+	"Path":  "/doc/go1compat"
+}-->
+
+<h2 id="introduction">Introduction</h2>
+<p>
+The release of Go version 1, Go 1 for short, is a major milestone
+in the development of the language. Go 1 is a stable platform for
+the growth of programs and projects written in Go.
+</p>
+
+<p>
+Go 1 defines two things: first, the specification of the language;
+and second, the specification of a set of core APIs, the "standard
+packages" of the Go library. The Go 1 release includes their
+implementation in the form of two compiler suites (gc and gccgo),
+and the core libraries themselves.
+</p>
+
+<p>
+It is intended that programs written to the Go 1 specification will
+continue to compile and run correctly, unchanged, over the lifetime
+of that specification. At some indefinite point, a Go 2 specification
+may arise, but until that time, Go programs that work today should
+continue to work even as future "point" releases of Go 1 arise (Go
+1.1, Go 1.2, etc.).
+</p>
+
+<p>
+Compatibility is at the source level. Binary compatibility for
+compiled packages is not guaranteed between releases. After a point
+release, Go source will need to be recompiled to link against the
+new release.
+</p>
+
+<p>
+The APIs may grow, acquiring new packages and features, but not in
+a way that breaks existing Go 1 code.
+</p>
+
+<h2 id="expectations">Expectations</h2>
+
+<p>
+Although we expect that the vast majority of programs will maintain
+this compatibility over time, it is impossible to guarantee that
+no future change will break any program. This document is an attempt
+to set expectations for the compatibility of Go 1 software in the
+future. There are a number of ways in which a program that compiles
+and runs today may fail to do so after a future point release. They
+are all unlikely but worth recording.
+</p>
+
+<ul>
+<li>
+Security. A security issue in the specification or implementation
+may come to light whose resolution requires breaking compatibility.
+We reserve the right to address such security issues.
+</li>
+
+<li>
+Unspecified behavior. The Go specification tries to be explicit
+about most properties of the language, but there are some aspects
+that are undefined. Programs that depend on such unspecified behavior
+may break in future releases.
+</li>
+
+<li>
+Specification errors. If it becomes necessary to address an
+inconsistency or incompleteness in the specification, resolving the
+issue could affect the meaning or legality of existing programs.
+We reserve the right to address such issues, including updating the
+implementations. Except for security issues, no incompatible changes
+to the specification would be made.
+</li>
+
+<li>
+Bugs. If a compiler or library has a bug that violates the
+specification, a program that depends on the buggy behavior may
+break if the bug is fixed. We reserve the right to fix such bugs.
+</li>
+
+<li>
+Struct literals. For the addition of features in later point
+releases, it may be necessary to add fields to exported structs in
+the API. Code that uses unkeyed struct literals (such as pkg.T{3,
+"x"}) to create values of these types would fail to compile after
+such a change. However, code that uses keyed literals (pkg.T{A:
+3, B: "x"}) will continue to compile after such a change. We will
+update such data structures in a way that allows keyed struct
+literals to remain compatible, although unkeyed literals may fail
+to compile. (There are also more intricate cases involving nested
+data structures or interfaces, but they have the same resolution.)
+We therefore recommend that composite literals whose type is defined
+in a separate package should use the keyed notation.
+</li>
+
+<li>
+Dot imports. If a program imports a standard package
+using <code>import . "path"</code>, additional names defined in the
+imported package in future releases may conflict with other names
+defined in the program.  We do not recommend the use of <code>import .</code>
+outside of tests, and using it may cause a program to fail
+to compile in future releases.
+</li>
+
+<li>
+Use of package <code>unsafe</code>. Packages that import
+<a href="/pkg/unsafe/"><code>unsafe</code></a>
+may depend on internal properties of the Go implementation.
+We reserve the right to make changes to the implementation
+that may break such programs.
+</li>
+
+</ul>
+
+<p>
+Of course, for all of these possibilities, should they arise, we
+would endeavor whenever feasible to update the specification,
+compilers, or libraries without affecting existing code.
+</p>
+
+<p>
+These same considerations apply to successive point releases. For
+instance, code that runs under Go 1.2 should be compatible with Go
+1.2.1, Go 1.3, Go 1.4, etc., although not necessarily with Go 1.1
+since it may use features added only in Go 1.2
+</p>
+
+<p>
+Features added between releases, available in the source repository
+but not part of the numbered binary releases, are under active
+development. No promise of compatibility is made for software using
+such features until they have been released.
+</p>
+
+<p>
+Finally, although it is not a correctness issue, it is possible
+that the performance of a program may be affected by
+changes in the implementation of the compilers or libraries upon
+which it depends.
+No guarantee can be made about the performance of a
+given program between releases.
+</p>
+
+<p>
+Although these expectations apply to Go 1 itself, we hope similar
+considerations would be made for the development of externally
+developed software based on Go 1.
+</p>
+
+<h2 id="subrepos">Sub-repositories</h2>
+
+<p>
+Code in sub-repositories of the main go tree, such as
+<a href="//golang.org/x/net">golang.org/x/net</a>,
+may be developed under
+looser compatibility requirements. However, the sub-repositories
+will be tagged as appropriate to identify versions that are compatible
+with the Go 1 point releases.
+</p>
+
+<h2 id="operating_systems">Operating systems</h2>
+
+<p>
+It is impossible to guarantee long-term compatibility with operating
+system interfaces, which are changed by outside parties.
+The <a href="/pkg/syscall/"><code>syscall</code></a> package
+is therefore outside the purview of the guarantees made here.
+As of Go version 1.4, the <code>syscall</code> package is frozen.
+Any evolution of the system call interface must be supported elsewhere,
+such as in the
+<a href="//golang.org/x/sys">go.sys</a> subrepository.
+For details and background, see
+<a href="//golang.org/s/go1.4-syscall">this document</a>.
+</p>
+
+<h2 id="tools">Tools</h2>
+
+<p>
+Finally, the Go tool chain (compilers, linkers, build tools, and so
+on) are under active development and may change behavior. This
+means, for instance, that scripts that depend on the location and
+properties of the tools may be broken by a point release.
+</p>
+
+<p>
+These caveats aside, we believe that Go 1 will be a firm foundation
+for the development of Go and its ecosystem.
+</p>
+                                                                                                                                                                                                                                                                                                                                                                    root/go1.4/doc/go_faq.html                                                                          0100644 0000000 0000000 00000210145 12600426226 013752  0                                                                                                    ustar 00                                                                0000000 0000000                                                                                                                                                                        <!--{
+	"Title": "Frequently Asked Questions (FAQ)",
+	"Path": "/doc/faq"
+}-->
+
+<h2 id="Origins">Origins</h2>
+
+<h3 id="What_is_the_purpose_of_the_project">
+What is the purpose of the project?</h3>
+
+<p>
+No major systems language has emerged in over a decade, but over that time
+the computing landscape has changed tremendously. There are several trends:
+</p>
+
+<ul>
+<li>
+Computers are enormously quicker but software development is not faster.
+<li>
+Dependency management is a big part of software development today but the
+&ldquo;header files&rdquo; of languages in the C tradition are antithetical to clean
+dependency analysis&mdash;and fast compilation.
+<li>
+There is a growing rebellion against cumbersome type systems like those of
+Java and C++, pushing people towards dynamically typed languages such as
+Python and JavaScript.
+<li>
+Some fundamental concepts such as garbage collection and parallel computation
+are not well supported by popular systems languages.
+<li>
+The emergence of multicore computers has generated worry and confusion.
+</ul>
+
+<p>
+We believe it's worth trying again with a new language, a concurrent,
+garbage-collected language with fast compilation. Regarding the points above:
+</p>
+
+<ul>
+<li>
+It is possible to compile a large Go program in a few seconds on a single computer.
+<li>
+Go provides a model for software construction that makes dependency
+analysis easy and avoids much of the overhead of C-style include files and
+libraries.
+<li>
+Go's type system has no hierarchy, so no time is spent defining the
+relationships between types. Also, although Go has static types the language
+attempts to make types feel lighter weight than in typical OO languages.
+<li>
+Go is fully garbage-collected and provides fundamental support for
+concurrent execution and communication.
+<li>
+By its design, Go proposes an approach for the construction of system
+software on multicore machines.
+</ul>
+
+<p>
+A much more expansive answer to this question is available in the article,
+<a href="//talks.golang.org/2012/splash.article">Go at Google:
+Language Design in the Service of Software Engineering</a>.
+
+<h3 id="What_is_the_status_of_the_project">
+What is the status of the project?</h3>
+
+<p>
+Go became a public open source project on November 10, 2009.
+After a couple of years of very active design and development, stability was called for and
+Go 1 was <a href="//blog.golang.org/2012/03/go-version-1-is-released.html">released</a>
+on March 28, 2012.
+Go 1, which includes a <a href="/ref/spec">language specification</a>,
+<a href="/pkg/">standard libraries</a>,
+and <a href="/cmd/go/">custom tools</a>,
+provides a stable foundation for creating reliable products, projects, and publications.
+</p>
+
+<p>
+With that stability established, we are using Go to develop programs, products, and tools rather than
+actively changing the language and libraries.
+In fact, the purpose of Go 1 is to provide <a href="/doc/go1compat.html">long-term stability</a>.
+Backwards-incompatible changes will not be made to any Go 1 point release.
+We want to use what we have to learn how a future version of Go might look, rather than to play with
+the language underfoot.
+</p>
+
+<p>
+Of course, development will continue on Go itself, but the focus will be on performance, reliability,
+portability and the addition of new functionality such as improved support for internationalization.
+</p>
+
+<p>
+There may well be a Go 2 one day, but not for a few years and it will be influenced by what we learn using Go 1 as it is today.
+</p>
+
+<h3 id="What_is_the_origin_of_the_name">
+What is the origin of the name?</h3>
+
+<p>
+&ldquo;Ogle&rdquo; would be a good name for a Go debugger.
+</p>
+
+<h3 id="Whats_the_origin_of_the_mascot">
+What's the origin of the mascot?</h3>
+
+<p>
+The mascot and logo were designed by
+<a href="http://reneefrench.blogspot.com">RenÃ©e French</a>, who also designed
+<a href="http://plan9.bell-labs.com/plan9/glenda.html">Glenda</a>,
+the Plan 9 bunny.
+The gopher is derived from one she used for an <a href="http://wfmu.org/">WFMU</a>
+T-shirt design some years ago.
+The logo and mascot are covered by the
+<a href="http://creativecommons.org/licenses/by/3.0/">Creative Commons Attribution 3.0</a>
+license.
+</p>
+
+<h3 id="history">
+What is the history of the project?</h3>
+<p>
+Robert Griesemer, Rob Pike and Ken Thompson started sketching the
+goals for a new language on the white board on September 21, 2007.
+Within a few days the goals had settled into a plan to do something
+and a fair idea of what it would be.  Design continued part-time in
+parallel with unrelated work.  By January 2008, Ken had started work
+on a compiler with which to explore ideas; it generated C code as its
+output.  By mid-year the language had become a full-time project and
+had settled enough to attempt a production compiler.  In May 2008,
+Ian Taylor independently started on a GCC front end for Go using the
+draft specification.  Russ Cox joined in late 2008 and helped move the language
+and libraries from prototype to reality.
+</p>
+
+<p>
+Go became a public open source project on November 10, 2009.
+Many people from the community have contributed ideas, discussions, and code.
+</p>
+
+<h3 id="creating_a_new_language">
+Why are you creating a new language?</h3>
+<p>
+Go was born out of frustration with existing languages and
+environments for systems programming.  Programming had become too
+difficult and the choice of languages was partly to blame.  One had to
+choose either efficient compilation, efficient execution, or ease of
+programming; all three were not available in the same mainstream
+language.  Programmers who could were choosing ease over
+safety and efficiency by moving to dynamically typed languages such as
+Python and JavaScript rather than C++ or, to a lesser extent, Java.
+</p>
+
+<p>
+Go is an attempt to combine the ease of programming of an interpreted,
+dynamically typed
+language with the efficiency and safety of a statically typed, compiled language.
+It also aims to be modern, with support for networked and multicore
+computing.  Finally, it is intended to be <i>fast</i>: it should take
+at most a few seconds to build a large executable on a single computer.
+To meet these goals required addressing a number of
+linguistic issues: an expressive but lightweight type system;
+concurrency and garbage collection; rigid dependency specification;
+and so on.  These cannot be addressed well by libraries or tools; a new
+language was called for.
+</p>
+
+<p>
+The article <a href="//talks.golang.org/2012/splash.article">Go at Google</a>
+discusses the background and motivation behind the design of the Go language,
+as well as providing more detail about many of the answers presented in this FAQ.
+</p>
+
+<h3 id="ancestors">
+What are Go's ancestors?</h3>
+<p>
+Go is mostly in the C family (basic syntax),
+with significant input from the Pascal/Modula/Oberon
+family (declarations, packages),
+plus some ideas from languages
+inspired by Tony Hoare's CSP,
+such as Newsqueak and Limbo (concurrency).
+However, it is a new language across the board.
+In every respect the language was designed by thinking
+about what programmers do and how to make programming, at least the
+kind of programming we do, more effective, which means more fun.
+</p>
+
+<h3 id="principles">
+What are the guiding principles in the design?</h3>
+<p>
+Programming today involves too much bookkeeping, repetition, and
+clerical work.  As Dick Gabriel says, &ldquo;Old programs read
+like quiet conversations between a well-spoken research worker and a
+well-studied mechanical colleague, not as a debate with a compiler.
+Who'd have guessed sophistication bought such noise?&rdquo;
+The sophistication is worthwhile&mdash;no one wants to go back to
+the old languages&mdash;but can it be more quietly achieved?
+</p>
+<p>
+Go attempts to reduce the amount of typing in both senses of the word.
+Throughout its design, we have tried to reduce clutter and
+complexity.  There are no forward declarations and no header files;
+everything is declared exactly once.  Initialization is expressive,
+automatic, and easy to use.  Syntax is clean and light on keywords.
+Stuttering (<code>foo.Foo* myFoo = new(foo.Foo)</code>) is reduced by
+simple type derivation using the <code>:=</code>
+declare-and-initialize construct.  And perhaps most radically, there
+is no type hierarchy: types just <i>are</i>, they don't have to
+announce their relationships.  These simplifications allow Go to be
+expressive yet comprehensible without sacrificing, well, sophistication.
+</p>
+<p>
+Another important principle is to keep the concepts orthogonal.
+Methods can be implemented for any type; structures represent data while
+interfaces represent abstraction; and so on.  Orthogonality makes it
+easier to understand what happens when things combine.
+</p>
+
+<h2 id="Usage">Usage</h2>
+
+<h3 id="Is_Google_using_go_internally"> Is Google using Go internally?</h3>
+
+<p>
+Yes. There are now several Go programs deployed in
+production inside Google.  A public example is the server behind
+<a href="//golang.org">golang.org</a>.
+It's just the <a href="/cmd/godoc"><code>godoc</code></a>
+document server running in a production configuration on
+<a href="https://developers.google.com/appengine/">Google App Engine</a>.
+</p>
+
+<p>
+Other examples include the <a href="//code.google.com/p/vitess/">Vitess</a>
+system for large-scale SQL installations and Google's download server, <code>dl.google.com</code>,
+which delivers Chrome binaries and other large installables such as <code>apt-get</code>
+packages.
+</p>
+
+<h3 id="Do_Go_programs_link_with_Cpp_programs">
+Do Go programs link with C/C++ programs?</h3>
+
+<p>
+There are two Go compiler implementations, <code>gc</code>
+(the <code>6g</code> program and friends) and <code>gccgo</code>.
+<code>Gc</code> uses a different calling convention and linker and can
+therefore only be linked with C programs using the same convention.
+There is such a C compiler but no C++ compiler.
+<code>Gccgo</code> is a GCC front-end that can, with care, be linked with
+GCC-compiled C or C++ programs.
+</p>
+
+<p>
+The <a href="/cmd/cgo/">cgo</a> program provides the mechanism for a
+&ldquo;foreign function interface&rdquo; to allow safe calling of
+C libraries from Go code. SWIG extends this capability to C++ libraries.
+</p>
+
+
+<h3 id="Does_Go_support_Google_protocol_buffers">
+Does Go support Google's protocol buffers?</h3>
+
+<p>
+A separate open source project provides the necessary compiler plugin and library.
+It is available at
+<a href="//code.google.com/p/goprotobuf/">code.google.com/p/goprotobuf/</a>
+</p>
+
+
+<h3 id="Can_I_translate_the_Go_home_page">
+Can I translate the Go home page into another language?</h3>
+
+<p>
+Absolutely. We encourage developers to make Go Language sites in their own languages.
+However, if you choose to add the Google logo or branding to your site
+(it does not appear on <a href="//golang.org/">golang.org</a>),
+you will need to abide by the guidelines at
+<a href="//www.google.com/permissions/guidelines.html">www.google.com/permissions/guidelines.html</a>
+</p>
+
+<h2 id="Design">Design</h2>
+
+<h3 id="unicode_identifiers">
+What's up with Unicode identifiers?</h3>
+
+<p>
+It was important to us to extend the space of identifiers from the
+confines of ASCII.  Go's rule&mdash;identifier characters must be
+letters or digits as defined by Unicode&mdash;is simple to understand
+and to implement but has restrictions.  Combining characters are
+excluded by design, for instance.
+Until there
+is an agreed external definition of what an identifier might be,
+plus a definition of canonicalization of identifiers that guarantees
+no ambiguity, it seemed better to keep combining characters out of
+the mix.  Thus we have a simple rule that can be expanded later
+without breaking programs, one that avoids bugs that would surely arise
+from a rule that admits ambiguous identifiers.
+</p>
+
+<p>
+On a related note, since an exported identifier must begin with an
+upper-case letter, identifiers created from &ldquo;letters&rdquo;
+in some languages can, by definition, not be exported.  For now the
+only solution is to use something like <code>Xæ—¥æœ¬èªž</code>, which
+is clearly unsatisfactory; we are considering other options.  The
+case-for-visibility rule is unlikely to change however; it's one
+of our favorite features of Go.
+</p>
+
+<h3 id="Why_doesnt_Go_have_feature_X">Why does Go not have feature X?</h3>
+
+<p>
+Every language contains novel features and omits someone's favorite
+feature. Go was designed with an eye on felicity of programming, speed of
+compilation, orthogonality of concepts, and the need to support features
+such as concurrency and garbage collection. Your favorite feature may be
+missing because it doesn't fit, because it affects compilation speed or
+clarity of design, or because it would make the fundamental system model
+too difficult.
+</p>
+
+<p>
+If it bothers you that Go is missing feature <var>X</var>,
+please forgive us and investigate the features that Go does have. You might find that
+they compensate in interesting ways for the lack of <var>X</var>.
+</p>
+
+<h3 id="generics">
+Why does Go not have generic types?</h3>
+<p>
+Generics may well be added at some point.  We don't feel an urgency for
+them, although we understand some programmers do.
+</p>
+
+<p>
+Generics are convenient but they come at a cost in
+complexity in the type system and run-time.  We haven't yet found a
+design that gives value proportionate to the complexity, although we
+continue to think about it.  Meanwhile, Go's built-in maps and slices,
+plus the ability to use the empty interface to construct containers
+(with explicit unboxing) mean in many cases it is possible to write
+code that does what generics would enable, if less smoothly.
+</p>
+
+<p>
+This remains an open issue.
+</p>
+
+<h3 id="exceptions">
+Why does Go not have exceptions?</h3>
+<p>
+We believe that coupling exceptions to a control
+structure, as in the <code>try-catch-finally</code> idiom, results in
+convoluted code.  It also tends to encourage programmers to label
+too many ordinary errors, such as failing to open a file, as
+exceptional.
+</p>
+
+<p>
+Go takes a different approach.  For plain error handling, Go's multi-value
+returns make it easy to report an error without overloading the return value.
+<a href="/doc/articles/error_handling.html">A canonical error type, coupled
+with Go's other features</a>, makes error handling pleasant but quite different
+from that in other languages.
+</p>
+
+<p>
+Go also has a couple
+of built-in functions to signal and recover from truly exceptional
+conditions.  The recovery mechanism is executed only as part of a
+function's state being torn down after an error, which is sufficient
+to handle catastrophe but requires no extra control structures and,
+when used well, can result in clean error-handling code.
+</p>
+
+<p>
+See the <a href="/doc/articles/defer_panic_recover.html">Defer, Panic, and Recover</a> article for details.
+</p>
+
+<h3 id="assertions">
+Why does Go not have assertions?</h3>
+
+<p>
+Go doesn't provide assertions. They are undeniably convenient, but our
+experience has been that programmers use them as a crutch to avoid thinking
+about proper error handling and reporting. Proper error handling means that
+servers continue operation after non-fatal errors instead of crashing.
+Proper error reporting means that errors are direct and to the point,
+saving the programmer from interpreting a large crash trace. Precise
+errors are particularly important when the programmer seeing the errors is
+not familiar with the code.
+</p>
+
+<p>
+We understand that this is a point of contention. There are many things in
+the Go language and libraries that differ from modern practices, simply
+because we feel it's sometimes worth trying a different approach.
+</p>
+
+<h3 id="csp">
+Why build concurrency on the ideas of CSP?</h3>
+<p>
+Concurrency and multi-threaded programming have a reputation
+for difficulty.  We believe this is due partly to complex
+designs such as pthreads and partly to overemphasis on low-level details
+such as mutexes, condition variables, and memory barriers.
+Higher-level interfaces enable much simpler code, even if there are still
+mutexes and such under the covers.
+</p>
+
+<p>
+One of the most successful models for providing high-level linguistic support
+for concurrency comes from Hoare's Communicating Sequential Processes, or CSP.
+Occam and Erlang are two well known languages that stem from CSP.
+Go's concurrency primitives derive from a different part of the family tree
+whose main contribution is the powerful notion of channels as first class objects.
+Experience with several earlier languages has shown that the CSP model
+fits well into a procedural language framework.
+</p>
+
+<h3 id="goroutines">
+Why goroutines instead of threads?</h3>
+<p>
+Goroutines are part of making concurrency easy to use.  The idea, which has
+been around for a while, is to multiplex independently executing
+functions&mdash;coroutines&mdash;onto a set of threads.
+When a coroutine blocks, such as by calling a blocking system call,
+the run-time automatically moves other coroutines on the same operating
+system thread to a different, runnable thread so they won't be blocked.
+The programmer sees none of this, which is the point.
+The result, which we call goroutines, can be very cheap: they have little
+overhead beyond the memory for the stack, which is just a few kilobytes.
+</p>
+
+<p>
+To make the stacks small, Go's run-time uses resizable, bounded stacks.  A newly
+minted goroutine is given a few kilobytes, which is almost always enough.
+When it isn't, the run-time grows (and shrinks) the memory for storing
+the stack automatically, allowing many goroutines to live in a modest
+amount of memory.
+The CPU overhead averages about three cheap instructions per function call.
+It is practical to create hundreds of thousands of goroutines in the same
+address space.
+If goroutines were just threads, system resources would
+run out at a much smaller number.
+</p>
+
+<h3 id="atomic_maps">
+Why are map operations not defined to be atomic?</h3>
+
+<p>
+After long discussion it was decided that the typical use of maps did not require
+safe access from multiple goroutines, and in those cases where it did, the map was
+probably part of some larger data structure or computation that was already
+synchronized.  Therefore requiring that all map operations grab a mutex would slow
+down most programs and add safety to few.  This was not an easy decision,
+however, since it means uncontrolled map access can crash the program.
+</p>
+
+<p>
+The language does not preclude atomic map updates.  When required, such
+as when hosting an untrusted program, the implementation could interlock
+map access.
+</p>
+
+<h3 id="language_changes">
+Will you accept my language change?</h3>
+
+<p>
+People often suggest improvements to the languageâ€”the
+<a href="//groups.google.com/group/golang-nuts">mailing list</a>
+contains a rich history of such discussionsâ€”but very few of these changes have
+been accepted.
+</p>
+
+<p>
+Although Go is an open source project, the language and libraries are protected
+by a <a href="/doc/go1compat.html">compatibility promise</a> that prevents
+changes that break existing programs.
+If your proposal violates the Go 1 specification we cannot even entertain the
+idea, regardless of its merit.
+A future major release of Go may be incompatible with Go 1, but we're not ready
+to start talking about what that might be.
+</p>
+
+<p>
+Even if your proposal is compatible with the Go 1 spec, it might
+not be in the spirit of Go's design goals.
+The article <i><a href="//talks.golang.org/2012/splash.article">Go
+at Google: Language Design in the Service of Software Engineering</a></i>
+explains Go's origins and the motivation behind its design.
+</p>
+
+<h2 id="types">Types</h2>
+
+<h3 id="Is_Go_an_object-oriented_language">
+Is Go an object-oriented language?</h3>
+
+<p>
+Yes and no. Although Go has types and methods and allows an
+object-oriented style of programming, there is no type hierarchy.
+The concept of &ldquo;interface&rdquo; in Go provides a different approach that
+we believe is easy to use and in some ways more general. There are
+also ways to embed types in other types to provide something
+analogous&mdash;but not identical&mdash;to subclassing.
+Moreover, methods in Go are more general than in C++ or Java:
+they can be defined for any sort of data, even built-in types such
+as plain, &ldquo;unboxed&rdquo; integers.
+They are not restricted to structs (classes).
+</p>
+
+<p>
+Also, the lack of type hierarchy makes &ldquo;objects&rdquo; in Go feel much more
+lightweight than in languages such as C++ or Java.
+</p>
+
+<h3 id="How_do_I_get_dynamic_dispatch_of_methods">
+How do I get dynamic dispatch of methods?</h3>
+
+<p>
+The only way to have dynamically dispatched methods is through an
+interface. Methods on a struct or any other concrete type are always resolved statically.
+</p>
+
+<h3 id="inheritance">
+Why is there no type inheritance?</h3>
+<p>
+Object-oriented programming, at least in the best-known languages,
+involves too much discussion of the relationships between types,
+relationships that often could be derived automatically.  Go takes a
+different approach.
+</p>
+
+<p>
+Rather than requiring the programmer to declare ahead of time that two
+types are related, in Go a type automatically satisfies any interface
+that specifies a subset of its methods.  Besides reducing the
+bookkeeping, this approach has real advantages.  Types can satisfy
+many interfaces at once, without the complexities of traditional
+multiple inheritance.
+Interfaces can be very lightweight&mdash;an interface with
+one or even zero methods can express a useful concept.
+Interfaces can be added after the fact if a new idea comes along
+or for testing&mdash;without annotating the original types.
+Because there are no explicit relationships between types
+and interfaces, there is no type hierarchy to manage or discuss.
+</p>
+
+<p>
+It's possible to use these ideas to construct something analogous to
+type-safe Unix pipes.  For instance, see how <code>fmt.Fprintf</code>
+enables formatted printing to any output, not just a file, or how the
+<code>bufio</code> package can be completely separate from file I/O,
+or how the <code>image</code> packages generate compressed
+image files.  All these ideas stem from a single interface
+(<code>io.Writer</code>) representing a single method
+(<code>Write</code>).  And that's only scratching the surface.
+Go's interfaces have a profound influence on how programs are structured.
+</p>
+
+<p>
+It takes some getting used to but this implicit style of type
+dependency is one of the most productive things about Go.
+</p>
+
+<h3 id="methods_on_basics">
+Why is <code>len</code> a function and not a method?</h3>
+<p>
+We debated this issue but decided
+implementing <code>len</code> and friends as functions was fine in practice and
+didn't complicate questions about the interface (in the Go type sense)
+of basic types.
+</p>
+
+<h3 id="overloading">
+Why does Go not support overloading of methods and operators?</h3>
+<p>
+Method dispatch is simplified if it doesn't need to do type matching as well.
+Experience with other languages told us that having a variety of
+methods with the same name but different signatures was occasionally useful
+but that it could also be confusing and fragile in practice.  Matching only by name
+and requiring consistency in the types was a major simplifying decision
+in Go's type system.
+</p>
+
+<p>
+Regarding operator overloading, it seems more a convenience than an absolute
+requirement.  Again, things are simpler without it.
+</p>
+
+<h3 id="implements_interface">
+Why doesn't Go have "implements" declarations?</h3>
+
+<p>
+A Go type satisfies an interface by implementing the methods of that interface,
+nothing more.  This property allows interfaces to be defined and used without
+having to modify existing code.  It enables a kind of structural typing that
+promotes separation of concerns and improves code re-use, and makes it easier
+to build on patterns that emerge as the code develops.
+The semantics of interfaces is one of the main reasons for Go's nimble,
+lightweight feel.
+</p>
+
+<p>
+See the <a href="#inheritance">question on type inheritance</a> for more detail.
+</p>
+
+<h3 id="guarantee_satisfies_interface">
+How can I guarantee my type satisfies an interface?</h3>
+
+<p>
+You can ask the compiler to check that the type <code>T</code> implements the
+interface <code>I</code> by attempting an assignment:
+</p>
+
+<pre>
+type T struct{}
+var _ I = T{}   // Verify that T implements I.
+</pre>
+
+<p>
+If <code>T</code> doesn't implement <code>I</code>, the mistake will be caught
+at compile time.
+</p>
+
+<p>
+If you wish the users of an interface to explicitly declare that they implement
+it, you can add a method with a descriptive name to the interface's method set.
+For example:
+</p>
+
+<pre>
+type Fooer interface {
+    Foo()
+    ImplementsFooer()
+}
+</pre>
+
+<p>
+A type must then implement the <code>ImplementsFooer</code> method to be a
+<code>Fooer</code>, clearly documenting the fact and announcing it in
+<a href="/cmd/godoc/">godoc</a>'s output.
+</p>
+
+<pre>
+type Bar struct{}
+func (b Bar) ImplementsFooer() {}
+func (b Bar) Foo() {}
+</pre>
+
+<p>
+Most code doesn't make use of such constraints, since they limit the utility of
+the interface idea. Sometimes, though, they're necessary to resolve ambiguities
+among similar interfaces.
+</p>
+
+<h3 id="t_and_equal_interface">
+Why doesn't type T satisfy the Equal interface?</h3>
+
+<p>
+Consider this simple interface to represent an object that can compare
+itself with another value:
+</p>
+
+<pre>
+type Equaler interface {
+    Equal(Equaler) bool
+}
+</pre>
+
+<p>
+and this type, <code>T</code>:
+</p>
+
+<pre>
+type T int
+func (t T) Equal(u T) bool { return t == u } // does not satisfy Equaler
+</pre>
+
+<p>
+Unlike the analogous situation in some polymorphic type systems,
+<code>T</code> does not implement <code>Equaler</code>.
+The argument type of <code>T.Equal</code> is <code>T</code>,
+not literally the required type <code>Equaler</code>.
+</p>
+
+<p>
+In Go, the type system does not promote the argument of
+<code>Equal</code>; that is the programmer's responsibility, as
+illustrated by the type <code>T2</code>, which does implement
+<code>Equaler</code>:
+</p>
+
+<pre>
+type T2 int
+func (t T2) Equal(u Equaler) bool { return t == u.(T2) }  // satisfies Equaler
+</pre>
+
+<p>
+Even this isn't like other type systems, though, because in Go <em>any</em>
+type that satisfies <code>Equaler</code> could be passed as the
+argument to <code>T2.Equal</code>, and at run time we must
+check that the argument is of type <code>T2</code>.
+Some languages arrange to make that guarantee at compile time.
+</p>
+
+<p>
+A related example goes the other way:
+</p>
+
+<pre>
+type Opener interface {
+   Open() Reader
+}
+
+func (t T3) Open() *os.File
+</pre>
+
+<p>
+In Go, <code>T3</code> does not satisfy <code>Opener</code>,
+although it might in another language.
+</p>
+
+<p>
+While it is true that Go's type system does less for the programmer
+in such cases, the lack of subtyping makes the rules about
+interface satisfaction very easy to state: are the function's names
+and signatures exactly those of the interface?
+Go's rule is also easy to implement efficiently.
+We feel these benefits offset the lack of
+automatic type promotion. Should Go one day adopt some form of generic
+typing, we expect there would be a way to express the idea of these
+examples and also have them be statically checked.
+</p>
+
+<h3 id="convert_slice_of_interface">
+Can I convert a []T to an []interface{}?</h3>
+
+<p>
+Not directly, because they do not have the same representation in memory.
+It is necessary to copy the elements individually to the destination
+slice. This example converts a slice of <code>int</code> to a slice of
+<code>interface{}</code>:
+</p>
+
+<pre>
+t := []int{1, 2, 3, 4}
+s := make([]interface{}, len(t))
+for i, v := range t {
+    s[i] = v
+}
+</pre>
+
+<h3 id="nil_error">
+Why is my nil error value not equal to nil?
+</h3>
+
+<p>
+Under the covers, interfaces are implemented as two elements, a type and a value.
+The value, called the interface's dynamic value,
+is an arbitrary concrete value and the type is that of the value.
+For the <code>int</code> value 3, an interface value contains,
+schematically, (<code>int</code>, <code>3</code>).
+</p>
+
+<p>
+An interface value is <code>nil</code> only if the inner value and type are both unset,
+(<code>nil</code>, <code>nil</code>).
+In particular, a <code>nil</code> interface will always hold a <code>nil</code> type.
+If we store a pointer of type <code>*int</code> inside
+an interface value, the inner type will be <code>*int</code> regardless of the value of the pointer:
+(<code>*int</code>, <code>nil</code>).
+Such an interface value will therefore be non-<code>nil</code>
+<em>even when the pointer inside is</em> <code>nil</code>.
+</p>
+
+<p>
+This situation can be confusing, and often arises when a <code>nil</code> value is
+stored inside an interface value such as an <code>error</code> return:
+</p>
+
+<pre>
+func returnsError() error {
+	var p *MyError = nil
+	if bad() {
+		p = ErrBad
+	}
+	return p // Will always return a non-nil error.
+}
+</pre>
+
+<p>
+If all goes well, the function returns a <code>nil</code> <code>p</code>,
+so the return value is an <code>error</code> interface
+value holding (<code>*MyError</code>, <code>nil</code>).
+This means that if the caller compares the returned error to <code>nil</code>,
+it will always look as if there was an error even if nothing bad happened.
+To return a proper <code>nil</code> <code>error</code> to the caller,
+the function must return an explicit <code>nil</code>:
+</p>
+
+
+<pre>
+func returnsError() error {
+	if bad() {
+		return ErrBad
+	}
+	return nil
+}
+</pre>
+
+<p>
+It's a good idea for functions
+that return errors always to use the <code>error</code> type in
+their signature (as we did above) rather than a concrete type such
+as <code>*MyError</code>, to help guarantee the error is
+created correctly. As an example,
+<a href="/pkg/os/#Open"><code>os.Open</code></a>
+returns an <code>error</code> even though, if not <code>nil</code>,
+it's always of concrete type
+<a href="/pkg/os/#PathError"><code>*os.PathError</code></a>.
+</p>
+
+<p>
+Similar situations to those described here can arise whenever interfaces are used.
+Just keep in mind that if any concrete value
+has been stored in the interface, the interface will not be <code>nil</code>.
+For more information, see
+<a href="/doc/articles/laws_of_reflection.html">The Laws of Reflection</a>.
+</p>
+
+
+<h3 id="unions">
+Why are there no untagged unions, as in C?</h3>
+
+<p>
+Untagged unions would violate Go's memory safety
+guarantees.
+</p>
+
+<h3 id="variant_types">
+Why does Go not have variant types?</h3>
+
+<p>
+Variant types, also known as algebraic types, provide a way to specify
+that a value might take one of a set of other types, but only those
+types. A common example in systems programming would specify that an
+error is, say, a network error, a security error or an application
+error and allow the caller to discriminate the source of the problem
+by examining the type of the error. Another example is a syntax tree
+in which each node can be a different type: declaration, statement,
+assignment and so on.
+</p>
+
+<p>
+We considered adding variant types to Go, but after discussion
+decided to leave them out because they overlap in confusing ways
+with interfaces. What would happen if the elements of a variant type
+were themselves interfaces?
+</p>
+
+<p>
+Also, some of what variant types address is already covered by the
+language. The error example is easy to express using an interface
+value to hold the error and a type switch to discriminate cases.  The
+syntax tree example is also doable, although not as elegantly.
+</p>
+
+<h2 id="values">Values</h2>
+
+<h3 id="conversions">
+Why does Go not provide implicit numeric conversions?</h3>
+<p>
+The convenience of automatic conversion between numeric types in C is
+outweighed by the confusion it causes.  When is an expression unsigned?
+How big is the value?  Does it overflow?  Is the result portable, independent
+of the machine on which it executes?
+It also complicates the compiler; &ldquo;the usual arithmetic conversions&rdquo;
+are not easy to implement and inconsistent across architectures.
+For reasons of portability, we decided to make things clear and straightforward
+at the cost of some explicit conversions in the code.
+The definition of constants in Go&mdash;arbitrary precision values free
+of signedness and size annotations&mdash;ameliorates matters considerably,
+though.
+</p>
+
+<p>
+A related detail is that, unlike in C, <code>int</code> and <code>int64</code>
+are distinct types even if <code>int</code> is a 64-bit type.  The <code>int</code>
+type is generic; if you care about how many bits an integer holds, Go
+encourages you to be explicit.
+</p>
+
+<p>
+A blog post, title <a href="http://blog.golang.org/constants">Constants</a>,
+explores this topic in more detail.
+</p>
+
+<h3 id="builtin_maps">
+Why are maps built in?</h3>
+<p>
+The same reason strings are: they are such a powerful and important data
+structure that providing one excellent implementation with syntactic support
+makes programming more pleasant.  We believe that Go's implementation of maps
+is strong enough that it will serve for the vast majority of uses.
+If a specific application can benefit from a custom implementation, it's possible
+to write one but it will not be as convenient syntactically; this seems a reasonable tradeoff.
+</p>
+
+<h3 id="map_keys">
+Why don't maps allow slices as keys?</h3>
+<p>
+Map lookup requires an equality operator, which slices do not implement.
+They don't implement equality because equality is not well defined on such types;
+there are multiple considerations involving shallow vs. deep comparison, pointer vs.
+value comparison, how to deal with recursive types, and so on.
+We may revisit this issue&mdash;and implementing equality for slices
+will not invalidate any existing programs&mdash;but without a clear idea of what
+equality of slices should mean, it was simpler to leave it out for now.
+</p>
+
+<p>
+In Go 1, unlike prior releases, equality is defined for structs and arrays, so such
+types can be used as map keys. Slices still do not have a definition of equality, though.
+</p>
+
+<h3 id="references">
+Why are maps, slices, and channels references while arrays are values?</h3>
+<p>
+There's a lot of history on that topic.  Early on, maps and channels
+were syntactically pointers and it was impossible to declare or use a
+non-pointer instance.  Also, we struggled with how arrays should work.
+Eventually we decided that the strict separation of pointers and
+values made the language harder to use.  Changing these
+types to act as references to the associated, shared data structures resolved
+these issues. This change added some regrettable complexity to the
+language but had a large effect on usability: Go became a more
+productive, comfortable language when it was introduced.
+</p>
+
+<h2 id="Writing_Code">Writing Code</h2>
+
+<h3 id="How_are_libraries_documented">
+How are libraries documented?</h3>
+
+<p>
+There is a program, <code>godoc</code>, written in Go, that extracts
+package documentation from the source code. It can be used on the
+command line or on the web. An instance is running at
+<a href="/pkg/">golang.org/pkg/</a>.
+In fact, <code>godoc</code> implements the full site at
+<a href="/">golang.org/</a>.
+</p>
+
+<h3 id="Is_there_a_Go_programming_style_guide">
+Is there a Go programming style guide?</h3>
+
+<p>
+Eventually, there may be a small number of rules to guide things
+like naming, layout, and file organization.
+The document <a href="effective_go.html">Effective Go</a>
+contains some style advice.
+More directly, the program <code>gofmt</code> is a pretty-printer
+whose purpose is to enforce layout rules; it replaces the usual
+compendium of do's and don'ts that allows interpretation.
+All the Go code in the repository has been run through <code>gofmt</code>.
+</p>
+
+<p>
+The document titled
+<a href="//golang.org/s/comments">Go Code Review Comments</a>
+is a collection of very short essays about details of Go idiom that are often
+missed by programmers.
+It is a handy reference for people doing code reviews for Go projects.
+</p>
+
+<h3 id="How_do_I_submit_patches_to_the_Go_libraries">
+How do I submit patches to the Go libraries?</h3>
+
+<p>
+The library sources are in the <code>src</code> directory of the repository.
+If you want to make a significant change, please discuss on the mailing list before embarking.
+</p>
+
+<p>
+See the document
+<a href="contribute.html">Contributing to the Go project</a>
+for more information about how to proceed.
+</p>
+
+<h3 id="git_https">
+Why does "go get" use HTTPS when cloning a repository?</h3>
+
+<p>
+Companies often permit outgoing traffic only on the standard TCP ports 80 (HTTP)
+and 443 (HTTPS), blocking outgoing traffic on other ports, including TCP port 9418 
+(git) and TCP port 22 (SSH).
+When using HTTPS instead of HTTP, <code>git</code> enforces certificate validation by
+default, providing protection against man-in-the-middle, eavesdropping and tampering attacks.
+The <code>go get</code> command therefore uses HTTPS for safety.
+</p>
+
+<p>
+If you use <code>git</code> and prefer to push changes through SSH using your existing key 
+it's easy to work around this. For GitHub, try one of these solutions:
+</p>
+<ul>
+<li>Manually clone the repository in the expected package directory:
+<pre>
+$ cd $GOPATH/src/github.com/username
+$ git clone git@github.com:username/package.git
+</pre>
+</li>
+<li>Force <code>git push</code> to use the <code>SSH</code> protocol by appending
+these two lines to <code>~/.gitconfig</code>:
+<pre>
+[url "git@github.com:"]
+	pushInsteadOf = https://github.com/
+</pre>
+</li>
+</ul>
+
+<h3 id="get_version">
+How should I manage package versions using "go get"?</h3>
+
+<p>
+"Go get" does not have any explicit concept of package versions.
+Versioning is a source of significant complexity, especially in large code bases,
+and we are unaware of any approach that works well at scale in a large enough
+variety of situations to be appropriate to force on all Go users.
+What "go get" and the larger Go toolchain do provide is isolation of
+packages with different import paths.
+For example, the standard library's <code>html/template</code> and <code>text/template</code>
+coexist even though both are "package template".
+This observation leads to some advice for package authors and package users.
+</p>
+
+<p>
+Packages intended for public use should try to maintain backwards compatibility as they evolve.
+The <a href="/doc/go1compat.html">Go 1 compatibility guidelines</a> are a good reference here:
+don't remove exported names, encourage tagged composite literals, and so on.
+If different functionality is required, add a new name instead of changing an old one.
+If a complete break is required, create a new package with a new import path.</p>
+
+<p>
+If you're using an externally supplied package and worry that it might change in
+unexpected ways, the simplest solution is to copy it to your local repository.
+(This is the approach Google takes internally.)
+Store the copy under a new import path that identifies it as a local copy.
+For example, you might copy "original.com/pkg" to "you.com/external/original.com/pkg".
+Keith Rarick's <a href="https://github.com/kr/goven">goven</a> is one tool to help automate this process.
+</p>
+
+<h2 id="Pointers">Pointers and Allocation</h2>
+
+<h3 id="pass_by_value">
+When are function parameters passed by value?</h3>
+
+<p>
+As in all languages in the C family, everything in Go is passed by value.
+That is, a function always gets a copy of the
+thing being passed, as if there were an assignment statement assigning the
+value to the parameter.  For instance, passing an <code>int</code> value
+to a function makes a copy of the <code>int</code>, and passing a pointer
+value makes a copy of the pointer, but not the data it points to.
+(See the next section for a discussion of how this affects method receivers.)
+</p>
+
+<p>
+Map and slice values behave like pointers: they are descriptors that
+contain pointers to the underlying map or slice data.  Copying a map or
+slice value doesn't copy the data it points to.  Copying an interface value
+makes a copy of the thing stored in the interface value.  If the interface
+value holds a struct, copying the interface value makes a copy of the
+struct.  If the interface value holds a pointer, copying the interface value
+makes a copy of the pointer, but again not the data it points to.
+</p>
+
+<h3 id="pointer_to_interface">
+When should I use a pointer to an interface?</h3>
+
+<p>
+Almost never. Pointers to interface values arise only in rare, tricky situations involving
+disguising an interface value's type for delayed evaluation.
+</p>
+
+<p>
+It is however a common mistake to pass a pointer to an interface value
+to a function expecting an interface. The compiler will complain about this
+error but the situation can still be confusing, because sometimes a
+<a href="#different_method_sets">pointer
+is necessary to satisfy an interface</a>.
+The insight is that although a pointer to a concrete type can satisfy
+an interface, with one exception <em>a pointer to an interface can never satisfy an interface</em>.
+</p>
+
+<p>
+Consider the variable declaration,
+</p>
+
+<pre>
+var w io.Writer
+</pre>
+
+<p>
+The printing function <code>fmt.Fprintf</code> takes as its first argument
+a value that satisfies <code>io.Writer</code>â€”something that implements
+the canonical <code>Write</code> method. Thus we can write
+</p>
+
+<pre>
+fmt.Fprintf(w, "hello, world\n")
+</pre>
+
+<p>
+If however we pass the address of <code>w</code>, the program will not compile.
+</p>
+
+<pre>
+fmt.Fprintf(&amp;w, "hello, world\n") // Compile-time error.
+</pre>
+
+<p>
+The one exception is that any value, even a pointer to an interface, can be assigned to
+a variable of empty interface type (<code>interface{}</code>).
+Even so, it's almost certainly a mistake if the value is a pointer to an interface;
+the result can be confusing.
+</p>
+
+<h3 id="methods_on_values_or_pointers">
+Should I define methods on values or pointers?</h3>
+
+<pre>
+func (s *MyStruct) pointerMethod() { } // method on pointer
+func (s MyStruct)  valueMethod()   { } // method on value
+</pre>
+
+<p>
+For programmers unaccustomed to pointers, the distinction between these
+two examples can be confusing, but the situation is actually very simple.
+When defining a method on a type, the receiver (<code>s</code> in the above
+examples) behaves exactly as if it were an argument to the method.
+Whether to define the receiver as a value or as a pointer is the same
+question, then, as whether a function argument should be a value or
+a pointer.
+There are several considerations.
+</p>
+
+<p>
+First, and most important, does the method need to modify the
+receiver?
+If it does, the receiver <em>must</em> be a pointer.
+(Slices and maps act as references, so their story is a little
+more subtle, but for instance to change the length of a slice
+in a method the receiver must still be a pointer.)
+In the examples above, if <code>pointerMethod</code> modifies
+the fields of <code>s</code>,
+the caller will see those changes, but <code>valueMethod</code>
+is called with a copy of the caller's argument (that's the definition
+of passing a value), so changes it makes will be invisible to the caller.
+</p>
+
+<p>
+By the way, pointer receivers are identical to the situation in Java,
+although in Java the pointers are hidden under the covers; it's Go's
+value receivers that are unusual.
+</p>
+
+<p>
+Second is the consideration of efficiency. If the receiver is large,
+a big <code>struct</code> for instance, it will be much cheaper to
+use a pointer receiver.
+</p>
+
+<p>
+Next is consistency. If some of the methods of the type must have
+pointer receivers, the rest should too, so the method set is
+consistent regardless of how the type is used.
+See the section on <a href="#different_method_sets">method sets</a>
+for details.
+</p>
+
+<p>
+For types such as basic types, slices, and small <code>structs</code>,
+a value receiver is very cheap so unless the semantics of the method
+requires a pointer, a value receiver is efficient and clear.
+</p>
+
+
+<h3 id="new_and_make">
+What's the difference between new and make?</h3>
+
+<p>
+In short: <code>new</code> allocates memory, <code>make</code> initializes
+the slice, map, and channel types.
+</p>
+
+<p>
+See the <a href="/doc/effective_go.html#allocation_new">relevant section
+of Effective Go</a> for more details.
+</p>
+
+<h3 id="q_int_sizes">
+What is the size of an <code>int</code> on a 64 bit machine?</h3>
+
+<p>
+The sizes of <code>int</code> and <code>uint</code> are implementation-specific
+but the same as each other on a given platform.
+For portability, code that relies on a particular
+size of value should use an explicitly sized type, like <code>int64</code>.
+Prior to Go 1.1, the 64-bit Go compilers (both gc and gccgo) used
+a 32-bit representation for <code>int</code>. As of Go 1.1 they use
+a 64-bit representation.
+On the other hand, floating-point scalars and complex
+numbers are always sized: <code>float32</code>, <code>complex64</code>,
+etc., because programmers should be aware of precision when using
+floating-point numbers.
+The default size of a floating-point constant is <code>float64</code>.
+</p>
+
+<h3 id="stack_or_heap">
+How do I know whether a variable is allocated on the heap or the stack?</h3>
+
+<p>
+From a correctness standpoint, you don't need to know.
+Each variable in Go exists as long as there are references to it.
+The storage location chosen by the implementation is irrelevant to the
+semantics of the language.
+</p>
+
+<p>
+The storage location does have an effect on writing efficient programs.
+When possible, the Go compilers will allocate variables that are
+local to a function in that function's stack frame.  However, if the
+compiler cannot prove that the variable is not referenced after the
+function returns, then the compiler must allocate the variable on the
+garbage-collected heap to avoid dangling pointer errors.
+Also, if a local variable is very large, it might make more sense
+to store it on the heap rather than the stack.
+</p>
+
+<p>
+In the current compilers, if a variable has its address taken, that variable
+is a candidate for allocation on the heap. However, a basic <em>escape
+analysis</em> recognizes some cases when such variables will not
+live past the return from the function and can reside on the stack.
+</p>
+
+<h3 id="Why_does_my_Go_process_use_so_much_virtual_memory">
+Why does my Go process use so much virtual memory?</h3>
+
+<p>
+The Go memory allocator reserves a large region of virtual memory as an arena
+for allocations. This virtual memory is local to the specific Go process; the
+reservation does not deprive other processes of memory.
+</p>
+
+<p>
+To find the amount of actual memory allocated to a Go process, use the Unix
+<code>top</code> command and consult the <code>RES</code> (Linux) or
+<code>RSIZE</code> (Mac OS X) columns.
+<!-- TODO(adg): find out how this works on Windows -->
+</p>
+
+<h2 id="Concurrency">Concurrency</h2>
+
+<h3 id="What_operations_are_atomic_What_about_mutexes">
+What operations are atomic? What about mutexes?</h3>
+
+<p>
+We haven't fully defined it all yet, but some details about atomicity are
+available in the <a href="/ref/mem">Go Memory Model specification</a>.
+</p>
+
+<p>
+Regarding mutexes, the <a href="/pkg/sync">sync</a>
+package implements them, but we hope Go programming style will
+encourage people to try higher-level techniques. In particular, consider
+structuring your program so that only one goroutine at a time is ever
+responsible for a particular piece of data.
+</p>
+
+<p>
+Do not communicate by sharing memory. Instead, share memory by communicating.
+</p>
+
+<p>
+See the <a href="/doc/codewalk/sharemem/">Share Memory By Communicating</a> code walk and its <a href="//blog.golang.org/2010/07/share-memory-by-communicating.html">associated article</a> for a detailed discussion of this concept.
+</p>
+
+<h3 id="Why_no_multi_CPU">
+Why doesn't my multi-goroutine program use multiple CPUs?</h3>
+
+<p>
+You must set the <code>GOMAXPROCS</code> shell environment variable
+or use the similarly-named <a href="/pkg/runtime/#GOMAXPROCS"><code>function</code></a>
+of the runtime package to allow the
+run-time support to utilize more than one OS thread.
+</p>
+
+<p>
+Programs that perform parallel computation should benefit from an increase in
+<code>GOMAXPROCS</code>.
+However, be aware that
+<a href="//blog.golang.org/2013/01/concurrency-is-not-parallelism.html">concurrency
+is not parallelism</a>.
+</p>
+
+<h3 id="Why_GOMAXPROCS">
+Why does using <code>GOMAXPROCS</code> &gt; 1 sometimes make my program
+slower?</h3>
+
+<p>
+It depends on the nature of your program.
+Problems that are intrinsically sequential cannot be sped up by adding
+more goroutines.
+Concurrency only becomes parallelism when the problem is
+intrinsically parallel.
+</p>
+
+<p>
+In practical terms, programs that spend more time
+communicating on channels than doing computation
+will experience performance degradation when using
+multiple OS threads.
+This is because sending data between threads involves switching
+contexts, which has significant cost.
+For instance, the <a href="/ref/spec#An_example_package">prime sieve example</a>
+from the Go specification has no significant parallelism although it launches many
+goroutines; increasing <code>GOMAXPROCS</code> is more likely to slow it down than
+to speed it up.
+</p>
+
+<p>
+Go's goroutine scheduler is not as good as it needs to be. In the future, it
+should recognize such cases and optimize its use of OS threads. For now,
+<code>GOMAXPROCS</code> should be set on a per-application basis.
+</p>
+
+<p>
+For more detail on this topic see the talk entitled,
+<a href="//blog.golang.org/2013/01/concurrency-is-not-parallelism.html">Concurrency
+is not Parallelism</a>.
+
+<h2 id="Functions_methods">Functions and Methods</h2>
+
+<h3 id="different_method_sets">
+Why do T and *T have different method sets?</h3>
+
+<p>
+From the <a href="/ref/spec#Types">Go Spec</a>:
+</p>
+
+<blockquote>
+The method set of any other named type <code>T</code> consists of all methods
+with receiver type <code>T</code>. The method set of the corresponding pointer
+type <code>*T</code> is the set of all methods with receiver <code>*T</code> or
+<code>T</code> (that is, it also contains the method set of <code>T</code>).
+</blockquote>
+
+<p>
+If an interface value contains a pointer <code>*T</code>,
+a method call can obtain a value by dereferencing the pointer,
+but if an interface value contains a value <code>T</code>,
+there is no useful way for a method call to obtain a pointer.
+</p>
+
+<p>
+Even in cases where the compiler could take the address of a value
+to pass to the method, if the method modifies the value the changes
+will be lost in the caller.
+As a common example, this code:
+</p>
+
+<pre>
+var buf bytes.Buffer
+io.Copy(buf, os.Stdin)
+</pre>
+
+<p>
+would copy standard input into a <i>copy</i> of <code>buf</code>,
+not into <code>buf</code> itself.
+This is almost never the desired behavior.
+</p>
+
+<h3 id="closures_and_goroutines">
+What happens with closures running as goroutines?</h3>
+
+<p>
+Some confusion may arise when using closures with concurrency.
+Consider the following program:
+</p>
+
+<pre>
+func main() {
+    done := make(chan bool)
+
+    values := []string{"a", "b", "c"}
+    for _, v := range values {
+        go func() {
+            fmt.Println(v)
+            done &lt;- true
+        }()
+    }
+
+    // wait for all goroutines to complete before exiting
+    for _ = range values {
+        &lt;-done
+    }
+}
+</pre>
+
+<p>
+One might mistakenly expect to see <code>a, b, c</code> as the output.
+What you'll probably see instead is <code>c, c, c</code>.  This is because
+each iteration of the loop uses the same instance of the variable <code>v</code>, so
+each closure shares that single variable. When the closure runs, it prints the
+value of <code>v</code> at the time <code>fmt.Println</code> is executed,
+but <code>v</code> may have been modified since the goroutine was launched.
+To help detect this and other problems before they happen, run
+<a href="/cmd/go/#hdr-Run_go_tool_vet_on_packages"><code>go vet</code></a>.
+</p>
+
+<p>
+To bind the current value of <code>v</code> to each closure as it is launched, one
+must modify the inner loop to create a new variable each iteration.
+One way is to pass the variable as an argument to the closure:
+</p>
+
+<pre>
+    for _, v := range values {
+        go func(<b>u</b> string) {
+            fmt.Println(<b>u</b>)
+            done &lt;- true
+        }(<b>v</b>)
+    }
+</pre>
+
+<p>
+In this example, the value of <code>v</code> is passed as an argument to the
+anonymous function. That value is then accessible inside the function as
+the variable <code>u</code>.
+</p>
+
+<p>
+Even easier is just to create a new variable, using a declaration style that may
+seem odd but works fine in Go:
+</p>
+
+<pre>
+    for _, v := range values {
+        <b>v := v</b> // create a new 'v'.
+        go func() {
+            fmt.Println(<b>v</b>)
+            done &lt;- true
+        }()
+    }
+</pre>
+
+<h2 id="Control_flow">Control flow</h2>
+
+<h3 id="Does_Go_have_a_ternary_form">
+Does Go have the <code>?:</code> operator?</h3>
+
+<p>
+There is no ternary form in Go. You may use the following to achieve the same
+result:
+</p>
+
+<pre>
+if expr {
+    n = trueVal
+} else {
+    n = falseVal
+}
+</pre>
+
+<h2 id="Packages_Testing">Packages and Testing</h2>
+
+<h3 id="How_do_I_create_a_multifile_package">
+How do I create a multifile package?</h3>
+
+<p>
+Put all the source files for the package in a directory by themselves.
+Source files can refer to items from different files at will; there is
+no need for forward declarations or a header file.
+</p>
+
+<p>
+Other than being split into multiple files, the package will compile and test
+just like a single-file package.
+</p>
+
+<h3 id="How_do_I_write_a_unit_test">
+How do I write a unit test?</h3>
+
+<p>
+Create a new file ending in <code>_test.go</code> in the same directory
+as your package sources. Inside that file, <code>import "testing"</code>
+and write functions of the form
+</p>
+
+<pre>
+func TestFoo(t *testing.T) {
+    ...
+}
+</pre>
+
+<p>
+Run <code>go test</code> in that directory.
+That script finds the <code>Test</code> functions,
+builds a test binary, and runs it.
+</p>
+
+<p>See the <a href="/doc/code.html">How to Write Go Code</a> document,
+the <a href="/pkg/testing/"><code>testing</code></a> package
+and the <a href="/cmd/go/#hdr-Test_packages"><code>go test</code></a> subcommand for more details.
+</p>
+
+<h3 id="testing_framework">
+Where is my favorite helper function for testing?</h3>
+
+<p>
+Go's standard <a href="/pkg/testing/"><code>testing</code></a> package makes it easy to write unit tests, but it lacks
+features provided in other language's testing frameworks such as assertion functions.
+An <a href="#assertions">earlier section</a> of this document explained why Go
+doesn't have assertions, and
+the same arguments apply to the use of <code>assert</code> in tests.
+Proper error handling means letting other tests run after one has failed, so
+that the person debugging the failure gets a complete picture of what is
+wrong. It is more useful for a test to report that
+<code>isPrime</code> gives the wrong answer for 2, 3, 5, and 7 (or for
+2, 4, 8, and 16) than to report that <code>isPrime</code> gives the wrong
+answer for 2 and therefore no more tests were run. The programmer who
+triggers the test failure may not be familiar with the code that fails.
+Time invested writing a good error message now pays off later when the
+test breaks.
+</p>
+
+<p>
+A related point is that testing frameworks tend to develop into mini-languages
+of their own, with conditionals and controls and printing mechanisms,
+but Go already has all those capabilities; why recreate them?
+We'd rather write tests in Go; it's one fewer language to learn and the
+approach keeps the tests straightforward and easy to understand.
+</p>
+
+<p>
+If the amount of extra code required to write
+good errors seems repetitive and overwhelming, the test might work better if
+table-driven, iterating over a list of inputs and outputs defined
+in a data structure (Go has excellent support for data structure literals).
+The work to write a good test and good error messages will then be amortized over many
+test cases. The standard Go library is full of illustrative examples, such as in
+<a href="/src/fmt/fmt_test.go">the formatting tests for the <code>fmt</code> package</a>.
+</p>
+
+
+<h2 id="Implementation">Implementation</h2>
+
+<h3 id="What_compiler_technology_is_used_to_build_the_compilers">
+What compiler technology is used to build the compilers?</h3>
+
+<p>
+<code>Gccgo</code> has a front end written in C++, with a recursive descent parser coupled to the
+standard GCC back end. <code>Gc</code> is written in C using
+<code>yacc</code>/<code>bison</code> for the parser.
+Although it's a new program, it fits in the Plan 9 C compiler suite
+(<a href="http://plan9.bell-labs.com/sys/doc/compiler.html">http://plan9.bell-labs.com/sys/doc/compiler.html</a>)
+and uses a variant of the Plan 9 loader to generate ELF/Mach-O/PE binaries.
+</p>
+
+<p>
+We considered using LLVM for <code>gc</code> but we felt it was too large and
+slow to meet our performance goals.
+</p>
+
+<p>
+We also considered writing <code>gc</code>, the original Go compiler, in Go itself but
+elected not to do so because of the difficulties of bootstrapping and
+especially of open source distribution&mdash;you'd need a Go compiler to
+set up a Go environment. <code>Gccgo</code>, which came later, makes it possible to
+consider writing a compiler in Go.
+A plan to do that by machine translation of the existing compiler is under development.
+<a href="http://golang.org/s/go13compiler">A separate document</a>
+explains the reason for this approach.
+</p>
+
+<p>
+That plan aside,
+Go is a
+fine language in which to implement a self-hosting compiler: a native lexer and
+parser are already available in the <a href="/pkg/go/"><code>go</code></a> package
+and a separate type checking
+<a href="http://godoc.org/golang.org/x/tools/go/types">package</a>
+has also been written.
+</p>
+
+<h3 id="How_is_the_run_time_support_implemented">
+How is the run-time support implemented?</h3>
+
+<p>
+Again due to bootstrapping issues, the run-time code was originally written mostly in C (with a
+tiny bit of assembler) although much of it has been translated to Go since then
+and one day all of it might be (except for the assembler bits).
+<code>Gccgo</code>'s run-time support uses <code>glibc</code>.
+<code>Gc</code> uses a custom C library to keep the footprint under
+control; it is
+compiled with a version of the Plan 9 C compiler that supports
+resizable stacks for goroutines.
+The <code>gccgo</code> compiler implements these on Linux only,
+using a technique called segmented stacks,
+supported by recent modifications to the gold linker.
+</p>
+
+<h3 id="Why_is_my_trivial_program_such_a_large_binary">
+Why is my trivial program such a large binary?</h3>
+
+<p>
+The linkers in the gc tool chain (<code>5l</code>, <code>6l</code>, and <code>8l</code>)
+do static linking.  All Go binaries therefore include the Go
+run-time, along with the run-time type information necessary to support dynamic
+type checks, reflection, and even panic-time stack traces.
+</p>
+
+<p>
+A simple C "hello, world" program compiled and linked statically using gcc
+on Linux is around 750 kB,
+including an implementation of <code>printf</code>.
+An equivalent Go program using <code>fmt.Printf</code>
+is around 1.9 MB, but
+that includes more powerful run-time support and type information.
+</p>
+
+<h3 id="unused_variables_and_imports">
+Can I stop these complaints about my unused variable/import?</h3>
+
+<p>
+The presence of an unused variable may indicate a bug, while
+unused imports just slow down compilation,
+an effect that can become substantial as a program accumulates
+code and programmers over time.
+For these reasons, Go refuses to compile programs with unused
+variables or imports,
+trading short-term convenience for long-term build speed and
+program clarity.
+</p>
+
+<p>
+Still, when developing code, it's common to create these situations
+temporarily and it can be annoying to have to edit them out before the
+program will compile.
+</p>
+
+<p>
+Some have asked for a compiler option to turn those checks off
+or at least reduce them to warnings.
+Such an option has not been added, though,
+because compiler options should not affect the semantics of the
+language and because the Go compiler does not report warnings, only
+errors that prevent compilation.
+</p>
+
+<p>
+There are two reasons for having no warnings.  First, if it's worth
+complaining about, it's worth fixing in the code.  (And if it's not
+worth fixing, it's not worth mentioning.) Second, having the compiler
+generate warnings encourages the implementation to warn about weak
+cases that can make compilation noisy, masking real errors that
+<em>should</em> be fixed.
+</p>
+
+<p>
+It's easy to address the situation, though.  Use the blank identifier
+to let unused things persist while you're developing.
+</p>
+
+<pre>
+import "unused"
+
+// This declaration marks the import as used by referencing an
+// item from the package.
+var _ = unused.Item  // TODO: Delete before committing!
+
+func main() {
+    debugData := debug.Profile()
+    _ = debugData // Used only during debugging.
+    ....
+}
+</pre>
+
+<p>
+Nowadays, most Go programmers use a tool,
+<a href="http://godoc.org/golang.org/x/tools/cmd/goimports">goimports</a>,
+which automatically rewrites a Go source file to have the correct imports,
+eliminating the unused imports issue in practice.
+This program is easily connected to most editors to run automatically when a Go source file is written.
+</p>
+
+<h2 id="Performance">Performance</h2>
+
+<h3 id="Why_does_Go_perform_badly_on_benchmark_x">
+Why does Go perform badly on benchmark X?</h3>
+
+<p>
+One of Go's design goals is to approach the performance of C for comparable
+programs, yet on some benchmarks it does quite poorly, including several
+in <a href="/test/bench/shootout/">test/bench/shootout</a>. The slowest depend on libraries
+for which versions of comparable performance are not available in Go.
+For instance, <a href="/test/bench/shootout/pidigits.go">pidigits.go</a>
+depends on a multi-precision math package, and the C
+versions, unlike Go's, use <a href="http://gmplib.org/">GMP</a> (which is
+written in optimized assembler).
+Benchmarks that depend on regular expressions
+(<a href="/test/bench/shootout/regex-dna.go">regex-dna.go</a>, for instance) are
+essentially comparing Go's native <a href="/pkg/regexp">regexp package</a> to
+mature, highly optimized regular expression libraries like PCRE.
+</p>
+
+<p>
+Benchmark games are won by extensive tuning and the Go versions of most
+of the benchmarks need attention.  If you measure comparable C
+and Go programs
+(<a href="/test/bench/shootout/reverse-complement.go">reverse-complement.go</a> is one example), you'll see the two
+languages are much closer in raw performance than this suite would
+indicate.
+</p>
+
+<p>
+Still, there is room for improvement. The compilers are good but could be
+better, many libraries need major performance work, and the garbage collector
+isn't fast enough yet. (Even if it were, taking care not to generate unnecessary
+garbage can have a huge effect.)
+</p>
+
+<p>
+In any case, Go can often be very competitive.
+There has been significant improvement in the performance of many programs
+as the language and tools have developed.
+See the blog post about
+<a href="//blog.golang.org/2011/06/profiling-go-programs.html">profiling
+Go programs</a> for an informative example.
+
+<h2 id="change_from_c">Changes from C</h2>
+
+<h3 id="different_syntax">
+Why is the syntax so different from C?</h3>
+<p>
+Other than declaration syntax, the differences are not major and stem
+from two desires.  First, the syntax should feel light, without too
+many mandatory keywords, repetition, or arcana.  Second, the language
+has been designed to be easy to analyze
+and can be parsed without a symbol table.  This makes it much easier
+to build tools such as debuggers, dependency analyzers, automated
+documentation extractors, IDE plug-ins, and so on.  C and its
+descendants are notoriously difficult in this regard.
+</p>
+
+<h3 id="declarations_backwards">
+Why are declarations backwards?</h3>
+<p>
+They're only backwards if you're used to C. In C, the notion is that a
+variable is declared like an expression denoting its type, which is a
+nice idea, but the type and expression grammars don't mix very well and
+the results can be confusing; consider function pointers.  Go mostly
+separates expression and type syntax and that simplifies things (using
+prefix <code>*</code> for pointers is an exception that proves the rule).  In C,
+the declaration
+</p>
+<pre>
+    int* a, b;
+</pre>
+<p>
+declares <code>a</code> to be a pointer but not <code>b</code>; in Go
+</p>
+<pre>
+    var a, b *int
+</pre>
+<p>
+declares both to be pointers.  This is clearer and more regular.
+Also, the <code>:=</code> short declaration form argues that a full variable
+declaration should present the same order as <code>:=</code> so
+</p>
+<pre>
+    var a uint64 = 1
+</pre>
+<p>
+has the same effect as
+</p>
+<pre>
+    a := uint64(1)
+</pre>
+<p>
+Parsing is also simplified by having a distinct grammar for types that
+is not just the expression grammar; keywords such as <code>func</code>
+and <code>chan</code> keep things clear.
+</p>
+
+<p>
+See the article about
+<a href="/doc/articles/gos_declaration_syntax.html">Go's Declaration Syntax</a>
+for more details.
+</p>
+
+<h3 id="no_pointer_arithmetic">
+Why is there no pointer arithmetic?</h3>
+<p>
+Safety.  Without pointer arithmetic it's possible to create a
+language that can never derive an illegal address that succeeds
+incorrectly.  Compiler and hardware technology have advanced to the
+point where a loop using array indices can be as efficient as a loop
+using pointer arithmetic.  Also, the lack of pointer arithmetic can
+simplify the implementation of the garbage collector.
+</p>
+
+<h3 id="inc_dec">
+Why are <code>++</code> and <code>--</code> statements and not expressions?  And why postfix, not prefix?</h3>
+<p>
+Without pointer arithmetic, the convenience value of pre- and postfix
+increment operators drops.  By removing them from the expression
+hierarchy altogether, expression syntax is simplified and the messy
+issues around order of evaluation of <code>++</code> and <code>--</code>
+(consider <code>f(i++)</code> and <code>p[i] = q[++i]</code>)
+are eliminated as well.  The simplification is
+significant.  As for postfix vs. prefix, either would work fine but
+the postfix version is more traditional; insistence on prefix arose
+with the STL, a library for a language whose name contains, ironically, a
+postfix increment.
+</p>
+
+<h3 id="semicolons">
+Why are there braces but no semicolons? And why can't I put the opening
+brace on the next line?</h3>
+<p>
+Go uses brace brackets for statement grouping, a syntax familiar to
+programmers who have worked with any language in the C family.
+Semicolons, however, are for parsers, not for people, and we wanted to
+eliminate them as much as possible.  To achieve this goal, Go borrows
+a trick from BCPL: the semicolons that separate statements are in the
+formal grammar but are injected automatically, without lookahead, by
+the lexer at the end of any line that could be the end of a statement.
+This works very well in practice but has the effect that it forces a
+brace style.  For instance, the opening brace of a function cannot
+appear on a line by itself.
+</p>
+
+<p>
+Some have argued that the lexer should do lookahead to permit the
+brace to live on the next line.  We disagree.  Since Go code is meant
+to be formatted automatically by
+<a href="/cmd/gofmt/"><code>gofmt</code></a>,
+<i>some</i> style must be chosen.  That style may differ from what
+you've used in C or Java, but Go is a new language and
+<code>gofmt</code>'s style is as good as any other.  More
+important&mdash;much more important&mdash;the advantages of a single,
+programmatically mandated format for all Go programs greatly outweigh
+any perceived disadvantages of the particular style.
+Note too that Go's style means that an interactive implementation of
+Go can use the standard syntax one line at a time without special rules.
+</p>
+
+<h3 id="garbage_collection">
+Why do garbage collection?  Won't it be too expensive?</h3>
+<p>
+One of the biggest sources of bookkeeping in systems programs is
+memory management.  We feel it's critical to eliminate that
+programmer overhead, and advances in garbage collection
+technology in the last few years give us confidence that we can
+implement it with low enough overhead and no significant
+latency.
+</p>
+
+<p>
+Another point is that a large part of the difficulty of concurrent
+and multi-threaded programming is memory management;
+as objects get passed among threads it becomes cumbersome
+to guarantee they become freed safely.
+Automatic garbage collection makes concurrent code far easier to write.
+Of course, implementing garbage collection in a concurrent environment is
+itself a challenge, but meeting it once rather than in every
+program helps everyone.
+</p>
+
+<p>
+Finally, concurrency aside, garbage collection makes interfaces
+simpler because they don't need to specify how memory is managed across them.
+</p>
+
+<p>
+The current implementation is a parallel mark-and-sweep
+collector but a future version might take a different approach.
+</p>
+
+<p>
+On the topic of performance, keep in mind that Go gives the programmer
+considerable control over memory layout and allocation, much more than
+is typical in garbage-collected languages. A careful programmer can reduce
+the garbage collection overhead dramatically by using the language well;
+see the article about
+<a href="//blog.golang.org/2011/06/profiling-go-programs.html">profiling
+Go programs</a> for a worked example, including a demonstration of Go's
+profiling tools.
+</p>
+                                                                                                                                                                                                                                                                                                                                                                                                                           root/go1.4/doc/go_mem.html                                                                          0100644 0000000 0000000 00000032252 12600426226 013762  0                                                                                                    ustar 00                                                                0000000 0000000                                                                                                                                                                        <!--{
+	"Title": "The Go Memory Model",
+	"Subtitle": "Version of May 31, 2014",
+	"Path": "/ref/mem"
+}-->
+
+<style>
+p.rule {
+  font-style: italic;
+}
+span.event {
+  font-style: italic;
+}
+</style>
+
+<h2>Introduction</h2>
+
+<p>
+The Go memory model specifies the conditions under which
+reads of a variable in one goroutine can be guaranteed to
+observe values produced by writes to the same variable in a different goroutine.
+</p>
+
+
+<h2>Advice</h2>
+
+<p>
+Programs that modify data being simultaneously accessed by multiple goroutines
+must serialize such access.
+</p>
+
+<p>
+To serialize access, protect the data with channel operations or other synchronization primitives
+such as those in the <a href="/pkg/sync/"><code>sync</code></a>
+and <a href="/pkg/sync/atomic/"><code>sync/atomic</code></a> packages.
+</p>
+
+<p>
+If you must read the rest of this document to understand the behavior of your program,
+you are being too clever.
+</p>
+
+<p>
+Don't be clever.
+</p>
+
+<h2>Happens Before</h2>
+
+<p>
+Within a single goroutine, reads and writes must behave
+as if they executed in the order specified by the program.
+That is, compilers and processors may reorder the reads and writes
+executed within a single goroutine only when the reordering
+does not change the behavior within that goroutine
+as defined by the language specification.
+Because of this reordering, the execution order observed
+by one goroutine may differ from the order perceived
+by another.  For example, if one goroutine
+executes <code>a = 1; b = 2;</code>, another might observe
+the updated value of <code>b</code> before the updated value of <code>a</code>.
+</p>
+
+<p>
+To specify the requirements of reads and writes, we define
+<i>happens before</i>, a partial order on the execution
+of memory operations in a Go program.  If event <span class="event">e<sub>1</sub></span> happens
+before event <span class="event">e<sub>2</sub></span>, then we say that <span class="event">e<sub>2</sub></span> happens after <span class="event">e<sub>1</sub></span>.
+Also, if <span class="event">e<sub>1</sub></span> does not happen before <span class="event">e<sub>2</sub></span> and does not happen
+after <span class="event">e<sub>2</sub></span>, then we say that <span class="event">e<sub>1</sub></span> and <span class="event">e<sub>2</sub></span> happen concurrently.
+</p>
+
+<p class="rule">
+Within a single goroutine, the happens-before order is the
+order expressed by the program.
+</p>
+
+<p>
+A read <span class="event">r</span> of a variable <code>v</code> is <i>allowed</i> to observe a write <span class="event">w</span> to <code>v</code>
+if both of the following hold:
+</p>
+
+<ol>
+<li><span class="event">r</span> does not happen before <span class="event">w</span>.</li>
+<li>There is no other write <span class="event">w'</span> to <code>v</code> that happens
+    after <span class="event">w</span> but before <span class="event">r</span>.</li>
+</ol>
+
+<p>
+To guarantee that a read <span class="event">r</span> of a variable <code>v</code> observes a
+particular write <span class="event">w</span> to <code>v</code>, ensure that <span class="event">w</span> is the only
+write <span class="event">r</span> is allowed to observe.
+That is, <span class="event">r</span> is <i>guaranteed</i> to observe <span class="event">w</span> if both of the following hold:
+</p>
+
+<ol>
+<li><span class="event">w</span> happens before <span class="event">r</span>.</li>
+<li>Any other write to the shared variable <code>v</code>
+either happens before <span class="event">w</span> or after <span class="event">r</span>.</li>
+</ol>
+
+<p>
+This pair of conditions is stronger than the first pair;
+it requires that there are no other writes happening
+concurrently with <span class="event">w</span> or <span class="event">r</span>.
+</p>
+
+<p>
+Within a single goroutine,
+there is no concurrency, so the two definitions are equivalent:
+a read <span class="event">r</span> observes the value written by the most recent write <span class="event">w</span> to <code>v</code>.
+When multiple goroutines access a shared variable <code>v</code>,
+they must use synchronization events to establish
+happens-before conditions that ensure reads observe the
+desired writes.
+</p>
+
+<p>
+The initialization of variable <code>v</code> with the zero value
+for <code>v</code>'s type behaves as a write in the memory model.
+</p>
+
+<p>
+Reads and writes of values larger than a single machine word
+behave as multiple machine-word-sized operations in an
+unspecified order.
+</p>
+
+<h2>Synchronization</h2>
+
+<h3>Initialization</h3>
+
+<p>
+Program initialization runs in a single goroutine,
+but that goroutine may create other goroutines,
+which run concurrently.
+</p>
+
+<p class="rule">
+If a package <code>p</code> imports package <code>q</code>, the completion of
+<code>q</code>'s <code>init</code> functions happens before the start of any of <code>p</code>'s.
+</p>
+
+<p class="rule">
+The start of the function <code>main.main</code> happens after
+all <code>init</code> functions have finished.
+</p>
+
+<h3>Goroutine creation</h3>
+
+<p class="rule">
+The <code>go</code> statement that starts a new goroutine
+happens before the goroutine's execution begins.
+</p>
+
+<p>
+For example, in this program:
+</p>
+
+<pre>
+var a string
+
+func f() {
+	print(a)
+}
+
+func hello() {
+	a = "hello, world"
+	go f()
+}
+</pre>
+
+<p>
+calling <code>hello</code> will print <code>"hello, world"</code>
+at some point in the future (perhaps after <code>hello</code> has returned).
+</p>
+
+<h3>Goroutine destruction</h3>
+
+<p>
+The exit of a goroutine is not guaranteed to happen before
+any event in the program.  For example, in this program:
+</p>
+
+<pre>
+var a string
+
+func hello() {
+	go func() { a = "hello" }()
+	print(a)
+}
+</pre>
+
+<p>
+the assignment to <code>a</code> is not followed by
+any synchronization event, so it is not guaranteed to be
+observed by any other goroutine.
+In fact, an aggressive compiler might delete the entire <code>go</code> statement.
+</p>
+
+<p>
+If the effects of a goroutine must be observed by another goroutine,
+use a synchronization mechanism such as a lock or channel
+communication to establish a relative ordering.
+</p>
+
+<h3>Channel communication</h3>
+
+<p>
+Channel communication is the main method of synchronization
+between goroutines.  Each send on a particular channel
+is matched to a corresponding receive from that channel,
+usually in a different goroutine.
+</p>
+
+<p class="rule">
+A send on a channel happens before the corresponding
+receive from that channel completes.
+</p>
+
+<p>
+This program:
+</p>
+
+<pre>
+var c = make(chan int, 10)
+var a string
+
+func f() {
+	a = "hello, world"
+	c &lt;- 0
+}
+
+func main() {
+	go f()
+	&lt;-c
+	print(a)
+}
+</pre>
+
+<p>
+is guaranteed to print <code>"hello, world"</code>.  The write to <code>a</code>
+happens before the send on <code>c</code>, which happens before
+the corresponding receive on <code>c</code> completes, which happens before
+the <code>print</code>.
+</p>
+
+<p class="rule">
+The closing of a channel happens before a receive that returns a zero value
+because the channel is closed.
+</p>
+
+<p>
+In the previous example, replacing
+<code>c &lt;- 0</code> with <code>close(c)</code>
+yields a program with the same guaranteed behavior.
+</p>
+
+<p class="rule">
+A receive from an unbuffered channel happens before
+the send on that channel completes.
+</p>
+
+<p>
+This program (as above, but with the send and receive statements swapped and
+using an unbuffered channel):
+</p>
+
+<pre>
+var c = make(chan int)
+var a string
+
+func f() {
+	a = "hello, world"
+	&lt;-c
+}
+</pre>
+
+<pre>
+func main() {
+	go f()
+	c &lt;- 0
+	print(a)
+}
+</pre>
+
+<p>
+is also guaranteed to print <code>"hello, world"</code>.  The write to <code>a</code>
+happens before the receive on <code>c</code>, which happens before
+the corresponding send on <code>c</code> completes, which happens
+before the <code>print</code>.
+</p>
+
+<p>
+If the channel were buffered (e.g., <code>c = make(chan int, 1)</code>)
+then the program would not be guaranteed to print
+<code>"hello, world"</code>.  (It might print the empty string,
+crash, or do something else.)
+</p>
+
+<p class="rule">
+The <i>k</i>th receive on a channel with capacity <i>C</i> happens before the <i>k</i>+<i>C</i>th send from that channel completes.
+</p>
+
+<p>
+This rule generalizes the previous rule to buffered channels.
+It allows a counting semaphore to be modeled by a buffered channel:
+the number of items in the channel corresponds to the number of active uses,
+the capacity of the channel corresponds to the maximum number of simultaneous uses,
+sending an item acquires the semaphore, and receiving an item releases
+the semaphore.
+This is a common idiom for limiting concurrency.
+</p>
+
+<p>
+This program starts a goroutine for every entry in the work list, but the
+goroutines coordinate using the <code>limit</code> channel to ensure
+that at most three are running work functions at a time.
+</p>
+
+<pre>
+var limit = make(chan int, 3)
+
+func main() {
+	for _, w := range work {
+		go func() {
+			limit <- 1
+			w()
+			<-limit
+		}()
+	}
+	select{}
+}
+</pre>
+
+<h3>Locks</h3>
+
+<p>
+The <code>sync</code> package implements two lock data types,
+<code>sync.Mutex</code> and <code>sync.RWMutex</code>.
+</p>
+
+<p class="rule">
+For any <code>sync.Mutex</code> or <code>sync.RWMutex</code> variable <code>l</code> and <i>n</i> &lt; <i>m</i>,
+call <i>n</i> of <code>l.Unlock()</code> happens before call <i>m</i> of <code>l.Lock()</code> returns.
+</p>
+
+<p>
+This program:
+</p>
+
+<pre>
+var l sync.Mutex
+var a string
+
+func f() {
+	a = "hello, world"
+	l.Unlock()
+}
+
+func main() {
+	l.Lock()
+	go f()
+	l.Lock()
+	print(a)
+}
+</pre>
+
+<p>
+is guaranteed to print <code>"hello, world"</code>.
+The first call to <code>l.Unlock()</code> (in <code>f</code>) happens
+before the second call to <code>l.Lock()</code> (in <code>main</code>) returns,
+which happens before the <code>print</code>.
+</p>
+
+<p class="rule">
+For any call to <code>l.RLock</code> on a <code>sync.RWMutex</code> variable <code>l</code>,
+there is an <i>n</i> such that the <code>l.RLock</code> happens (returns) after call <i>n</i> to
+<code>l.Unlock</code> and the matching <code>l.RUnlock</code> happens
+before call <i>n</i>+1 to <code>l.Lock</code>.
+</p>
+
+<h3>Once</h3>
+
+<p>
+The <code>sync</code> package provides a safe mechanism for
+initialization in the presence of multiple goroutines
+through the use of the <code>Once</code> type.
+Multiple threads can execute <code>once.Do(f)</code> for a particular <code>f</code>,
+but only one will run <code>f()</code>, and the other calls block
+until <code>f()</code> has returned.
+</p>
+
+<p class="rule">
+A single call of <code>f()</code> from <code>once.Do(f)</code> happens (returns) before any call of <code>once.Do(f)</code> returns.
+</p>
+
+<p>
+In this program:
+</p>
+
+<pre>
+var a string
+var once sync.Once
+
+func setup() {
+	a = "hello, world"
+}
+
+func doprint() {
+	once.Do(setup)
+	print(a)
+}
+
+func twoprint() {
+	go doprint()
+	go doprint()
+}
+</pre>
+
+<p>
+calling <code>twoprint</code> causes <code>"hello, world"</code> to be printed twice.
+The first call to <code>doprint</code> runs <code>setup</code> once.
+</p>
+
+<h2>Incorrect synchronization</h2>
+
+<p>
+Note that a read <span class="event">r</span> may observe the value written by a write <span class="event">w</span>
+that happens concurrently with <span class="event">r</span>.
+Even if this occurs, it does not imply that reads happening after <span class="event">r</span>
+will observe writes that happened before <span class="event">w</span>.
+</p>
+
+<p>
+In this program:
+</p>
+
+<pre>
+var a, b int
+
+func f() {
+	a = 1
+	b = 2
+}
+
+func g() {
+	print(b)
+	print(a)
+}
+
+func main() {
+	go f()
+	g()
+}
+</pre>
+
+<p>
+it can happen that <code>g</code> prints <code>2</code> and then <code>0</code>.
+</p>
+
+<p>
+This fact invalidates a few common idioms.
+</p>
+
+<p>
+Double-checked locking is an attempt to avoid the overhead of synchronization.
+For example, the <code>twoprint</code> program might be
+incorrectly written as:
+</p>
+
+<pre>
+var a string
+var done bool
+
+func setup() {
+	a = "hello, world"
+	done = true
+}
+
+func doprint() {
+	if !done {
+		once.Do(setup)
+	}
+	print(a)
+}
+
+func twoprint() {
+	go doprint()
+	go doprint()
+}
+</pre>
+
+<p>
+but there is no guarantee that, in <code>doprint</code>, observing the write to <code>done</code>
+implies observing the write to <code>a</code>.  This
+version can (incorrectly) print an empty string
+instead of <code>"hello, world"</code>.
+</p>
+
+<p>
+Another incorrect idiom is busy waiting for a value, as in:
+</p>
+
+<pre>
+var a string
+var done bool
+
+func setup() {
+	a = "hello, world"
+	done = true
+}
+
+func main() {
+	go setup()
+	for !done {
+	}
+	print(a)
+}
+</pre>
+
+<p>
+As before, there is no guarantee that, in <code>main</code>,
+observing the write to <code>done</code>
+implies observing the write to <code>a</code>, so this program could
+print an empty string too.
+Worse, there is no guarantee that the write to <code>done</code> will ever
+be observed by <code>main</code>, since there are no synchronization
+events between the two threads.  The loop in <code>main</code> is not
+guaranteed to finish.
+</p>
+
+<p>
+There are subtler variants on this theme, such as this program.
+</p>
+
+<pre>
+type T struct {
+	msg string
+}
+
+var g *T
+
+func setup() {
+	t := new(T)
+	t.msg = "hello, world"
+	g = t
+}
+
+func main() {
+	go setup()
+	for g == nil {
+	}
+	print(g.msg)
+}
+</pre>
+
+<p>
+Even if <code>main</code> observes <code>g != nil</code> and exits its loop,
+there is no guarantee that it will observe the initialized
+value for <code>g.msg</code>.
+</p>
+
+<p>
+In all these examples, the solution is the same:
+use explicit synchronization.
+</p>
+                                                                                                                                                                                                                                                                                                                                                      root/go1.4/doc/go_spec.html                                                                         0100644 0000000 0000000 00000574241 12600426226 014147  0                                                                                                    ustar 00                                                                0000000 0000000                                                                                                                                                                        <!--{
+	"Title": "The Go Programming Language Specification",
+	"Subtitle": "Version of November 11, 2014",
+	"Path": "/ref/spec"
+}-->
+
+<!--
+TODO
+[ ] need language about function/method calls and parameter passing rules
+[ ] last paragraph of #Assignments (constant promotion) should be elsewhere
+    and mention assignment to empty interface.
+[ ] need to say something about "scope" of selectors?
+[ ] clarify what a field name is in struct declarations
+    (struct{T} vs struct {T T} vs struct {t T})
+[ ] need explicit language about the result type of operations
+[ ] should probably write something about evaluation order of statements even
+	though obvious
+[ ] in Selectors section, clarify what receiver value is passed in method invocations
+-->
+
+
+<h2 id="Introduction">Introduction</h2>
+
+<p>
+This is a reference manual for the Go programming language. For
+more information and other documents, see <a href="/">golang.org</a>.
+</p>
+
+<p>
+Go is a general-purpose language designed with systems programming
+in mind. It is strongly typed and garbage-collected and has explicit
+support for concurrent programming.  Programs are constructed from
+<i>packages</i>, whose properties allow efficient management of
+dependencies. The existing implementations use a traditional
+compile/link model to generate executable binaries.
+</p>
+
+<p>
+The grammar is compact and regular, allowing for easy analysis by
+automatic tools such as integrated development environments.
+</p>
+
+<h2 id="Notation">Notation</h2>
+<p>
+The syntax is specified using Extended Backus-Naur Form (EBNF):
+</p>
+
+<pre class="grammar">
+Production  = production_name "=" [ Expression ] "." .
+Expression  = Alternative { "|" Alternative } .
+Alternative = Term { Term } .
+Term        = production_name | token [ "â€¦" token ] | Group | Option | Repetition .
+Group       = "(" Expression ")" .
+Option      = "[" Expression "]" .
+Repetition  = "{" Expression "}" .
+</pre>
+
+<p>
+Productions are expressions constructed from terms and the following
+operators, in increasing precedence:
+</p>
+<pre class="grammar">
+|   alternation
+()  grouping
+[]  option (0 or 1 times)
+{}  repetition (0 to n times)
+</pre>
+
+<p>
+Lower-case production names are used to identify lexical tokens.
+Non-terminals are in CamelCase. Lexical tokens are enclosed in
+double quotes <code>""</code> or back quotes <code>``</code>.
+</p>
+
+<p>
+The form <code>a â€¦ b</code> represents the set of characters from
+<code>a</code> through <code>b</code> as alternatives. The horizontal
+ellipsis <code>â€¦</code> is also used elsewhere in the spec to informally denote various
+enumerations or code snippets that are not further specified. The character <code>â€¦</code>
+(as opposed to the three characters <code>...</code>) is not a token of the Go
+language.
+</p>
+
+<h2 id="Source_code_representation">Source code representation</h2>
+
+<p>
+Source code is Unicode text encoded in
+<a href="http://en.wikipedia.org/wiki/UTF-8">UTF-8</a>. The text is not
+canonicalized, so a single accented code point is distinct from the
+same character constructed from combining an accent and a letter;
+those are treated as two code points.  For simplicity, this document
+will use the unqualified term <i>character</i> to refer to a Unicode code point
+in the source text.
+</p>
+<p>
+Each code point is distinct; for instance, upper and lower case letters
+are different characters.
+</p>
+<p>
+Implementation restriction: For compatibility with other tools, a
+compiler may disallow the NUL character (U+0000) in the source text.
+</p>
+<p>
+Implementation restriction: For compatibility with other tools, a
+compiler may ignore a UTF-8-encoded byte order mark
+(U+FEFF) if it is the first Unicode code point in the source text.
+A byte order mark may be disallowed anywhere else in the source.
+</p>
+
+<h3 id="Characters">Characters</h3>
+
+<p>
+The following terms are used to denote specific Unicode character classes:
+</p>
+<pre class="ebnf">
+newline        = /* the Unicode code point U+000A */ .
+unicode_char   = /* an arbitrary Unicode code point except newline */ .
+unicode_letter = /* a Unicode code point classified as "Letter" */ .
+unicode_digit  = /* a Unicode code point classified as "Decimal Digit" */ .
+</pre>
+
+<p>
+In <a href="http://www.unicode.org/versions/Unicode6.3.0/">The Unicode Standard 6.3</a>,
+Section 4.5 "General Category"
+defines a set of character categories.  Go treats
+those characters in category Lu, Ll, Lt, Lm, or Lo as Unicode letters,
+and those in category Nd as Unicode digits.
+</p>
+
+<h3 id="Letters_and_digits">Letters and digits</h3>
+
+<p>
+The underscore character <code>_</code> (U+005F) is considered a letter.
+</p>
+<pre class="ebnf">
+letter        = unicode_letter | "_" .
+decimal_digit = "0" â€¦ "9" .
+octal_digit   = "0" â€¦ "7" .
+hex_digit     = "0" â€¦ "9" | "A" â€¦ "F" | "a" â€¦ "f" .
+</pre>
+
+<h2 id="Lexical_elements">Lexical elements</h2>
+
+<h3 id="Comments">Comments</h3>
+
+<p>
+There are two forms of comments:
+</p>
+
+<ol>
+<li>
+<i>Line comments</i> start with the character sequence <code>//</code>
+and stop at the end of the line. A line comment acts like a newline.
+</li>
+<li>
+<i>General comments</i> start with the character sequence <code>/*</code>
+and continue through the character sequence <code>*/</code>. A general
+comment containing one or more newlines acts like a newline, otherwise it acts
+like a space.
+</li>
+</ol>
+
+<p>
+Comments do not nest.
+</p>
+
+
+<h3 id="Tokens">Tokens</h3>
+
+<p>
+Tokens form the vocabulary of the Go language.
+There are four classes: <i>identifiers</i>, <i>keywords</i>, <i>operators
+and delimiters</i>, and <i>literals</i>.  <i>White space</i>, formed from
+spaces (U+0020), horizontal tabs (U+0009),
+carriage returns (U+000D), and newlines (U+000A),
+is ignored except as it separates tokens
+that would otherwise combine into a single token. Also, a newline or end of file
+may trigger the insertion of a <a href="#Semicolons">semicolon</a>.
+While breaking the input into tokens,
+the next token is the longest sequence of characters that form a
+valid token.
+</p>
+
+<h3 id="Semicolons">Semicolons</h3>
+
+<p>
+The formal grammar uses semicolons <code>";"</code> as terminators in
+a number of productions. Go programs may omit most of these semicolons
+using the following two rules:
+</p>
+
+<ol>
+<li>
+<p>
+When the input is broken into tokens, a semicolon is automatically inserted
+into the token stream at the end of a non-blank line if the line's final
+token is
+</p>
+<ul>
+	<li>an
+	    <a href="#Identifiers">identifier</a>
+	</li>
+
+	<li>an
+	    <a href="#Integer_literals">integer</a>,
+	    <a href="#Floating-point_literals">floating-point</a>,
+	    <a href="#Imaginary_literals">imaginary</a>,
+	    <a href="#Rune_literals">rune</a>, or
+	    <a href="#String_literals">string</a> literal
+	</li>
+
+	<li>one of the <a href="#Keywords">keywords</a>
+	    <code>break</code>,
+	    <code>continue</code>,
+	    <code>fallthrough</code>, or
+	    <code>return</code>
+	</li>
+
+	<li>one of the <a href="#Operators_and_Delimiters">operators and delimiters</a>
+	    <code>++</code>,
+	    <code>--</code>,
+	    <code>)</code>,
+	    <code>]</code>, or
+	    <code>}</code>
+	</li>
+</ul>
+</li>
+
+<li>
+To allow complex statements to occupy a single line, a semicolon
+may be omitted before a closing <code>")"</code> or <code>"}"</code>.
+</li>
+</ol>
+
+<p>
+To reflect idiomatic use, code examples in this document elide semicolons
+using these rules.
+</p>
+
+
+<h3 id="Identifiers">Identifiers</h3>
+
+<p>
+Identifiers name program entities such as variables and types.
+An identifier is a sequence of one or more letters and digits.
+The first character in an identifier must be a letter.
+</p>
+<pre class="ebnf">
+identifier = letter { letter | unicode_digit } .
+</pre>
+<pre>
+a
+_x9
+ThisVariableIsExported
+Î±Î²
+</pre>
+
+<p>
+Some identifiers are <a href="#Predeclared_identifiers">predeclared</a>.
+</p>
+
+
+<h3 id="Keywords">Keywords</h3>
+
+<p>
+The following keywords are reserved and may not be used as identifiers.
+</p>
+<pre class="grammar">
+break        default      func         interface    select
+case         defer        go           map          struct
+chan         else         goto         package      switch
+const        fallthrough  if           range        type
+continue     for          import       return       var
+</pre>
+
+<h3 id="Operators_and_Delimiters">Operators and Delimiters</h3>
+
+<p>
+The following character sequences represent <a href="#Operators">operators</a>, delimiters, and other special tokens:
+</p>
+<pre class="grammar">
++    &amp;     +=    &amp;=     &amp;&amp;    ==    !=    (    )
+-    |     -=    |=     ||    &lt;     &lt;=    [    ]
+*    ^     *=    ^=     &lt;-    &gt;     &gt;=    {    }
+/    &lt;&lt;    /=    &lt;&lt;=    ++    =     :=    ,    ;
+%    &gt;&gt;    %=    &gt;&gt;=    --    !     ...   .    :
+     &amp;^          &amp;^=
+</pre>
+
+<h3 id="Integer_literals">Integer literals</h3>
+
+<p>
+An integer literal is a sequence of digits representing an
+<a href="#Constants">integer constant</a>.
+An optional prefix sets a non-decimal base: <code>0</code> for octal, <code>0x</code> or
+<code>0X</code> for hexadecimal.  In hexadecimal literals, letters
+<code>a-f</code> and <code>A-F</code> represent values 10 through 15.
+</p>
+<pre class="ebnf">
+int_lit     = decimal_lit | octal_lit | hex_lit .
+decimal_lit = ( "1" â€¦ "9" ) { decimal_digit } .
+octal_lit   = "0" { octal_digit } .
+hex_lit     = "0" ( "x" | "X" ) hex_digit { hex_digit } .
+</pre>
+
+<pre>
+42
+0600
+0xBadFace
+170141183460469231731687303715884105727
+</pre>
+
+<h3 id="Floating-point_literals">Floating-point literals</h3>
+<p>
+A floating-point literal is a decimal representation of a
+<a href="#Constants">floating-point constant</a>.
+It has an integer part, a decimal point, a fractional part,
+and an exponent part.  The integer and fractional part comprise
+decimal digits; the exponent part is an <code>e</code> or <code>E</code>
+followed by an optionally signed decimal exponent.  One of the
+integer part or the fractional part may be elided; one of the decimal
+point or the exponent may be elided.
+</p>
+<pre class="ebnf">
+float_lit = decimals "." [ decimals ] [ exponent ] |
+            decimals exponent |
+            "." decimals [ exponent ] .
+decimals  = decimal_digit { decimal_digit } .
+exponent  = ( "e" | "E" ) [ "+" | "-" ] decimals .
+</pre>
+
+<pre>
+0.
+72.40
+072.40  // == 72.40
+2.71828
+1.e+0
+6.67428e-11
+1E6
+.25
+.12345E+5
+</pre>
+
+<h3 id="Imaginary_literals">Imaginary literals</h3>
+<p>
+An imaginary literal is a decimal representation of the imaginary part of a
+<a href="#Constants">complex constant</a>.
+It consists of a
+<a href="#Floating-point_literals">floating-point literal</a>
+or decimal integer followed
+by the lower-case letter <code>i</code>.
+</p>
+<pre class="ebnf">
+imaginary_lit = (decimals | float_lit) "i" .
+</pre>
+
+<pre>
+0i
+011i  // == 11i
+0.i
+2.71828i
+1.e+0i
+6.67428e-11i
+1E6i
+.25i
+.12345E+5i
+</pre>
+
+
+<h3 id="Rune_literals">Rune literals</h3>
+
+<p>
+A rune literal represents a <a href="#Constants">rune constant</a>,
+an integer value identifying a Unicode code point.
+A rune literal is expressed as one or more characters enclosed in single quotes.
+Within the quotes, any character may appear except single
+quote and newline. A single quoted character represents the Unicode value
+of the character itself,
+while multi-character sequences beginning with a backslash encode
+values in various formats.
+</p>
+<p>
+The simplest form represents the single character within the quotes;
+since Go source text is Unicode characters encoded in UTF-8, multiple
+UTF-8-encoded bytes may represent a single integer value.  For
+instance, the literal <code>'a'</code> holds a single byte representing
+a literal <code>a</code>, Unicode U+0061, value <code>0x61</code>, while
+<code>'Ã¤'</code> holds two bytes (<code>0xc3</code> <code>0xa4</code>) representing
+a literal <code>a</code>-dieresis, U+00E4, value <code>0xe4</code>.
+</p>
+<p>
+Several backslash escapes allow arbitrary values to be encoded as
+ASCII text.  There are four ways to represent the integer value
+as a numeric constant: <code>\x</code> followed by exactly two hexadecimal
+digits; <code>\u</code> followed by exactly four hexadecimal digits;
+<code>\U</code> followed by exactly eight hexadecimal digits, and a
+plain backslash <code>\</code> followed by exactly three octal digits.
+In each case the value of the literal is the value represented by
+the digits in the corresponding base.
+</p>
+<p>
+Although these representations all result in an integer, they have
+different valid ranges.  Octal escapes must represent a value between
+0 and 255 inclusive.  Hexadecimal escapes satisfy this condition
+by construction. The escapes <code>\u</code> and <code>\U</code>
+represent Unicode code points so within them some values are illegal,
+in particular those above <code>0x10FFFF</code> and surrogate halves.
+</p>
+<p>
+After a backslash, certain single-character escapes represent special values:
+</p>
+<pre class="grammar">
+\a   U+0007 alert or bell
+\b   U+0008 backspace
+\f   U+000C form feed
+\n   U+000A line feed or newline
+\r   U+000D carriage return
+\t   U+0009 horizontal tab
+\v   U+000b vertical tab
+\\   U+005c backslash
+\'   U+0027 single quote  (valid escape only within rune literals)
+\"   U+0022 double quote  (valid escape only within string literals)
+</pre>
+<p>
+All other sequences starting with a backslash are illegal inside rune literals.
+</p>
+<pre class="ebnf">
+rune_lit         = "'" ( unicode_value | byte_value ) "'" .
+unicode_value    = unicode_char | little_u_value | big_u_value | escaped_char .
+byte_value       = octal_byte_value | hex_byte_value .
+octal_byte_value = `\` octal_digit octal_digit octal_digit .
+hex_byte_value   = `\` "x" hex_digit hex_digit .
+little_u_value   = `\` "u" hex_digit hex_digit hex_digit hex_digit .
+big_u_value      = `\` "U" hex_digit hex_digit hex_digit hex_digit
+                           hex_digit hex_digit hex_digit hex_digit .
+escaped_char     = `\` ( "a" | "b" | "f" | "n" | "r" | "t" | "v" | `\` | "'" | `"` ) .
+</pre>
+
+<pre>
+'a'
+'Ã¤'
+'æœ¬'
+'\t'
+'\000'
+'\007'
+'\377'
+'\x07'
+'\xff'
+'\u12e4'
+'\U00101234'
+'aa'         // illegal: too many characters
+'\xa'        // illegal: too few hexadecimal digits
+'\0'         // illegal: too few octal digits
+'\uDFFF'     // illegal: surrogate half
+'\U00110000' // illegal: invalid Unicode code point
+</pre>
+
+
+<h3 id="String_literals">String literals</h3>
+
+<p>
+A string literal represents a <a href="#Constants">string constant</a>
+obtained from concatenating a sequence of characters. There are two forms:
+raw string literals and interpreted string literals.
+</p>
+<p>
+Raw string literals are character sequences between back quotes
+<code>``</code>.  Within the quotes, any character is legal except
+back quote. The value of a raw string literal is the
+string composed of the uninterpreted (implicitly UTF-8-encoded) characters
+between the quotes;
+in particular, backslashes have no special meaning and the string may
+contain newlines.
+Carriage return characters ('\r') inside raw string literals
+are discarded from the raw string value.
+</p>
+<p>
+Interpreted string literals are character sequences between double
+quotes <code>&quot;&quot;</code>. The text between the quotes,
+which may not contain newlines, forms the
+value of the literal, with backslash escapes interpreted as they
+are in <a href="#Rune_literals">rune literals</a> (except that <code>\'</code> is illegal and
+<code>\"</code> is legal), with the same restrictions.
+The three-digit octal (<code>\</code><i>nnn</i>)
+and two-digit hexadecimal (<code>\x</code><i>nn</i>) escapes represent individual
+<i>bytes</i> of the resulting string; all other escapes represent
+the (possibly multi-byte) UTF-8 encoding of individual <i>characters</i>.
+Thus inside a string literal <code>\377</code> and <code>\xFF</code> represent
+a single byte of value <code>0xFF</code>=255, while <code>Ã¿</code>,
+<code>\u00FF</code>, <code>\U000000FF</code> and <code>\xc3\xbf</code> represent
+the two bytes <code>0xc3</code> <code>0xbf</code> of the UTF-8 encoding of character
+U+00FF.
+</p>
+
+<pre class="ebnf">
+string_lit             = raw_string_lit | interpreted_string_lit .
+raw_string_lit         = "`" { unicode_char | newline } "`" .
+interpreted_string_lit = `"` { unicode_value | byte_value } `"` .
+</pre>
+
+<pre>
+`abc`  // same as "abc"
+`\n
+\n`    // same as "\\n\n\\n"
+"\n"
+""
+"Hello, world!\n"
+"æ—¥æœ¬èªž"
+"\u65e5æœ¬\U00008a9e"
+"\xff\u00FF"
+"\uD800"       // illegal: surrogate half
+"\U00110000"   // illegal: invalid Unicode code point
+</pre>
+
+<p>
+These examples all represent the same string:
+</p>
+
+<pre>
+"æ—¥æœ¬èªž"                                 // UTF-8 input text
+`æ—¥æœ¬èªž`                                 // UTF-8 input text as a raw literal
+"\u65e5\u672c\u8a9e"                    // the explicit Unicode code points
+"\U000065e5\U0000672c\U00008a9e"        // the explicit Unicode code points
+"\xe6\x97\xa5\xe6\x9c\xac\xe8\xaa\x9e"  // the explicit UTF-8 bytes
+</pre>
+
+<p>
+If the source code represents a character as two code points, such as
+a combining form involving an accent and a letter, the result will be
+an error if placed in a rune literal (it is not a single code
+point), and will appear as two code points if placed in a string
+literal.
+</p>
+
+
+<h2 id="Constants">Constants</h2>
+
+<p>There are <i>boolean constants</i>,
+<i>rune constants</i>,
+<i>integer constants</i>,
+<i>floating-point constants</i>, <i>complex constants</i>,
+and <i>string constants</i>. Rune, integer, floating-point,
+and complex constants are
+collectively called <i>numeric constants</i>.
+</p>
+
+<p>
+A constant value is represented by a
+<a href="#Rune_literals">rune</a>,
+<a href="#Integer_literals">integer</a>,
+<a href="#Floating-point_literals">floating-point</a>,
+<a href="#Imaginary_literals">imaginary</a>,
+or
+<a href="#String_literals">string</a> literal,
+an identifier denoting a constant,
+a <a href="#Constant_expressions">constant expression</a>,
+a <a href="#Conversions">conversion</a> with a result that is a constant, or
+the result value of some built-in functions such as
+<code>unsafe.Sizeof</code> applied to any value,
+<code>cap</code> or <code>len</code> applied to
+<a href="#Length_and_capacity">some expressions</a>,
+<code>real</code> and <code>imag</code> applied to a complex constant
+and <code>complex</code> applied to numeric constants.
+The boolean truth values are represented by the predeclared constants
+<code>true</code> and <code>false</code>. The predeclared identifier
+<a href="#Iota">iota</a> denotes an integer constant.
+</p>
+
+<p>
+In general, complex constants are a form of
+<a href="#Constant_expressions">constant expression</a>
+and are discussed in that section.
+</p>
+
+<p>
+Numeric constants represent values of arbitrary precision and do not overflow.
+</p>
+
+<p>
+Constants may be <a href="#Types">typed</a> or <i>untyped</i>.
+Literal constants, <code>true</code>, <code>false</code>, <code>iota</code>,
+and certain <a href="#Constant_expressions">constant expressions</a>
+containing only untyped constant operands are untyped.
+</p>
+
+<p>
+A constant may be given a type explicitly by a <a href="#Constant_declarations">constant declaration</a>
+or <a href="#Conversions">conversion</a>, or implicitly when used in a
+<a href="#Variable_declarations">variable declaration</a> or an
+<a href="#Assignments">assignment</a> or as an
+operand in an <a href="#Expressions">expression</a>.
+It is an error if the constant value
+cannot be represented as a value of the respective type.
+For instance, <code>3.0</code> can be given any integer or any
+floating-point type, while <code>2147483648.0</code> (equal to <code>1&lt;&lt;31</code>)
+can be given the types <code>float32</code>, <code>float64</code>, or <code>uint32</code> but
+not <code>int32</code> or <code>string</code>.
+</p>
+
+<p>
+An untyped constant has a <i>default type</i> which is the type to which the
+constant is implicitly converted in contexts where a typed value is required,
+for instance, in a <a href="#Short_variable_declarations">short variable declaration</a>
+such as <code>i := 0</code> where there is no explicit type.
+The default type of an untyped constant is <code>bool</code>, <code>rune</code>,
+<code>int</code>, <code>float64</code>, <code>complex128</code> or <code>string</code>
+respectively, depending on whether it is a boolean, rune, integer, floating-point,
+complex, or string constant.
+</p>
+
+<p>
+There are no constants denoting the IEEE-754 infinity and not-a-number values,
+but the <a href="/pkg/math/"><code>math</code> package</a>'s
+<a href="/pkg/math/#Inf">Inf</a>,
+<a href="/pkg/math/#NaN">NaN</a>,
+<a href="/pkg/math/#IsInf">IsInf</a>, and
+<a href="/pkg/math/#IsNaN">IsNaN</a>
+functions return and test for those values at run time.
+</p>
+
+<p>
+Implementation restriction: Although numeric constants have arbitrary
+precision in the language, a compiler may implement them using an
+internal representation with limited precision.  That said, every
+implementation must:
+</p>
+<ul>
+	<li>Represent integer constants with at least 256 bits.</li>
+
+	<li>Represent floating-point constants, including the parts of
+	    a complex constant, with a mantissa of at least 256 bits
+	    and a signed exponent of at least 32 bits.</li>
+
+	<li>Give an error if unable to represent an integer constant
+	    precisely.</li>
+
+	<li>Give an error if unable to represent a floating-point or
+	    complex constant due to overflow.</li>
+
+	<li>Round to the nearest representable constant if unable to
+	    represent a floating-point or complex constant due to limits
+	    on precision.</li>
+</ul>
+<p>
+These requirements apply both to literal constants and to the result
+of evaluating <a href="#Constant_expressions">constant
+expressions</a>.
+</p>
+
+<h2 id="Variables">Variables</h2>
+
+<p>
+A variable is a storage location for holding a <i>value</i>.
+The set of permissible values is determined by the
+variable's <i><a href="#Types">type</a></i>.
+</p>
+
+<p>
+A <a href="#Variable_declarations">variable declaration</a>
+or, for function parameters and results, the signature
+of a <a href="#Function_declarations">function declaration</a>
+or <a href="#Function_literals">function literal</a> reserves
+storage for a named variable.
+
+Calling the built-in function <a href="#Allocation"><code>new</code></a>
+or taking the address of a <a href="#Composite_literals">composite literal</a>
+allocates storage for a variable at run time.
+Such an anonymous variable is referred to via a (possibly implicit)
+<a href="#Address_operators">pointer indirection</a>.
+</p>
+
+<p>
+<i>Structured</i> variables of <a href="#Array_types">array</a>, <a href="#Slice_types">slice</a>,
+and <a href="#Struct_types">struct</a> types have elements and fields that may
+be <a href="#Address_operators">addressed</a> individually. Each such element
+acts like a variable.
+</p>
+
+<p>
+The <i>static type</i> (or just <i>type</i>) of a variable is the	
+type given in its declaration, the type provided in the
+<code>new</code> call or composite literal, or the type of
+an element of a structured variable.
+Variables of interface type also have a distinct <i>dynamic type</i>,
+which is the concrete type of the value assigned to the variable at run time
+(unless the value is the predeclared identifier <code>nil</code>,
+which has no type).
+The dynamic type may vary during execution but values stored in interface
+variables are always <a href="#Assignability">assignable</a>
+to the static type of the variable.	
+</p>	
+
+<pre>
+var x interface{}  // x is nil and has static type interface{}
+var v *T           // v has value nil, static type *T
+x = 42             // x has value 42 and dynamic type int
+x = v              // x has value (*T)(nil) and dynamic type *T
+</pre>
+
+<p>
+A variable's value is retrieved by referring to the variable in an
+<a href="#Expressions">expression</a>; it is the most recent value
+<a href="#Assignments">assigned</a> to the variable.
+If a variable has not yet been assigned a value, its value is the
+<a href="#The_zero_value">zero value</a> for its type.
+</p>
+
+
+<h2 id="Types">Types</h2>
+
+<p>
+A type determines the set of values and operations specific to values of that
+type. Types may be <i>named</i> or <i>unnamed</i>. Named types are specified
+by a (possibly <a href="#Qualified_identifiers">qualified</a>)
+<a href="#Type_declarations"><i>type name</i></a>; unnamed types are specified
+using a <i>type literal</i>, which composes a new type from existing types.
+</p>
+
+<pre class="ebnf">
+Type      = TypeName | TypeLit | "(" Type ")" .
+TypeName  = identifier | QualifiedIdent .
+TypeLit   = ArrayType | StructType | PointerType | FunctionType | InterfaceType |
+	    SliceType | MapType | ChannelType .
+</pre>
+
+<p>
+Named instances of the boolean, numeric, and string types are
+<a href="#Predeclared_identifiers">predeclared</a>.
+<i>Composite types</i>&mdash;array, struct, pointer, function,
+interface, slice, map, and channel types&mdash;may be constructed using
+type literals.
+</p>
+
+<p>
+Each type <code>T</code> has an <i>underlying type</i>: If <code>T</code>
+is one of the predeclared boolean, numeric, or string types, or a type literal,
+the corresponding underlying
+type is <code>T</code> itself. Otherwise, <code>T</code>'s underlying type
+is the underlying type of the type to which <code>T</code> refers in its
+<a href="#Type_declarations">type declaration</a>.
+</p>
+
+<pre>
+   type T1 string
+   type T2 T1
+   type T3 []T1
+   type T4 T3
+</pre>
+
+<p>
+The underlying type of <code>string</code>, <code>T1</code>, and <code>T2</code>
+is <code>string</code>. The underlying type of <code>[]T1</code>, <code>T3</code>,
+and <code>T4</code> is <code>[]T1</code>.
+</p>
+
+<h3 id="Method_sets">Method sets</h3>
+<p>
+A type may have a <i>method set</i> associated with it.
+The method set of an <a href="#Interface_types">interface type</a> is its interface.
+The method set of any other type <code>T</code> consists of all
+<a href="#Method_declarations">methods</a> declared with receiver type <code>T</code>.
+The method set of the corresponding <a href="#Pointer_types">pointer type</a> <code>*T</code>
+is the set of all methods declared with receiver <code>*T</code> or <code>T</code>
+(that is, it also contains the method set of <code>T</code>).
+Further rules apply to structs containing anonymous fields, as described
+in the section on <a href="#Struct_types">struct types</a>.
+Any other type has an empty method set.
+In a method set, each method must have a
+<a href="#Uniqueness_of_identifiers">unique</a>
+non-<a href="#Blank_identifier">blank</a> <a href="#MethodName">method name</a>.
+</p>
+
+<p>
+The method set of a type determines the interfaces that the
+type <a href="#Interface_types">implements</a>
+and the methods that can be <a href="#Calls">called</a>
+using a receiver of that type.
+</p>
+
+<h3 id="Boolean_types">Boolean types</h3>
+
+<p>
+A <i>boolean type</i> represents the set of Boolean truth values
+denoted by the predeclared constants <code>true</code>
+and <code>false</code>. The predeclared boolean type is <code>bool</code>.
+</p>
+
+<h3 id="Numeric_types">Numeric types</h3>
+
+<p>
+A <i>numeric type</i> represents sets of integer or floating-point values.
+The predeclared architecture-independent numeric types are:
+</p>
+
+<pre class="grammar">
+uint8       the set of all unsigned  8-bit integers (0 to 255)
+uint16      the set of all unsigned 16-bit integers (0 to 65535)
+uint32      the set of all unsigned 32-bit integers (0 to 4294967295)
+uint64      the set of all unsigned 64-bit integers (0 to 18446744073709551615)
+
+int8        the set of all signed  8-bit integers (-128 to 127)
+int16       the set of all signed 16-bit integers (-32768 to 32767)
+int32       the set of all signed 32-bit integers (-2147483648 to 2147483647)
+int64       the set of all signed 64-bit integers (-9223372036854775808 to 9223372036854775807)
+
+float32     the set of all IEEE-754 32-bit floating-point numbers
+float64     the set of all IEEE-754 64-bit floating-point numbers
+
+complex64   the set of all complex numbers with float32 real and imaginary parts
+complex128  the set of all complex numbers with float64 real and imaginary parts
+
+byte        alias for uint8
+rune        alias for int32
+</pre>
+
+<p>
+The value of an <i>n</i>-bit integer is <i>n</i> bits wide and represented using
+<a href="http://en.wikipedia.org/wiki/Two's_complement">two's complement arithmetic</a>.
+</p>
+
+<p>
+There is also a set of predeclared numeric types with implementation-specific sizes:
+</p>
+
+<pre class="grammar">
+uint     either 32 or 64 bits
+int      same size as uint
+uintptr  an unsigned integer large enough to store the uninterpreted bits of a pointer value
+</pre>
+
+<p>
+To avoid portability issues all numeric types are distinct except
+<code>byte</code>, which is an alias for <code>uint8</code>, and
+<code>rune</code>, which is an alias for <code>int32</code>.
+Conversions
+are required when different numeric types are mixed in an expression
+or assignment. For instance, <code>int32</code> and <code>int</code>
+are not the same type even though they may have the same size on a
+particular architecture.
+
+
+<h3 id="String_types">String types</h3>
+
+<p>
+A <i>string type</i> represents the set of string values.
+A string value is a (possibly empty) sequence of bytes.
+Strings are immutable: once created,
+it is impossible to change the contents of a string.
+The predeclared string type is <code>string</code>.
+</p>
+
+<p>
+The length of a string <code>s</code> (its size in bytes) can be discovered using
+the built-in function <a href="#Length_and_capacity"><code>len</code></a>.
+The length is a compile-time constant if the string is a constant.
+A string's bytes can be accessed by integer <a href="#Index_expressions">indices</a>
+0 through <code>len(s)-1</code>.
+It is illegal to take the address of such an element; if
+<code>s[i]</code> is the <code>i</code>'th byte of a
+string, <code>&amp;s[i]</code> is invalid.
+</p>
+
+
+<h3 id="Array_types">Array types</h3>
+
+<p>
+An array is a numbered sequence of elements of a single
+type, called the element type.
+The number of elements is called the length and is never
+negative.
+</p>
+
+<pre class="ebnf">
+ArrayType   = "[" ArrayLength "]" ElementType .
+ArrayLength = Expression .
+ElementType = Type .
+</pre>
+
+<p>
+The length is part of the array's type; it must evaluate to a
+non-negative <a href="#Constants">constant</a> representable by a value
+of type <code>int</code>.
+The length of array <code>a</code> can be discovered
+using the built-in function <a href="#Length_and_capacity"><code>len</code></a>.
+The elements can be addressed by integer <a href="#Index_expressions">indices</a>
+0 through <code>len(a)-1</code>.
+Array types are always one-dimensional but may be composed to form
+multi-dimensional types.
+</p>
+
+<pre>
+[32]byte
+[2*N] struct { x, y int32 }
+[1000]*float64
+[3][5]int
+[2][2][2]float64  // same as [2]([2]([2]float64))
+</pre>
+
+<h3 id="Slice_types">Slice types</h3>
+
+<p>
+A slice is a descriptor for a contiguous segment of an <i>underlying array</i> and
+provides access to a numbered sequence of elements from that array.
+A slice type denotes the set of all slices of arrays of its element type.
+The value of an uninitialized slice is <code>nil</code>.
+</p>
+
+<pre class="ebnf">
+SliceType = "[" "]" ElementType .
+</pre>
+
+<p>
+Like arrays, slices are indexable and have a length.  The length of a
+slice <code>s</code> can be discovered by the built-in function
+<a href="#Length_and_capacity"><code>len</code></a>; unlike with arrays it may change during
+execution.  The elements can be addressed by integer <a href="#Index_expressions">indices</a>
+0 through <code>len(s)-1</code>.  The slice index of a
+given element may be less than the index of the same element in the
+underlying array.
+</p>
+<p>
+A slice, once initialized, is always associated with an underlying
+array that holds its elements.  A slice therefore shares storage
+with its array and with other slices of the same array; by contrast,
+distinct arrays always represent distinct storage.
+</p>
+<p>
+The array underlying a slice may extend past the end of the slice.
+The <i>capacity</i> is a measure of that extent: it is the sum of
+the length of the slice and the length of the array beyond the slice;
+a slice of length up to that capacity can be created by
+<a href="#Slice_expressions"><i>slicing</i></a> a new one from the original slice.
+The capacity of a slice <code>a</code> can be discovered using the
+built-in function <a href="#Length_and_capacity"><code>cap(a)</code></a>.
+</p>
+
+<p>
+A new, initialized slice value for a given element type <code>T</code> is
+made using the built-in function
+<a href="#Making_slices_maps_and_channels"><code>make</code></a>,
+which takes a slice type
+and parameters specifying the length and optionally the capacity.
+A slice created with <code>make</code> always allocates a new, hidden array
+to which the returned slice value refers. That is, executing
+</p>
+
+<pre>
+make([]T, length, capacity)
+</pre>
+
+<p>
+produces the same slice as allocating an array and <a href="#Slice_expressions">slicing</a>
+it, so these two expressions are equivalent:
+</p>
+
+<pre>
+make([]int, 50, 100)
+new([100]int)[0:50]
+</pre>
+
+<p>
+Like arrays, slices are always one-dimensional but may be composed to construct
+higher-dimensional objects.
+With arrays of arrays, the inner arrays are, by construction, always the same length;
+however with slices of slices (or arrays of slices), the inner lengths may vary dynamically.
+Moreover, the inner slices must be initialized individually.
+</p>
+
+<h3 id="Struct_types">Struct types</h3>
+
+<p>
+A struct is a sequence of named elements, called fields, each of which has a
+name and a type. Field names may be specified explicitly (IdentifierList) or
+implicitly (AnonymousField).
+Within a struct, non-<a href="#Blank_identifier">blank</a> field names must
+be <a href="#Uniqueness_of_identifiers">unique</a>.
+</p>
+
+<pre class="ebnf">
+StructType     = "struct" "{" { FieldDecl ";" } "}" .
+FieldDecl      = (IdentifierList Type | AnonymousField) [ Tag ] .
+AnonymousField = [ "*" ] TypeName .
+Tag            = string_lit .
+</pre>
+
+<pre>
+// An empty struct.
+struct {}
+
+// A struct with 6 fields.
+struct {
+	x, y int
+	u float32
+	_ float32  // padding
+	A *[]int
+	F func()
+}
+</pre>
+
+<p>
+A field declared with a type but no explicit field name is an <i>anonymous field</i>,
+also called an <i>embedded</i> field or an embedding of the type in the struct.
+An embedded type must be specified as
+a type name <code>T</code> or as a pointer to a non-interface type name <code>*T</code>,
+and <code>T</code> itself may not be
+a pointer type. The unqualified type name acts as the field name.
+</p>
+
+<pre>
+// A struct with four anonymous fields of type T1, *T2, P.T3 and *P.T4
+struct {
+	T1        // field name is T1
+	*T2       // field name is T2
+	P.T3      // field name is T3
+	*P.T4     // field name is T4
+	x, y int  // field names are x and y
+}
+</pre>
+
+<p>
+The following declaration is illegal because field names must be unique
+in a struct type:
+</p>
+
+<pre>
+struct {
+	T     // conflicts with anonymous field *T and *P.T
+	*T    // conflicts with anonymous field T and *P.T
+	*P.T  // conflicts with anonymous field T and *T
+}
+</pre>
+
+<p>
+A field or <a href="#Method_declarations">method</a> <code>f</code> of an
+anonymous field in a struct <code>x</code> is called <i>promoted</i> if
+<code>x.f</code> is a legal <a href="#Selectors">selector</a> that denotes
+that field or method <code>f</code>.
+</p>
+
+<p>
+Promoted fields act like ordinary fields
+of a struct except that they cannot be used as field names in
+<a href="#Composite_literals">composite literals</a> of the struct.
+</p>
+
+<p>
+Given a struct type <code>S</code> and a type named <code>T</code>,
+promoted methods are included in the method set of the struct as follows:
+</p>
+<ul>
+	<li>
+	If <code>S</code> contains an anonymous field <code>T</code>,
+	the <a href="#Method_sets">method sets</a> of <code>S</code>
+	and <code>*S</code> both include promoted methods with receiver
+	<code>T</code>. The method set of <code>*S</code> also
+	includes promoted methods with receiver <code>*T</code>.
+	</li>
+
+	<li>
+	If <code>S</code> contains an anonymous field <code>*T</code>,
+	the method sets of <code>S</code> and <code>*S</code> both
+	include promoted methods with receiver <code>T</code> or
+	<code>*T</code>.
+	</li>
+</ul>
+
+<p>
+A field declaration may be followed by an optional string literal <i>tag</i>,
+which becomes an attribute for all the fields in the corresponding
+field declaration. The tags are made
+visible through a <a href="/pkg/reflect/#StructTag">reflection interface</a>
+and take part in <a href="#Type_identity">type identity</a> for structs
+but are otherwise ignored.
+</p>
+
+<pre>
+// A struct corresponding to the TimeStamp protocol buffer.
+// The tag strings define the protocol buffer field numbers.
+struct {
+	microsec  uint64 "field 1"
+	serverIP6 uint64 "field 2"
+	process   string "field 3"
+}
+</pre>
+
+<h3 id="Pointer_types">Pointer types</h3>
+
+<p>
+A pointer type denotes the set of all pointers to <a href="#Variables">variables</a> of a given
+type, called the <i>base type</i> of the pointer.
+The value of an uninitialized pointer is <code>nil</code>.
+</p>
+
+<pre class="ebnf">
+PointerType = "*" BaseType .
+BaseType    = Type .
+</pre>
+
+<pre>
+*Point
+*[4]int
+</pre>
+
+<h3 id="Function_types">Function types</h3>
+
+<p>
+A function type denotes the set of all functions with the same parameter
+and result types. The value of an uninitialized variable of function type
+is <code>nil</code>.
+</p>
+
+<pre class="ebnf">
+FunctionType   = "func" Signature .
+Signature      = Parameters [ Result ] .
+Result         = Parameters | Type .
+Parameters     = "(" [ ParameterList [ "," ] ] ")" .
+ParameterList  = ParameterDecl { "," ParameterDecl } .
+ParameterDecl  = [ IdentifierList ] [ "..." ] Type .
+</pre>
+
+<p>
+Within a list of parameters or results, the names (IdentifierList)
+must either all be present or all be absent. If present, each name
+stands for one item (parameter or result) of the specified type and
+all non-<a href="#Blank_identifier">blank</a> names in the signature
+must be <a href="#Uniqueness_of_identifiers">unique</a>.
+If absent, each type stands for one item of that type.
+Parameter and result
+lists are always parenthesized except that if there is exactly
+one unnamed result it may be written as an unparenthesized type.
+</p>
+
+<p>
+The final parameter in a function signature may have
+a type prefixed with <code>...</code>.
+A function with such a parameter is called <i>variadic</i> and
+may be invoked with zero or more arguments for that parameter.
+</p>
+
+<pre>
+func()
+func(x int) int
+func(a, _ int, z float32) bool
+func(a, b int, z float32) (bool)
+func(prefix string, values ...int)
+func(a, b int, z float64, opt ...interface{}) (success bool)
+func(int, int, float64) (float64, *[]int)
+func(n int) func(p *T)
+</pre>
+
+
+<h3 id="Interface_types">Interface types</h3>
+
+<p>
+An interface type specifies a <a href="#Method_sets">method set</a> called its <i>interface</i>.
+A variable of interface type can store a value of any type with a method set
+that is any superset of the interface. Such a type is said to
+<i>implement the interface</i>.
+The value of an uninitialized variable of interface type is <code>nil</code>.
+</p>
+
+<pre class="ebnf">
+InterfaceType      = "interface" "{" { MethodSpec ";" } "}" .
+MethodSpec         = MethodName Signature | InterfaceTypeName .
+MethodName         = identifier .
+InterfaceTypeName  = TypeName .
+</pre>
+
+<p>
+As with all method sets, in an interface type, each method must have a
+<a href="#Uniqueness_of_identifiers">unique</a>
+non-<a href="#Blank_identifier">blank</a> name.
+</p>
+
+<pre>
+// A simple File interface
+interface {
+	Read(b Buffer) bool
+	Write(b Buffer) bool
+	Close()
+}
+</pre>
+
+<p>
+More than one type may implement an interface.
+For instance, if two types <code>S1</code> and <code>S2</code>
+have the method set
+</p>
+
+<pre>
+func (p T) Read(b Buffer) bool { return â€¦ }
+func (p T) Write(b Buffer) bool { return â€¦ }
+func (p T) Close() { â€¦ }
+</pre>
+
+<p>
+(where <code>T</code> stands for either <code>S1</code> or <code>S2</code>)
+then the <code>File</code> interface is implemented by both <code>S1</code> and
+<code>S2</code>, regardless of what other methods
+<code>S1</code> and <code>S2</code> may have or share.
+</p>
+
+<p>
+A type implements any interface comprising any subset of its methods
+and may therefore implement several distinct interfaces. For
+instance, all types implement the <i>empty interface</i>:
+</p>
+
+<pre>
+interface{}
+</pre>
+
+<p>
+Similarly, consider this interface specification,
+which appears within a <a href="#Type_declarations">type declaration</a>
+to define an interface called <code>Locker</code>:
+</p>
+
+<pre>
+type Locker interface {
+	Lock()
+	Unlock()
+}
+</pre>
+
+<p>
+If <code>S1</code> and <code>S2</code> also implement
+</p>
+
+<pre>
+func (p T) Lock() { â€¦ }
+func (p T) Unlock() { â€¦ }
+</pre>
+
+<p>
+they implement the <code>Locker</code> interface as well
+as the <code>File</code> interface.
+</p>
+
+<p>
+An interface <code>T</code> may use a (possibly qualified) interface type
+name <code>E</code> in place of a method specification. This is called
+<i>embedding</i> interface <code>E</code> in <code>T</code>; it adds
+all (exported and non-exported) methods of <code>E</code> to the interface
+<code>T</code>.
+</p>
+
+<pre>
+type ReadWriter interface {
+	Read(b Buffer) bool
+	Write(b Buffer) bool
+}
+
+type File interface {
+	ReadWriter  // same as adding the methods of ReadWriter
+	Locker      // same as adding the methods of Locker
+	Close()
+}
+
+type LockedFile interface {
+	Locker
+	File        // illegal: Lock, Unlock not unique
+	Lock()      // illegal: Lock not unique
+}
+</pre>
+
+<p>
+An interface type <code>T</code> may not embed itself
+or any interface type that embeds <code>T</code>, recursively.
+</p>
+
+<pre>
+// illegal: Bad cannot embed itself
+type Bad interface {
+	Bad
+}
+
+// illegal: Bad1 cannot embed itself using Bad2
+type Bad1 interface {
+	Bad2
+}
+type Bad2 interface {
+	Bad1
+}
+</pre>
+
+<h3 id="Map_types">Map types</h3>
+
+<p>
+A map is an unordered group of elements of one type, called the
+element type, indexed by a set of unique <i>keys</i> of another type,
+called the key type.
+The value of an uninitialized map is <code>nil</code>.
+</p>
+
+<pre class="ebnf">
+MapType     = "map" "[" KeyType "]" ElementType .
+KeyType     = Type .
+</pre>
+
+<p>
+The <a href="#Comparison_operators">comparison operators</a>
+<code>==</code> and <code>!=</code> must be fully defined
+for operands of the key type; thus the key type must not be a function, map, or
+slice.
+If the key type is an interface type, these
+comparison operators must be defined for the dynamic key values;
+failure will cause a <a href="#Run_time_panics">run-time panic</a>.
+
+</p>
+
+<pre>
+map[string]int
+map[*T]struct{ x, y float64 }
+map[string]interface{}
+</pre>
+
+<p>
+The number of map elements is called its length.
+For a map <code>m</code>, it can be discovered using the
+built-in function <a href="#Length_and_capacity"><code>len</code></a>
+and may change during execution. Elements may be added during execution
+using <a href="#Assignments">assignments</a> and retrieved with
+<a href="#Index_expressions">index expressions</a>; they may be removed with the
+<a href="#Deletion_of_map_elements"><code>delete</code></a> built-in function.
+</p>
+<p>
+A new, empty map value is made using the built-in
+function <a href="#Making_slices_maps_and_channels"><code>make</code></a>,
+which takes the map type and an optional capacity hint as arguments:
+</p>
+
+<pre>
+make(map[string]int)
+make(map[string]int, 100)
+</pre>
+
+<p>
+The initial capacity does not bound its size:
+maps grow to accommodate the number of items
+stored in them, with the exception of <code>nil</code> maps.
+A <code>nil</code> map is equivalent to an empty map except that no elements
+may be added.
+
+<h3 id="Channel_types">Channel types</h3>
+
+<p>
+A channel provides a mechanism for
+<a href="#Go_statements">concurrently executing functions</a>
+to communicate by
+<a href="#Send_statements">sending</a> and
+<a href="#Receive_operator">receiving</a>
+values of a specified element type.
+The value of an uninitialized channel is <code>nil</code>.
+</p>
+
+<pre class="ebnf">
+ChannelType = ( "chan" | "chan" "&lt;-" | "&lt;-" "chan" ) ElementType .
+</pre>
+
+<p>
+The optional <code>&lt;-</code> operator specifies the channel <i>direction</i>,
+<i>send</i> or <i>receive</i>. If no direction is given, the channel is
+<i>bidirectional</i>.
+A channel may be constrained only to send or only to receive by
+<a href="#Conversions">conversion</a> or <a href="#Assignments">assignment</a>.
+</p>
+
+<pre>
+chan T          // can be used to send and receive values of type T
+chan&lt;- float64  // can only be used to send float64s
+&lt;-chan int      // can only be used to receive ints
+</pre>
+
+<p>
+The <code>&lt;-</code> operator associates with the leftmost <code>chan</code>
+possible:
+</p>
+
+<pre>
+chan&lt;- chan int    // same as chan&lt;- (chan int)
+chan&lt;- &lt;-chan int  // same as chan&lt;- (&lt;-chan int)
+&lt;-chan &lt;-chan int  // same as &lt;-chan (&lt;-chan int)
+chan (&lt;-chan int)
+</pre>
+
+<p>
+A new, initialized channel
+value can be made using the built-in function
+<a href="#Making_slices_maps_and_channels"><code>make</code></a>,
+which takes the channel type and an optional <i>capacity</i> as arguments:
+</p>
+
+<pre>
+make(chan int, 100)
+</pre>
+
+<p>
+The capacity, in number of elements, sets the size of the buffer in the channel.
+If the capacity is zero or absent, the channel is unbuffered and communication
+succeeds only when both a sender and receiver are ready. Otherwise, the channel
+is buffered and communication succeeds without blocking if the buffer
+is not full (sends) or not empty (receives).
+A <code>nil</code> channel is never ready for communication.
+</p>
+
+<p>
+A channel may be closed with the built-in function
+<a href="#Close"><code>close</code></a>.
+The multi-valued assignment form of the
+<a href="#Receive_operator">receive operator</a>
+reports whether a received value was sent before
+the channel was closed.
+</p>
+
+<p>
+A single channel may be used in
+<a href="#Send_statements">send statements</a>,
+<a href="#Receive_operator">receive operations</a>,
+and calls to the built-in functions
+<a href="#Length_and_capacity"><code>cap</code></a> and
+<a href="#Length_and_capacity"><code>len</code></a>
+by any number of goroutines without further synchronization.
+Channels act as first-in-first-out queues.
+For example, if one goroutine sends values on a channel
+and a second goroutine receives them, the values are
+received in the order sent.
+</p>
+
+<h2 id="Properties_of_types_and_values">Properties of types and values</h2>
+
+<h3 id="Type_identity">Type identity</h3>
+
+<p>
+Two types are either <i>identical</i> or <i>different</i>.
+</p>
+
+<p>
+Two <a href="#Types">named types</a> are identical if their type names originate in the same
+<a href="#Type_declarations">TypeSpec</a>.
+A named and an <a href="#Types">unnamed type</a> are always different. Two unnamed types are identical
+if the corresponding type literals are identical, that is, if they have the same
+literal structure and corresponding components have identical types. In detail:
+</p>
+
+<ul>
+	<li>Two array types are identical if they have identical element types and
+	    the same array length.</li>
+
+	<li>Two slice types are identical if they have identical element types.</li>
+
+	<li>Two struct types are identical if they have the same sequence of fields,
+	    and if corresponding fields have the same names, and identical types,
+	    and identical tags.
+	    Two anonymous fields are considered to have the same name. Lower-case field
+	    names from different packages are always different.</li>
+
+	<li>Two pointer types are identical if they have identical base types.</li>
+
+	<li>Two function types are identical if they have the same number of parameters
+	    and result values, corresponding parameter and result types are
+	    identical, and either both functions are variadic or neither is.
+	    Parameter and result names are not required to match.</li>
+
+	<li>Two interface types are identical if they have the same set of methods
+	    with the same names and identical function types. Lower-case method names from
+	    different packages are always different. The order of the methods is irrelevant.</li>
+
+	<li>Two map types are identical if they have identical key and value types.</li>
+
+	<li>Two channel types are identical if they have identical value types and
+	    the same direction.</li>
+</ul>
+
+<p>
+Given the declarations
+</p>
+
+<pre>
+type (
+	T0 []string
+	T1 []string
+	T2 struct{ a, b int }
+	T3 struct{ a, c int }
+	T4 func(int, float64) *T0
+	T5 func(x int, y float64) *[]string
+)
+</pre>
+
+<p>
+these types are identical:
+</p>
+
+<pre>
+T0 and T0
+[]int and []int
+struct{ a, b *T5 } and struct{ a, b *T5 }
+func(x int, y float64) *[]string and func(int, float64) (result *[]string)
+</pre>
+
+<p>
+<code>T0</code> and <code>T1</code> are different because they are named types
+with distinct declarations; <code>func(int, float64) *T0</code> and
+<code>func(x int, y float64) *[]string</code> are different because <code>T0</code>
+is different from <code>[]string</code>.
+</p>
+
+
+<h3 id="Assignability">Assignability</h3>
+
+<p>
+A value <code>x</code> is <i>assignable</i> to a <a href="#Variables">variable</a> of type <code>T</code>
+("<code>x</code> is assignable to <code>T</code>") in any of these cases:
+</p>
+
+<ul>
+<li>
+<code>x</code>'s type is identical to <code>T</code>.
+</li>
+<li>
+<code>x</code>'s type <code>V</code> and <code>T</code> have identical
+<a href="#Types">underlying types</a> and at least one of <code>V</code>
+or <code>T</code> is not a <a href="#Types">named type</a>.
+</li>
+<li>
+<code>T</code> is an interface type and
+<code>x</code> <a href="#Interface_types">implements</a> <code>T</code>.
+</li>
+<li>
+<code>x</code> is a bidirectional channel value, <code>T</code> is a channel type,
+<code>x</code>'s type <code>V</code> and <code>T</code> have identical element types,
+and at least one of <code>V</code> or <code>T</code> is not a named type.
+</li>
+<li>
+<code>x</code> is the predeclared identifier <code>nil</code> and <code>T</code>
+is a pointer, function, slice, map, channel, or interface type.
+</li>
+<li>
+<code>x</code> is an untyped <a href="#Constants">constant</a> representable
+by a value of type <code>T</code>.
+</li>
+</ul>
+
+
+<h2 id="Blocks">Blocks</h2>
+
+<p>
+A <i>block</i> is a possibly empty sequence of declarations and statements
+within matching brace brackets.
+</p>
+
+<pre class="ebnf">
+Block = "{" StatementList "}" .
+StatementList = { Statement ";" } .
+</pre>
+
+<p>
+In addition to explicit blocks in the source code, there are implicit blocks:
+</p>
+
+<ol>
+	<li>The <i>universe block</i> encompasses all Go source text.</li>
+
+	<li>Each <a href="#Packages">package</a> has a <i>package block</i> containing all
+	    Go source text for that package.</li>
+
+	<li>Each file has a <i>file block</i> containing all Go source text
+	    in that file.</li>
+
+	<li>Each <a href="#If_statements">"if"</a>,
+	    <a href="#For_statements">"for"</a>, and
+	    <a href="#Switch_statements">"switch"</a>
+	    statement is considered to be in its own implicit block.</li>
+
+	<li>Each clause in a <a href="#Switch_statements">"switch"</a>
+	    or <a href="#Select_statements">"select"</a> statement
+	    acts as an implicit block.</li>
+</ol>
+
+<p>
+Blocks nest and influence <a href="#Declarations_and_scope">scoping</a>.
+</p>
+
+
+<h2 id="Declarations_and_scope">Declarations and scope</h2>
+
+<p>
+A <i>declaration</i> binds a non-<a href="#Blank_identifier">blank</a> identifier to a
+<a href="#Constant_declarations">constant</a>,
+<a href="#Type_declarations">type</a>,
+<a href="#Variable_declarations">variable</a>,
+<a href="#Function_declarations">function</a>,
+<a href="#Labeled_statements">label</a>, or
+<a href="#Import_declarations">package</a>.
+Every identifier in a program must be declared.
+No identifier may be declared twice in the same block, and
+no identifier may be declared in both the file and package block.
+</p>
+
+<p>
+The <a href="#Blank_identifier">blank identifier</a> may be used like any other identifier
+in a declaration, but it does not introduce a binding and thus is not declared.
+In the package block, the identifier <code>init</code> may only be used for
+<a href="#Package_initialization"><code>init</code> function</a> declarations,
+and like the blank identifier it does not introduce a new binding.
+</p>
+
+<pre class="ebnf">
+Declaration   = ConstDecl | TypeDecl | VarDecl .
+TopLevelDecl  = Declaration | FunctionDecl | MethodDecl .
+</pre>
+
+<p>
+The <i>scope</i> of a declared identifier is the extent of source text in which
+the identifier denotes the specified constant, type, variable, function, label, or package.
+</p>
+
+<p>
+Go is lexically scoped using <a href="#Blocks">blocks</a>:
+</p>
+
+<ol>
+	<li>The scope of a <a href="#Predeclared_identifiers">predeclared identifier</a> is the universe block.</li>
+
+	<li>The scope of an identifier denoting a constant, type, variable,
+	    or function (but not method) declared at top level (outside any
+	    function) is the package block.</li>
+
+	<li>The scope of the package name of an imported package is the file block
+	    of the file containing the import declaration.</li>
+
+	<li>The scope of an identifier denoting a method receiver, function parameter,
+	    or result variable is the function body.</li>
+
+	<li>The scope of a constant or variable identifier declared
+	    inside a function begins at the end of the ConstSpec or VarSpec
+	    (ShortVarDecl for short variable declarations)
+	    and ends at the end of the innermost containing block.</li>
+
+	<li>The scope of a type identifier declared inside a function
+	    begins at the identifier in the TypeSpec
+	    and ends at the end of the innermost containing block.</li>
+</ol>
+
+<p>
+An identifier declared in a block may be redeclared in an inner block.
+While the identifier of the inner declaration is in scope, it denotes
+the entity declared by the inner declaration.
+</p>
+
+<p>
+The <a href="#Package_clause">package clause</a> is not a declaration; the package name
+does not appear in any scope. Its purpose is to identify the files belonging
+to the same <a href="#Packages">package</a> and to specify the default package name for import
+declarations.
+</p>
+
+
+<h3 id="Label_scopes">Label scopes</h3>
+
+<p>
+Labels are declared by <a href="#Labeled_statements">labeled statements</a> and are
+used in the <a href="#Break_statements">"break"</a>,
+<a href="#Continue_statements">"continue"</a>, and
+<a href="#Goto_statements">"goto"</a> statements.
+It is illegal to define a label that is never used.
+In contrast to other identifiers, labels are not block scoped and do
+not conflict with identifiers that are not labels. The scope of a label
+is the body of the function in which it is declared and excludes
+the body of any nested function.
+</p>
+
+
+<h3 id="Blank_identifier">Blank identifier</h3>
+
+<p>
+The <i>blank identifier</i> is represented by the underscore character <code>_</code>.
+It serves as an anonymous placeholder instead of a regular (non-blank)
+identifier and has special meaning in <a href="#Declarations_and_scope">declarations</a>,
+as an <a href="#Operands">operand</a>, and in <a href="#Assignments">assignments</a>.
+</p>
+
+
+<h3 id="Predeclared_identifiers">Predeclared identifiers</h3>
+
+<p>
+The following identifiers are implicitly declared in the
+<a href="#Blocks">universe block</a>:
+</p>
+<pre class="grammar">
+Types:
+	bool byte complex64 complex128 error float32 float64
+	int int8 int16 int32 int64 rune string
+	uint uint8 uint16 uint32 uint64 uintptr
+
+Constants:
+	true false iota
+
+Zero value:
+	nil
+
+Functions:
+	append cap close complex copy delete imag len
+	make new panic print println real recover
+</pre>
+
+
+<h3 id="Exported_identifiers">Exported identifiers</h3>
+
+<p>
+An identifier may be <i>exported</i> to permit access to it from another package.
+An identifier is exported if both:
+</p>
+<ol>
+	<li>the first character of the identifier's name is a Unicode upper case
+	letter (Unicode class "Lu"); and</li>
+	<li>the identifier is declared in the <a href="#Blocks">package block</a>
+	or it is a <a href="#Struct_types">field name</a> or
+	<a href="#MethodName">method name</a>.</li>
+</ol>
+<p>
+All other identifiers are not exported.
+</p>
+
+
+<h3 id="Uniqueness_of_identifiers">Uniqueness of identifiers</h3>
+
+<p>
+Given a set of identifiers, an identifier is called <i>unique</i> if it is
+<i>different</i> from every other in the set.
+Two identifiers are different if they are spelled differently, or if they
+appear in different <a href="#Packages">packages</a> and are not
+<a href="#Exported_identifiers">exported</a>. Otherwise, they are the same.
+</p>
+
+<h3 id="Constant_declarations">Constant declarations</h3>
+
+<p>
+A constant declaration binds a list of identifiers (the names of
+the constants) to the values of a list of <a href="#Constant_expressions">constant expressions</a>.
+The number of identifiers must be equal
+to the number of expressions, and the <i>n</i>th identifier on
+the left is bound to the value of the <i>n</i>th expression on the
+right.
+</p>
+
+<pre class="ebnf">
+ConstDecl      = "const" ( ConstSpec | "(" { ConstSpec ";" } ")" ) .
+ConstSpec      = IdentifierList [ [ Type ] "=" ExpressionList ] .
+
+IdentifierList = identifier { "," identifier } .
+ExpressionList = Expression { "," Expression } .
+</pre>
+
+<p>
+If the type is present, all constants take the type specified, and
+the expressions must be <a href="#Assignability">assignable</a> to that type.
+If the type is omitted, the constants take the
+individual types of the corresponding expressions.
+If the expression values are untyped <a href="#Constants">constants</a>,
+the declared constants remain untyped and the constant identifiers
+denote the constant values. For instance, if the expression is a
+floating-point literal, the constant identifier denotes a floating-point
+constant, even if the literal's fractional part is zero.
+</p>
+
+<pre>
+const Pi float64 = 3.14159265358979323846
+const zero = 0.0         // untyped floating-point constant
+const (
+	size int64 = 1024
+	eof        = -1  // untyped integer constant
+)
+const a, b, c = 3, 4, "foo"  // a = 3, b = 4, c = "foo", untyped integer and string constants
+const u, v float32 = 0, 3    // u = 0.0, v = 3.0
+</pre>
+
+<p>
+Within a parenthesized <code>const</code> declaration list the
+expression list may be omitted from any but the first declaration.
+Such an empty list is equivalent to the textual substitution of the
+first preceding non-empty expression list and its type if any.
+Omitting the list of expressions is therefore equivalent to
+repeating the previous list.  The number of identifiers must be equal
+to the number of expressions in the previous list.
+Together with the <a href="#Iota"><code>iota</code> constant generator</a>
+this mechanism permits light-weight declaration of sequential values:
+</p>
+
+<pre>
+const (
+	Sunday = iota
+	Monday
+	Tuesday
+	Wednesday
+	Thursday
+	Friday
+	Partyday
+	numberOfDays  // this constant is not exported
+)
+</pre>
+
+
+<h3 id="Iota">Iota</h3>
+
+<p>
+Within a <a href="#Constant_declarations">constant declaration</a>, the predeclared identifier
+<code>iota</code> represents successive untyped integer <a href="#Constants">
+constants</a>. It is reset to 0 whenever the reserved word <code>const</code>
+appears in the source and increments after each <a href="#ConstSpec">ConstSpec</a>.
+It can be used to construct a set of related constants:
+</p>
+
+<pre>
+const (  // iota is reset to 0
+	c0 = iota  // c0 == 0
+	c1 = iota  // c1 == 1
+	c2 = iota  // c2 == 2
+)
+
+const (
+	a = 1 &lt;&lt; iota  // a == 1 (iota has been reset)
+	b = 1 &lt;&lt; iota  // b == 2
+	c = 1 &lt;&lt; iota  // c == 4
+)
+
+const (
+	u         = iota * 42  // u == 0     (untyped integer constant)
+	v float64 = iota * 42  // v == 42.0  (float64 constant)
+	w         = iota * 42  // w == 84    (untyped integer constant)
+)
+
+const x = iota  // x == 0 (iota has been reset)
+const y = iota  // y == 0 (iota has been reset)
+</pre>
+
+<p>
+Within an ExpressionList, the value of each <code>iota</code> is the same because
+it is only incremented after each ConstSpec:
+</p>
+
+<pre>
+const (
+	bit0, mask0 = 1 &lt;&lt; iota, 1&lt;&lt;iota - 1  // bit0 == 1, mask0 == 0
+	bit1, mask1                           // bit1 == 2, mask1 == 1
+	_, _                                  // skips iota == 2
+	bit3, mask3                           // bit3 == 8, mask3 == 7
+)
+</pre>
+
+<p>
+This last example exploits the implicit repetition of the
+last non-empty expression list.
+</p>
+
+
+<h3 id="Type_declarations">Type declarations</h3>
+
+<p>
+A type declaration binds an identifier, the <i>type name</i>, to a new type
+that has the same <a href="#Types">underlying type</a> as an existing type,
+and operations defined for the existing type are also defined for the new type.
+The new type is <a href="#Type_identity">different</a> from the existing type.
+</p>
+
+<pre class="ebnf">
+TypeDecl     = "type" ( TypeSpec | "(" { TypeSpec ";" } ")" ) .
+TypeSpec     = identifier Type .
+</pre>
+
+<pre>
+type IntArray [16]int
+
+type (
+	Point struct{ x, y float64 }
+	Polar Point
+)
+
+type TreeNode struct {
+	left, right *TreeNode
+	value *Comparable
+}
+
+type Block interface {
+	BlockSize() int
+	Encrypt(src, dst []byte)
+	Decrypt(src, dst []byte)
+}
+</pre>
+
+<p>
+The declared type does not inherit any <a href="#Method_declarations">methods</a>
+bound to the existing type, but the <a href="#Method_sets">method set</a>
+of an interface type or of elements of a composite type remains unchanged:
+</p>
+
+<pre>
+// A Mutex is a data type with two methods, Lock and Unlock.
+type Mutex struct         { /* Mutex fields */ }
+func (m *Mutex) Lock()    { /* Lock implementation */ }
+func (m *Mutex) Unlock()  { /* Unlock implementation */ }
+
+// NewMutex has the same composition as Mutex but its method set is empty.
+type NewMutex Mutex
+
+// The method set of the <a href="#Pointer_types">base type</a> of PtrMutex remains unchanged,
+// but the method set of PtrMutex is empty.
+type PtrMutex *Mutex
+
+// The method set of *PrintableMutex contains the methods
+// Lock and Unlock bound to its anonymous field Mutex.
+type PrintableMutex struct {
+	Mutex
+}
+
+// MyBlock is an interface type that has the same method set as Block.
+type MyBlock Block
+</pre>
+
+<p>
+A type declaration may be used to define a different boolean, numeric, or string
+type and attach methods to it:
+</p>
+
+<pre>
+type TimeZone int
+
+const (
+	EST TimeZone = -(5 + iota)
+	CST
+	MST
+	PST
+)
+
+func (tz TimeZone) String() string {
+	return fmt.Sprintf("GMT+%dh", tz)
+}
+</pre>
+
+
+<h3 id="Variable_declarations">Variable declarations</h3>
+
+<p>
+A variable declaration creates one or more variables, binds corresponding
+identifiers to them, and gives each a type and an initial value.
+</p>
+
+<pre class="ebnf">
+VarDecl     = "var" ( VarSpec | "(" { VarSpec ";" } ")" ) .
+VarSpec     = IdentifierList ( Type [ "=" ExpressionList ] | "=" ExpressionList ) .
+</pre>
+
+<pre>
+var i int
+var U, V, W float64
+var k = 0
+var x, y float32 = -1, -2
+var (
+	i       int
+	u, v, s = 2.0, 3.0, "bar"
+)
+var re, im = complexSqrt(-1)
+var _, found = entries[name]  // map lookup; only interested in "found"
+</pre>
+
+<p>
+If a list of expressions is given, the variables are initialized
+with the expressions following the rules for <a href="#Assignments">assignments</a>.
+Otherwise, each variable is initialized to its <a href="#The_zero_value">zero value</a>.
+</p>
+
+<p>
+If a type is present, each variable is given that type.
+Otherwise, each variable is given the type of the corresponding
+initialization value in the assignment.
+If that value is an untyped constant, it is first
+<a href="#Conversions">converted</a> to its <a href="#Constants">default type</a>;
+if it is an untyped boolean value, it is first converted to type <code>bool</code>.
+The predeclared value <code>nil</code> cannot be used to initialize a variable
+with no explicit type.
+</p>
+
+<pre>
+var d = math.Sin(0.5)  // d is int64
+var i = 42             // i is int
+var t, ok = x.(T)      // t is T, ok is bool
+var n = nil            // illegal
+</pre>
+
+<p>
+Implementation restriction: A compiler may make it illegal to declare a variable
+inside a <a href="#Function_declarations">function body</a> if the variable is
+never used.
+</p>
+
+<h3 id="Short_variable_declarations">Short variable declarations</h3>
+
+<p>
+A <i>short variable declaration</i> uses the syntax:
+</p>
+
+<pre class="ebnf">
+ShortVarDecl = IdentifierList ":=" ExpressionList .
+</pre>
+
+<p>
+It is shorthand for a regular <a href="#Variable_declarations">variable declaration</a>
+with initializer expressions but no types:
+</p>
+
+<pre class="grammar">
+"var" IdentifierList = ExpressionList .
+</pre>
+
+<pre>
+i, j := 0, 10
+f := func() int { return 7 }
+ch := make(chan int)
+r, w := os.Pipe(fd)  // os.Pipe() returns two values
+_, y, _ := coord(p)  // coord() returns three values; only interested in y coordinate
+</pre>
+
+<p>
+Unlike regular variable declarations, a short variable declaration may redeclare variables provided they
+were originally declared earlier in the same block with the same type, and at
+least one of the non-<a href="#Blank_identifier">blank</a> variables is new.  As a consequence, redeclaration
+can only appear in a multi-variable short declaration.
+Redeclaration does not introduce a new
+variable; it just assigns a new value to the original.
+</p>
+
+<pre>
+field1, offset := nextField(str, 0)
+field2, offset := nextField(str, offset)  // redeclares offset
+a, a := 1, 2                              // illegal: double declaration of a or no new variable if a was declared elsewhere
+</pre>
+
+<p>
+Short variable declarations may appear only inside functions.
+In some contexts such as the initializers for
+<a href="#If_statements">"if"</a>,
+<a href="#For_statements">"for"</a>, or
+<a href="#Switch_statements">"switch"</a> statements,
+they can be used to declare local temporary variables.
+</p>
+
+<h3 id="Function_declarations">Function declarations</h3>
+
+<p>
+A function declaration binds an identifier, the <i>function name</i>,
+to a function.
+</p>
+
+<pre class="ebnf">
+FunctionDecl = "func" FunctionName ( Function | Signature ) .
+FunctionName = identifier .
+Function     = Signature FunctionBody .
+FunctionBody = Block .
+</pre>
+
+<p>
+If the function's <a href="#Function_types">signature</a> declares
+result parameters, the function body's statement list must end in
+a <a href="#Terminating_statements">terminating statement</a>.
+</p>
+
+<pre>
+func findMarker(c &lt;-chan int) int {
+	for i := range c {
+		if x := &lt;-c; isMarker(x) {
+			return x
+		}
+	}
+	// invalid: missing return statement.
+}
+</pre>
+
+<p>
+A function declaration may omit the body. Such a declaration provides the
+signature for a function implemented outside Go, such as an assembly routine.
+</p>
+
+<pre>
+func min(x int, y int) int {
+	if x &lt; y {
+		return x
+	}
+	return y
+}
+
+func flushICache(begin, end uintptr)  // implemented externally
+</pre>
+
+<h3 id="Method_declarations">Method declarations</h3>
+
+<p>
+A method is a <a href="#Function_declarations">function</a> with a <i>receiver</i>.
+A method declaration binds an identifier, the <i>method name</i>, to a method,
+and associates the method with the receiver's <i>base type</i>.
+</p>
+
+<pre class="ebnf">
+MethodDecl   = "func" Receiver MethodName ( Function | Signature ) .
+Receiver     = Parameters .
+</pre>
+
+<p>
+The receiver is specified via an extra parameter section preceeding the method
+name. That parameter section must declare a single parameter, the receiver.
+Its type must be of the form <code>T</code> or <code>*T</code> (possibly using
+parentheses) where <code>T</code> is a type name. The type denoted by <code>T</code> is called
+the receiver <i>base type</i>; it must not be a pointer or interface type and
+it must be declared in the same package as the method.
+The method is said to be <i>bound</i> to the base type and the method name
+is visible only within selectors for that type.
+</p>
+
+<p>
+A non-<a href="#Blank_identifier">blank</a> receiver identifier must be
+<a href="#Uniqueness_of_identifiers">unique</a> in the method signature.
+If the receiver's value is not referenced inside the body of the method,
+its identifier may be omitted in the declaration. The same applies in
+general to parameters of functions and methods.
+</p>
+
+<p>
+For a base type, the non-blank names of methods bound to it must be unique.
+If the base type is a <a href="#Struct_types">struct type</a>,
+the non-blank method and field names must be distinct.
+</p>
+
+<p>
+Given type <code>Point</code>, the declarations
+</p>
+
+<pre>
+func (p *Point) Length() float64 {
+	return math.Sqrt(p.x * p.x + p.y * p.y)
+}
+
+func (p *Point) Scale(factor float64) {
+	p.x *= factor
+	p.y *= factor
+}
+</pre>
+
+<p>
+bind the methods <code>Length</code> and <code>Scale</code>,
+with receiver type <code>*Point</code>,
+to the base type <code>Point</code>.
+</p>
+
+<p>
+The type of a method is the type of a function with the receiver as first
+argument.  For instance, the method <code>Scale</code> has type
+</p>
+
+<pre>
+func(p *Point, factor float64)
+</pre>
+
+<p>
+However, a function declared this way is not a method.
+</p>
+
+
+<h2 id="Expressions">Expressions</h2>
+
+<p>
+An expression specifies the computation of a value by applying
+operators and functions to operands.
+</p>
+
+<h3 id="Operands">Operands</h3>
+
+<p>
+Operands denote the elementary values in an expression. An operand may be a
+literal, a (possibly <a href="#Qualified_identifiers">qualified</a>)
+non-<a href="#Blank_identifier">blank</a> identifier denoting a
+<a href="#Constant_declarations">constant</a>,
+<a href="#Variable_declarations">variable</a>, or
+<a href="#Function_declarations">function</a>,
+a <a href="#Method_expressions">method expression</a> yielding a function,
+or a parenthesized expression.
+</p>
+
+<p>
+The <a href="#Blank_identifier">blank identifier</a> may appear as an
+operand only on the left-hand side of an <a href="#Assignments">assignment</a>.
+</p>
+
+<pre class="ebnf">
+Operand     = Literal | OperandName | MethodExpr | "(" Expression ")" .
+Literal     = BasicLit | CompositeLit | FunctionLit .
+BasicLit    = int_lit | float_lit | imaginary_lit | rune_lit | string_lit .
+OperandName = identifier | QualifiedIdent.
+</pre>
+
+<h3 id="Qualified_identifiers">Qualified identifiers</h3>
+
+<p>
+A qualified identifier is an identifier qualified with a package name prefix.
+Both the package name and the identifier must not be
+<a href="#Blank_identifier">blank</a>.
+</p>
+
+<pre class="ebnf">
+QualifiedIdent = PackageName "." identifier .
+</pre>
+
+<p>
+A qualified identifier accesses an identifier in a different package, which
+must be <a href="#Import_declarations">imported</a>.
+The identifier must be <a href="#Exported_identifiers">exported</a> and
+declared in the <a href="#Blocks">package block</a> of that package.
+</p>
+
+<pre>
+math.Sin	// denotes the Sin function in package math
+</pre>
+
+<h3 id="Composite_literals">Composite literals</h3>
+
+<p>
+Composite literals construct values for structs, arrays, slices, and maps
+and create a new value each time they are evaluated.
+They consist of the type of the value
+followed by a brace-bound list of composite elements. An element may be
+a single expression or a key-value pair.
+</p>
+
+<pre class="ebnf">
+CompositeLit  = LiteralType LiteralValue .
+LiteralType   = StructType | ArrayType | "[" "..." "]" ElementType |
+                SliceType | MapType | TypeName .
+LiteralValue  = "{" [ ElementList [ "," ] ] "}" .
+ElementList   = Element { "," Element } .
+Element       = [ Key ":" ] Value .
+Key           = FieldName | ElementIndex .
+FieldName     = identifier .
+ElementIndex  = Expression .
+Value         = Expression | LiteralValue .
+</pre>
+
+<p>
+The LiteralType must be a struct, array, slice, or map type
+(the grammar enforces this constraint except when the type is given
+as a TypeName).
+The types of the expressions must be <a href="#Assignability">assignable</a>
+to the respective field, element, and key types of the LiteralType;
+there is no additional conversion.
+The key is interpreted as a field name for struct literals,
+an index for array and slice literals, and a key for map literals.
+For map literals, all elements must have a key. It is an error
+to specify multiple elements with the same field name or
+constant key value.
+</p>
+
+<p>
+For struct literals the following rules apply:
+</p>
+<ul>
+	<li>A key must be a field name declared in the LiteralType.
+	</li>
+	<li>An element list that does not contain any keys must
+	    list an element for each struct field in the
+	    order in which the fields are declared.
+	</li>
+	<li>If any element has a key, every element must have a key.
+	</li>
+	<li>An element list that contains keys does not need to
+	    have an element for each struct field. Omitted fields
+	    get the zero value for that field.
+	</li>
+	<li>A literal may omit the element list; such a literal evaluates
+	    to the zero value for its type.
+	</li>
+	<li>It is an error to specify an element for a non-exported
+	    field of a struct belonging to a different package.
+	</li>
+</ul>
+
+<p>
+Given the declarations
+</p>
+<pre>
+type Point3D struct { x, y, z float64 }
+type Line struct { p, q Point3D }
+</pre>
+
+<p>
+one may write
+</p>
+
+<pre>
+origin := Point3D{}                            // zero value for Point3D
+line := Line{origin, Point3D{y: -4, z: 12.3}}  // zero value for line.q.x
+</pre>
+
+<p>
+For array and slice literals the following rules apply:
+</p>
+<ul>
+	<li>Each element has an associated integer index marking
+	    its position in the array.
+	</li>
+	<li>An element with a key uses the key as its index; the
+	    key must be a constant integer expression.
+	</li>
+	<li>An element without a key uses the previous element's index plus one.
+	    If the first element has no key, its index is zero.
+	</li>
+</ul>
+
+<p>
+<a href="#Address_operators">Taking the address</a> of a composite literal
+generates a pointer to a unique <a href="#Variables">variable</a> initialized
+with the literal's value.
+</p>
+<pre>
+var pointer *Point3D = &amp;Point3D{y: 1000}
+</pre>
+
+<p>
+The length of an array literal is the length specified in the LiteralType.
+If fewer elements than the length are provided in the literal, the missing
+elements are set to the zero value for the array element type.
+It is an error to provide elements with index values outside the index range
+of the array. The notation <code>...</code> specifies an array length equal
+to the maximum element index plus one.
+</p>
+
+<pre>
+buffer := [10]string{}             // len(buffer) == 10
+intSet := [6]int{1, 2, 3, 5}       // len(intSet) == 6
+days := [...]string{"Sat", "Sun"}  // len(days) == 2
+</pre>
+
+<p>
+A slice literal describes the entire underlying array literal.
+Thus, the length and capacity of a slice literal are the maximum
+element index plus one. A slice literal has the form
+</p>
+
+<pre>
+[]T{x1, x2, â€¦ xn}
+</pre>
+
+<p>
+and is shorthand for a slice operation applied to an array:
+</p>
+
+<pre>
+tmp := [n]T{x1, x2, â€¦ xn}
+tmp[0 : n]
+</pre>
+
+<p>
+Within a composite literal of array, slice, or map type <code>T</code>,
+elements that are themselves composite literals may elide the respective
+literal type if it is identical to the element type of <code>T</code>.
+Similarly, elements that are addresses of composite literals may elide
+the <code>&amp;T</code> when the element type is <code>*T</code>.
+</p>
+
+<pre>
+[...]Point{{1.5, -3.5}, {0, 0}}   // same as [...]Point{Point{1.5, -3.5}, Point{0, 0}}
+[][]int{{1, 2, 3}, {4, 5}}        // same as [][]int{[]int{1, 2, 3}, []int{4, 5}}
+
+[...]*Point{{1.5, -3.5}, {0, 0}}  // same as [...]*Point{&amp;Point{1.5, -3.5}, &amp;Point{0, 0}}
+</pre>
+
+<p>
+A parsing ambiguity arises when a composite literal using the
+TypeName form of the LiteralType appears as an operand between the
+<a href="#Keywords">keyword</a> and the opening brace of the block
+of an "if", "for", or "switch" statement, and the composite literal
+is not enclosed in parentheses, square brackets, or curly braces.
+In this rare case, the opening brace of the literal is erroneously parsed
+as the one introducing the block of statements. To resolve the ambiguity,
+the composite literal must appear within parentheses.
+</p>
+
+<pre>
+if x == (T{a,b,c}[i]) { â€¦ }
+if (x == T{a,b,c}[i]) { â€¦ }
+</pre>
+
+<p>
+Examples of valid array, slice, and map literals:
+</p>
+
+<pre>
+// list of prime numbers
+primes := []int{2, 3, 5, 7, 9, 2147483647}
+
+// vowels[ch] is true if ch is a vowel
+vowels := [128]bool{'a': true, 'e': true, 'i': true, 'o': true, 'u': true, 'y': true}
+
+// the array [10]float32{-1, 0, 0, 0, -0.1, -0.1, 0, 0, 0, -1}
+filter := [10]float32{-1, 4: -0.1, -0.1, 9: -1}
+
+// frequencies in Hz for equal-tempered scale (A4 = 440Hz)
+noteFrequency := map[string]float32{
+	"C0": 16.35, "D0": 18.35, "E0": 20.60, "F0": 21.83,
+	"G0": 24.50, "A0": 27.50, "B0": 30.87,
+}
+</pre>
+
+
+<h3 id="Function_literals">Function literals</h3>
+
+<p>
+A function literal represents an anonymous <a href="#Function_declarations">function</a>.
+</p>
+
+<pre class="ebnf">
+FunctionLit = "func" Function .
+</pre>
+
+<pre>
+func(a, b int, z float64) bool { return a*b &lt; int(z) }
+</pre>
+
+<p>
+A function literal can be assigned to a variable or invoked directly.
+</p>
+
+<pre>
+f := func(x, y int) int { return x + y }
+func(ch chan int) { ch &lt;- ACK }(replyChan)
+</pre>
+
+<p>
+Function literals are <i>closures</i>: they may refer to variables
+defined in a surrounding function. Those variables are then shared between
+the surrounding function and the function literal, and they survive as long
+as they are accessible.
+</p>
+
+
+<h3 id="Primary_expressions">Primary expressions</h3>
+
+<p>
+Primary expressions are the operands for unary and binary expressions.
+</p>
+
+<pre class="ebnf">
+PrimaryExpr =
+	Operand |
+	Conversion |
+	PrimaryExpr Selector |
+	PrimaryExpr Index |
+	PrimaryExpr Slice |
+	PrimaryExpr TypeAssertion |
+	PrimaryExpr Arguments .
+
+Selector       = "." identifier .
+Index          = "[" Expression "]" .
+Slice          = "[" ( [ Expression ] ":" [ Expression ] ) |
+                     ( [ Expression ] ":" Expression ":" Expression )
+                 "]" .
+TypeAssertion  = "." "(" Type ")" .
+Arguments      = "(" [ ( ExpressionList | Type [ "," ExpressionList ] ) [ "..." ] [ "," ] ] ")" .
+</pre>
+
+
+<pre>
+x
+2
+(s + ".txt")
+f(3.1415, true)
+Point{1, 2}
+m["foo"]
+s[i : j + 1]
+obj.color
+f.p[i].x()
+</pre>
+
+
+<h3 id="Selectors">Selectors</h3>
+
+<p>
+For a <a href="#Primary_expressions">primary expression</a> <code>x</code>
+that is not a <a href="#Package_clause">package name</a>, the
+<i>selector expression</i>
+</p>
+
+<pre>
+x.f
+</pre>
+
+<p>
+denotes the field or method <code>f</code> of the value <code>x</code>
+(or sometimes <code>*x</code>; see below).
+The identifier <code>f</code> is called the (field or method) <i>selector</i>;
+it must not be the <a href="#Blank_identifier">blank identifier</a>.
+The type of the selector expression is the type of <code>f</code>.
+If <code>x</code> is a package name, see the section on
+<a href="#Qualified_identifiers">qualified identifiers</a>.
+</p>
+
+<p>
+A selector <code>f</code> may denote a field or method <code>f</code> of
+a type <code>T</code>, or it may refer
+to a field or method <code>f</code> of a nested
+<a href="#Struct_types">anonymous field</a> of <code>T</code>.
+The number of anonymous fields traversed
+to reach <code>f</code> is called its <i>depth</i> in <code>T</code>.
+The depth of a field or method <code>f</code>
+declared in <code>T</code> is zero.
+The depth of a field or method <code>f</code> declared in
+an anonymous field <code>A</code> in <code>T</code> is the
+depth of <code>f</code> in <code>A</code> plus one.
+</p>
+
+<p>
+The following rules apply to selectors:
+</p>
+
+<ol>
+<li>
+For a value <code>x</code> of type <code>T</code> or <code>*T</code>
+where <code>T</code> is not a pointer or interface type,
+<code>x.f</code> denotes the field or method at the shallowest depth
+in <code>T</code> where there
+is such an <code>f</code>.
+If there is not exactly <a href="#Uniqueness_of_identifiers">one <code>f</code></a>
+with shallowest depth, the selector expression is illegal.
+</li>
+
+<li>
+For a value <code>x</code> of type <code>I</code> where <code>I</code>
+is an interface type, <code>x.f</code> denotes the actual method with name
+<code>f</code> of the dynamic value of <code>x</code>.
+If there is no method with name <code>f</code> in the
+<a href="#Method_sets">method set</a> of <code>I</code>, the selector
+expression is illegal.
+</li>
+
+<li>
+As an exception, if the type of <code>x</code> is a named pointer type
+and <code>(*x).f</code> is a valid selector expression denoting a field
+(but not a method), <code>x.f</code> is shorthand for <code>(*x).f</code>.
+</li>
+
+<li>
+In all other cases, <code>x.f</code> is illegal.
+</li>
+
+<li>
+If <code>x</code> is of pointer type and has the value
+<code>nil</code> and <code>x.f</code> denotes a struct field,
+assigning to or evaluating <code>x.f</code>
+causes a <a href="#Run_time_panics">run-time panic</a>.
+</li>
+
+<li>
+If <code>x</code> is of interface type and has the value
+<code>nil</code>, <a href="#Calls">calling</a> or
+<a href="#Method_values">evaluating</a> the method <code>x.f</code>
+causes a <a href="#Run_time_panics">run-time panic</a>.
+</li>
+</ol>
+
+<p>
+For example, given the declarations:
+</p>
+
+<pre>
+type T0 struct {
+	x int
+}
+
+func (*T0) M0()
+
+type T1 struct {
+	y int
+}
+
+func (T1) M1()
+
+type T2 struct {
+	z int
+	T1
+	*T0
+}
+
+func (*T2) M2()
+
+type Q *T2
+
+var t T2     // with t.T0 != nil
+var p *T2    // with p != nil and (*p).T0 != nil
+var q Q = p
+</pre>
+
+<p>
+one may write:
+</p>
+
+<pre>
+t.z          // t.z
+t.y          // t.T1.y
+t.x          // (*t.TO).x
+
+p.z          // (*p).z
+p.y          // (*p).T1.y
+p.x          // (*(*p).T0).x
+
+q.x          // (*(*q).T0).x        (*q).x is a valid field selector
+
+p.M2()       // p.M2()              M2 expects *T2 receiver
+p.M1()       // ((*p).T1).M1()      M1 expects T1 receiver
+p.M0()       // ((&(*p).T0)).M0()   M0 expects *T0 receiver, see section on Calls
+</pre>
+
+<p>
+but the following is invalid:
+</p>
+
+<pre>
+q.M0()       // (*q).M0 is valid but not a field selector
+</pre>
+
+
+<h3 id="Method_expressions">Method expressions</h3>
+
+<p>
+If <code>M</code> is in the <a href="#Method_sets">method set</a> of type <code>T</code>,
+<code>T.M</code> is a function that is callable as a regular function
+with the same arguments as <code>M</code> prefixed by an additional
+argument that is the receiver of the method.
+</p>
+
+<pre class="ebnf">
+MethodExpr    = ReceiverType "." MethodName .
+ReceiverType  = TypeName | "(" "*" TypeName ")" | "(" ReceiverType ")" .
+</pre>
+
+<p>
+Consider a struct type <code>T</code> with two methods,
+<code>Mv</code>, whose receiver is of type <code>T</code>, and
+<code>Mp</code>, whose receiver is of type <code>*T</code>.
+</p>
+
+<pre>
+type T struct {
+	a int
+}
+func (tv  T) Mv(a int) int         { return 0 }  // value receiver
+func (tp *T) Mp(f float32) float32 { return 1 }  // pointer receiver
+
+var t T
+</pre>
+
+<p>
+The expression
+</p>
+
+<pre>
+T.Mv
+</pre>
+
+<p>
+yields a function equivalent to <code>Mv</code> but
+with an explicit receiver as its first argument; it has signature
+</p>
+
+<pre>
+func(tv T, a int) int
+</pre>
+
+<p>
+That function may be called normally with an explicit receiver, so
+these five invocations are equivalent:
+</p>
+
+<pre>
+t.Mv(7)
+T.Mv(t, 7)
+(T).Mv(t, 7)
+f1 := T.Mv; f1(t, 7)
+f2 := (T).Mv; f2(t, 7)
+</pre>
+
+<p>
+Similarly, the expression
+</p>
+
+<pre>
+(*T).Mp
+</pre>
+
+<p>
+yields a function value representing <code>Mp</code> with signature
+</p>
+
+<pre>
+func(tp *T, f float32) float32
+</pre>
+
+<p>
+For a method with a value receiver, one can derive a function
+with an explicit pointer receiver, so
+</p>
+
+<pre>
+(*T).Mv
+</pre>
+
+<p>
+yields a function value representing <code>Mv</code> with signature
+</p>
+
+<pre>
+func(tv *T, a int) int
+</pre>
+
+<p>
+Such a function indirects through the receiver to create a value
+to pass as the receiver to the underlying method;
+the method does not overwrite the value whose address is passed in
+the function call.
+</p>
+
+<p>
+The final case, a value-receiver function for a pointer-receiver method,
+is illegal because pointer-receiver methods are not in the method set
+of the value type.
+</p>
+
+<p>
+Function values derived from methods are called with function call syntax;
+the receiver is provided as the first argument to the call.
+That is, given <code>f := T.Mv</code>, <code>f</code> is invoked
+as <code>f(t, 7)</code> not <code>t.f(7)</code>.
+To construct a function that binds the receiver, use a
+<a href="#Function_literals">function literal</a> or
+<a href="#Method_values">method value</a>.
+</p>
+
+<p>
+It is legal to derive a function value from a method of an interface type.
+The resulting function takes an explicit receiver of that interface type.
+</p>
+
+<h3 id="Method_values">Method values</h3>
+
+<p>
+If the expression <code>x</code> has static type <code>T</code> and
+<code>M</code> is in the <a href="#Method_sets">method set</a> of type <code>T</code>,
+<code>x.M</code> is called a <i>method value</i>.
+The method value <code>x.M</code> is a function value that is callable
+with the same arguments as a method call of <code>x.M</code>.
+The expression <code>x</code> is evaluated and saved during the evaluation of the
+method value; the saved copy is then used as the receiver in any calls,
+which may be executed later.
+</p>
+
+<p>
+The type <code>T</code> may be an interface or non-interface type.
+</p>
+
+<p>
+As in the discussion of <a href="#Method_expressions">method expressions</a> above,
+consider a struct type <code>T</code> with two methods,
+<code>Mv</code>, whose receiver is of type <code>T</code>, and
+<code>Mp</code>, whose receiver is of type <code>*T</code>.
+</p>
+
+<pre>
+type T struct {
+	a int
+}
+func (tv  T) Mv(a int) int         { return 0 }  // value receiver
+func (tp *T) Mp(f float32) float32 { return 1 }  // pointer receiver
+
+var t T
+var pt *T
+func makeT() T
+</pre>
+
+<p>
+The expression
+</p>
+
+<pre>
+t.Mv
+</pre>
+
+<p>
+yields a function value of type
+</p>
+
+<pre>
+func(int) int
+</pre>
+
+<p>
+These two invocations are equivalent:
+</p>
+
+<pre>
+t.Mv(7)
+f := t.Mv; f(7)
+</pre>
+
+<p>
+Similarly, the expression
+</p>
+
+<pre>
+pt.Mp
+</pre>
+
+<p>
+yields a function value of type
+</p>
+
+<pre>
+func(float32) float32
+</pre>
+
+<p>
+As with <a href="#Selectors">selectors</a>, a reference to a non-interface method with a value receiver
+using a pointer will automatically dereference that pointer: <code>pt.Mv</code> is equivalent to <code>(*pt).Mv</code>.
+</p>
+
+<p>
+As with <a href="#Calls">method calls</a>, a reference to a non-interface method with a pointer receiver
+using an addressable value will automatically take the address of that value: <code>t.Mp</code> is equivalent to <code>(&amp;t).Mp</code>.
+</p>
+
+<pre>
+f := t.Mv; f(7)   // like t.Mv(7)
+f := pt.Mp; f(7)  // like pt.Mp(7)
+f := pt.Mv; f(7)  // like (*pt).Mv(7)
+f := t.Mp; f(7)   // like (&amp;t).Mp(7)
+f := makeT().Mp   // invalid: result of makeT() is not addressable
+</pre>
+
+<p>
+Although the examples above use non-interface types, it is also legal to create a method value
+from a value of interface type.
+</p>
+
+<pre>
+var i interface { M(int) } = myVal
+f := i.M; f(7)  // like i.M(7)
+</pre>
+
+
+<h3 id="Index_expressions">Index expressions</h3>
+
+<p>
+A primary expression of the form
+</p>
+
+<pre>
+a[x]
+</pre>
+
+<p>
+denotes the element of the array, pointer to array, slice, string or map <code>a</code> indexed by <code>x</code>.
+The value <code>x</code> is called the <i>index</i> or <i>map key</i>, respectively.
+The following rules apply:
+</p>
+
+<p>
+If <code>a</code> is not a map:
+</p>
+<ul>
+	<li>the index <code>x</code> must be of integer type or untyped;
+	    it is <i>in range</i> if <code>0 &lt;= x &lt; len(a)</code>,
+	    otherwise it is <i>out of range</i></li>
+	<li>a <a href="#Constants">constant</a> index must be non-negative
+	    and representable by a value of type <code>int</code>
+</ul>
+
+<p>
+For <code>a</code> of <a href="#Array_types">array type</a> <code>A</code>:
+</p>
+<ul>
+	<li>a <a href="#Constants">constant</a> index must be in range</li>
+	<li>if <code>x</code> is out of range at run time,
+	    a <a href="#Run_time_panics">run-time panic</a> occurs</li>
+	<li><code>a[x]</code> is the array element at index <code>x</code> and the type of
+	    <code>a[x]</code> is the element type of <code>A</code></li>
+</ul>
+
+<p>
+For <code>a</code> of <a href="#Pointer_types">pointer</a> to array type:
+</p>
+<ul>
+	<li><code>a[x]</code> is shorthand for <code>(*a)[x]</code></li>
+</ul>
+
+<p>
+For <code>a</code> of <a href="#Slice_types">slice type</a> <code>S</code>:
+</p>
+<ul>
+	<li>if <code>x</code> is out of range at run time,
+	    a <a href="#Run_time_panics">run-time panic</a> occurs</li>
+	<li><code>a[x]</code> is the slice element at index <code>x</code> and the type of
+	    <code>a[x]</code> is the element type of <code>S</code></li>
+</ul>
+
+<p>
+For <code>a</code> of <a href="#String_types">string type</a>:
+</p>
+<ul>
+	<li>a <a href="#Constants">constant</a> index must be in range
+	    if the string <code>a</code> is also constant</li>
+	<li>if <code>x</code> is out of range at run time,
+	    a <a href="#Run_time_panics">run-time panic</a> occurs</li>
+	<li><code>a[x]</code> is the non-constant byte value at index <code>x</code> and the type of
+	    <code>a[x]</code> is <code>byte</code></li>
+	<li><code>a[x]</code> may not be assigned to</li>
+</ul>
+
+<p>
+For <code>a</code> of <a href="#Map_types">map type</a> <code>M</code>:
+</p>
+<ul>
+	<li><code>x</code>'s type must be
+	    <a href="#Assignability">assignable</a>
+	    to the key type of <code>M</code></li>
+	<li>if the map contains an entry with key <code>x</code>,
+	    <code>a[x]</code> is the map value with key <code>x</code>
+	    and the type of <code>a[x]</code> is the value type of <code>M</code></li>
+	<li>if the map is <code>nil</code> or does not contain such an entry,
+	    <code>a[x]</code> is the <a href="#The_zero_value">zero value</a>
+	    for the value type of <code>M</code></li>
+</ul>
+
+<p>
+Otherwise <code>a[x]</code> is illegal.
+</p>
+
+<p>
+An index expression on a map <code>a</code> of type <code>map[K]V</code>
+used in an <a href="#Assignments">assignment</a> or initialization of the special form
+</p>
+
+<pre>
+v, ok = a[x]
+v, ok := a[x]
+var v, ok = a[x]
+</pre>
+
+<p>
+yields an additional untyped boolean value. The value of <code>ok</code> is
+<code>true</code> if the key <code>x</code> is present in the map, and
+<code>false</code> otherwise.
+</p>
+
+<p>
+Assigning to an element of a <code>nil</code> map causes a
+<a href="#Run_time_panics">run-time panic</a>.
+</p>
+
+
+<h3 id="Slice_expressions">Slice expressions</h3>
+
+<p>
+Slice expressions construct a substring or slice from a string, array, pointer
+to array, or slice. There are two variants: a simple form that specifies a low
+and high bound, and a full form that also specifies a bound on the capacity.
+</p>
+
+<h4>Simple slice expressions</h4>
+
+<p>
+For a string, array, pointer to array, or slice <code>a</code>, the primary expression
+</p>
+
+<pre>
+a[low : high]
+</pre>
+
+<p>
+constructs a substring or slice. The <i>indices</i> <code>low</code> and
+<code>high</code> select which elements of operand <code>a</code> appear
+in the result. The result has indices starting at 0 and length equal to
+<code>high</code>&nbsp;-&nbsp;<code>low</code>.
+After slicing the array <code>a</code>
+</p>
+
+<pre>
+a := [5]int{1, 2, 3, 4, 5}
+s := a[1:4]
+</pre>
+
+<p>
+the slice <code>s</code> has type <code>[]int</code>, length 3, capacity 4, and elements
+</p>
+
+<pre>
+s[0] == 2
+s[1] == 3
+s[2] == 4
+</pre>
+
+<p>
+For convenience, any of the indices may be omitted. A missing <code>low</code>
+index defaults to zero; a missing <code>high</code> index defaults to the length of the
+sliced operand:
+</p>
+
+<pre>
+a[2:]  // same as a[2 : len(a)]
+a[:3]  // same as a[0 : 3]
+a[:]   // same as a[0 : len(a)]
+</pre>
+
+<p>
+If <code>a</code> is a pointer to an array, <code>a[low : high]</code> is shorthand for
+<code>(*a)[low : high]</code>.
+</p>
+
+<p>
+For arrays or strings, the indices are <i>in range</i> if
+<code>0</code> &lt;= <code>low</code> &lt;= <code>high</code> &lt;= <code>len(a)</code>,
+otherwise they are <i>out of range</i>.
+For slices, the upper index bound is the slice capacity <code>cap(a)</code> rather than the length.
+A <a href="#Constants">constant</a> index must be non-negative and representable by a value of type
+<code>int</code>; for arrays or constant strings, constant indices must also be in range.
+If both indices are constant, they must satisfy <code>low &lt;= high</code>.
+If the indices are out of range at run time, a <a href="#Run_time_panics">run-time panic</a> occurs.
+</p>
+
+<p>
+Except for <a href="#Constants">untyped strings</a>, if the sliced operand is a string or slice,
+the result of the slice operation is a non-constant value of the same type as the operand.
+For untyped string operands the result is a non-constant value of type <code>string</code>.
+If the sliced operand is an array, it must be <a href="#Address_operators">addressable</a>
+and the result of the slice operation is a slice with the same element type as the array.
+</p>
+
+<p>
+If the sliced operand of a valid slice expression is a <code>nil</code> slice, the result
+is a <code>nil</code> slice. Otherwise, the result shares its underlying array with the
+operand.
+</p>
+
+<h4>Full slice expressions</h4>
+
+<p>
+For an array, pointer to array, or slice <code>a</code> (but not a string), the primary expression
+</p>
+
+<pre>
+a[low : high : max]
+</pre>
+
+<p>
+constructs a slice of the same type, and with the same length and elements as the simple slice
+expression <code>a[low : high]</code>. Additionally, it controls the resulting slice's capacity
+by setting it to <code>max - low</code>. Only the first index may be omitted; it defaults to 0.
+After slicing the array <code>a</code>
+</p>
+
+<pre>
+a := [5]int{1, 2, 3, 4, 5}
+t := a[1:3:5]
+</pre>
+
+<p>
+the slice <code>t</code> has type <code>[]int</code>, length 2, capacity 4, and elements
+</p>
+
+<pre>
+t[0] == 2
+t[1] == 3
+</pre>
+
+<p>
+As for simple slice expressions, if <code>a</code> is a pointer to an array,
+<code>a[low : high : max]</code> is shorthand for <code>(*a)[low : high : max]</code>.
+If the sliced operand is an array, it must be <a href="#Address_operators">addressable</a>.
+</p>
+
+<p>
+The indices are <i>in range</i> if <code>0 &lt;= low &lt;= high &lt;= max &lt;= cap(a)</code>,
+otherwise they are <i>out of range</i>.
+A <a href="#Constants">constant</a> index must be non-negative and representable by a value of type
+<code>int</code>; for arrays, constant indices must also be in range.
+If multiple indices are constant, the constants that are present must be in range relative to each
+other.
+If the indices are out of range at run time, a <a href="#Run_time_panics">run-time panic</a> occurs.
+</p>
+
+<h3 id="Type_assertions">Type assertions</h3>
+
+<p>
+For an expression <code>x</code> of <a href="#Interface_types">interface type</a>
+and a type <code>T</code>, the primary expression
+</p>
+
+<pre>
+x.(T)
+</pre>
+
+<p>
+asserts that <code>x</code> is not <code>nil</code>
+and that the value stored in <code>x</code> is of type <code>T</code>.
+The notation <code>x.(T)</code> is called a <i>type assertion</i>.
+</p>
+<p>
+More precisely, if <code>T</code> is not an interface type, <code>x.(T)</code> asserts
+that the dynamic type of <code>x</code> is <a href="#Type_identity">identical</a>
+to the type <code>T</code>.
+In this case, <code>T</code> must <a href="#Method_sets">implement</a> the (interface) type of <code>x</code>;
+otherwise the type assertion is invalid since it is not possible for <code>x</code>
+to store a value of type <code>T</code>.
+If <code>T</code> is an interface type, <code>x.(T)</code> asserts that the dynamic type
+of <code>x</code> implements the interface <code>T</code>.
+</p>
+<p>
+If the type assertion holds, the value of the expression is the value
+stored in <code>x</code> and its type is <code>T</code>. If the type assertion is false,
+a <a href="#Run_time_panics">run-time panic</a> occurs.
+In other words, even though the dynamic type of <code>x</code>
+is known only at run time, the type of <code>x.(T)</code> is
+known to be <code>T</code> in a correct program.
+</p>
+
+<pre>
+var x interface{} = 7  // x has dynamic type int and value 7
+i := x.(int)           // i has type int and value 7
+
+type I interface { m() }
+var y I
+s := y.(string)        // illegal: string does not implement I (missing method m)
+r := y.(io.Reader)     // r has type io.Reader and y must implement both I and io.Reader
+</pre>
+
+<p>
+A type assertion used in an <a href="#Assignments">assignment</a> or initialization of the special form
+</p>
+
+<pre>
+v, ok = x.(T)
+v, ok := x.(T)
+var v, ok = x.(T)
+</pre>
+
+<p>
+yields an additional untyped boolean value. The value of <code>ok</code> is <code>true</code>
+if the assertion holds. Otherwise it is <code>false</code> and the value of <code>v</code> is
+the <a href="#The_zero_value">zero value</a> for type <code>T</code>.
+No run-time panic occurs in this case.
+</p>
+
+
+<h3 id="Calls">Calls</h3>
+
+<p>
+Given an expression <code>f</code> of function type
+<code>F</code>,
+</p>
+
+<pre>
+f(a1, a2, â€¦ an)
+</pre>
+
+<p>
+calls <code>f</code> with arguments <code>a1, a2, â€¦ an</code>.
+Except for one special case, arguments must be single-valued expressions
+<a href="#Assignability">assignable</a> to the parameter types of
+<code>F</code> and are evaluated before the function is called.
+The type of the expression is the result type
+of <code>F</code>.
+A method invocation is similar but the method itself
+is specified as a selector upon a value of the receiver type for
+the method.
+</p>
+
+<pre>
+math.Atan2(x, y)  // function call
+var pt *Point
+pt.Scale(3.5)     // method call with receiver pt
+</pre>
+
+<p>
+In a function call, the function value and arguments are evaluated in
+<a href="#Order_of_evaluation">the usual order</a>.
+After they are evaluated, the parameters of the call are passed by value to the function
+and the called function begins execution.
+The return parameters of the function are passed by value
+back to the calling function when the function returns.
+</p>
+
+<p>
+Calling a <code>nil</code> function value
+causes a <a href="#Run_time_panics">run-time panic</a>.
+</p>
+
+<p>
+As a special case, if the return values of a function or method
+<code>g</code> are equal in number and individually
+assignable to the parameters of another function or method
+<code>f</code>, then the call <code>f(g(<i>parameters_of_g</i>))</code>
+will invoke <code>f</code> after binding the return values of
+<code>g</code> to the parameters of <code>f</code> in order.  The call
+of <code>f</code> must contain no parameters other than the call of <code>g</code>,
+and <code>g</code> must have at least one return value.
+If <code>f</code> has a final <code>...</code> parameter, it is
+assigned the return values of <code>g</code> that remain after
+assignment of regular parameters.
+</p>
+
+<pre>
+func Split(s string, pos int) (string, string) {
+	return s[0:pos], s[pos:]
+}
+
+func Join(s, t string) string {
+	return s + t
+}
+
+if Join(Split(value, len(value)/2)) != value {
+	log.Panic("test fails")
+}
+</pre>
+
+<p>
+A method call <code>x.m()</code> is valid if the <a href="#Method_sets">method set</a>
+of (the type of) <code>x</code> contains <code>m</code> and the
+argument list can be assigned to the parameter list of <code>m</code>.
+If <code>x</code> is <a href="#Address_operators">addressable</a> and <code>&amp;x</code>'s method
+set contains <code>m</code>, <code>x.m()</code> is shorthand
+for <code>(&amp;x).m()</code>:
+</p>
+
+<pre>
+var p Point
+p.Scale(3.5)
+</pre>
+
+<p>
+There is no distinct method type and there are no method literals.
+</p>
+
+<h3 id="Passing_arguments_to_..._parameters">Passing arguments to <code>...</code> parameters</h3>
+
+<p>
+If <code>f</code> is <a href="#Function_types">variadic</a> with a final
+parameter <code>p</code> of type <code>...T</code>, then within <code>f</code>
+the type of <code>p</code> is equivalent to type <code>[]T</code>.
+If <code>f</code> is invoked with no actual arguments for <code>p</code>,
+the value passed to <code>p</code> is <code>nil</code>.
+Otherwise, the value passed is a new slice
+of type <code>[]T</code> with a new underlying array whose successive elements
+are the actual arguments, which all must be <a href="#Assignability">assignable</a>
+to <code>T</code>. The length and capacity of the slice is therefore
+the number of arguments bound to <code>p</code> and may differ for each
+call site.
+</p>
+
+<p>
+Given the function and calls
+</p>
+<pre>
+func Greeting(prefix string, who ...string)
+Greeting("nobody")
+Greeting("hello:", "Joe", "Anna", "Eileen")
+</pre>
+
+<p>
+within <code>Greeting</code>, <code>who</code> will have the value
+<code>nil</code> in the first call, and
+<code>[]string{"Joe", "Anna", "Eileen"}</code> in the second.
+</p>
+
+<p>
+If the final argument is assignable to a slice type <code>[]T</code>, it may be
+passed unchanged as the value for a <code>...T</code> parameter if the argument
+is followed by <code>...</code>. In this case no new slice is created.
+</p>
+
+<p>
+Given the slice <code>s</code> and call
+</p>
+
+<pre>
+s := []string{"James", "Jasmine"}
+Greeting("goodbye:", s...)
+</pre>
+
+<p>
+within <code>Greeting</code>, <code>who</code> will have the same value as <code>s</code>
+with the same underlying array.
+</p>
+
+
+<h3 id="Operators">Operators</h3>
+
+<p>
+Operators combine operands into expressions.
+</p>
+
+<pre class="ebnf">
+Expression = UnaryExpr | Expression binary_op UnaryExpr .
+UnaryExpr  = PrimaryExpr | unary_op UnaryExpr .
+
+binary_op  = "||" | "&amp;&amp;" | rel_op | add_op | mul_op .
+rel_op     = "==" | "!=" | "&lt;" | "&lt;=" | ">" | ">=" .
+add_op     = "+" | "-" | "|" | "^" .
+mul_op     = "*" | "/" | "%" | "&lt;&lt;" | "&gt;&gt;" | "&amp;" | "&amp;^" .
+
+unary_op   = "+" | "-" | "!" | "^" | "*" | "&amp;" | "&lt;-" .
+</pre>
+
+<p>
+Comparisons are discussed <a href="#Comparison_operators">elsewhere</a>.
+For other binary operators, the operand types must be <a href="#Type_identity">identical</a>
+unless the operation involves shifts or untyped <a href="#Constants">constants</a>.
+For operations involving constants only, see the section on
+<a href="#Constant_expressions">constant expressions</a>.
+</p>
+
+<p>
+Except for shift operations, if one operand is an untyped <a href="#Constants">constant</a>
+and the other operand is not, the constant is <a href="#Conversions">converted</a>
+to the type of the other operand.
+</p>
+
+<p>
+The right operand in a shift expression must have unsigned integer type
+or be an untyped constant that can be converted to unsigned integer type.
+If the left operand of a non-constant shift expression is an untyped constant,
+the type of the constant is what it would be if the shift expression were
+replaced by its left operand alone.
+</p>
+
+<pre>
+var s uint = 33
+var i = 1&lt;&lt;s           // 1 has type int
+var j int32 = 1&lt;&lt;s     // 1 has type int32; j == 0
+var k = uint64(1&lt;&lt;s)   // 1 has type uint64; k == 1&lt;&lt;33
+var m int = 1.0&lt;&lt;s     // 1.0 has type int
+var n = 1.0&lt;&lt;s != i    // 1.0 has type int; n == false if ints are 32bits in size
+var o = 1&lt;&lt;s == 2&lt;&lt;s   // 1 and 2 have type int; o == true if ints are 32bits in size
+var p = 1&lt;&lt;s == 1&lt;&lt;33  // illegal if ints are 32bits in size: 1 has type int, but 1&lt;&lt;33 overflows int
+var u = 1.0&lt;&lt;s         // illegal: 1.0 has type float64, cannot shift
+var u1 = 1.0&lt;&lt;s != 0   // illegal: 1.0 has type float64, cannot shift
+var u2 = 1&lt;&lt;s != 1.0   // illegal: 1 has type float64, cannot shift
+var v float32 = 1&lt;&lt;s   // illegal: 1 has type float32, cannot shift
+var w int64 = 1.0&lt;&lt;33  // 1.0&lt;&lt;33 is a constant shift expression
+</pre>
+
+<h3 id="Operator_precedence">Operator precedence</h3>
+<p>
+Unary operators have the highest precedence.
+As the  <code>++</code> and <code>--</code> operators form
+statements, not expressions, they fall
+outside the operator hierarchy.
+As a consequence, statement <code>*p++</code> is the same as <code>(*p)++</code>.
+<p>
+There are five precedence levels for binary operators.
+Multiplication operators bind strongest, followed by addition
+operators, comparison operators, <code>&amp;&amp;</code> (logical AND),
+and finally <code>||</code> (logical OR):
+</p>
+
+<pre class="grammar">
+Precedence    Operator
+    5             *  /  %  &lt;&lt;  &gt;&gt;  &amp;  &amp;^
+    4             +  -  |  ^
+    3             ==  !=  &lt;  &lt;=  &gt;  &gt;=
+    2             &amp;&amp;
+    1             ||
+</pre>
+
+<p>
+Binary operators of the same precedence associate from left to right.
+For instance, <code>x / y * z</code> is the same as <code>(x / y) * z</code>.
+</p>
+
+<pre>
++x
+23 + 3*x[i]
+x &lt;= f()
+^a &gt;&gt; b
+f() || g()
+x == y+1 &amp;&amp; &lt;-chanPtr &gt; 0
+</pre>
+
+
+<h3 id="Arithmetic_operators">Arithmetic operators</h3>
+<p>
+Arithmetic operators apply to numeric values and yield a result of the same
+type as the first operand. The four standard arithmetic operators (<code>+</code>,
+<code>-</code>,  <code>*</code>, <code>/</code>) apply to integer,
+floating-point, and complex types; <code>+</code> also applies
+to strings. All other arithmetic operators apply to integers only.
+</p>
+
+<pre class="grammar">
++    sum                    integers, floats, complex values, strings
+-    difference             integers, floats, complex values
+*    product                integers, floats, complex values
+/    quotient               integers, floats, complex values
+%    remainder              integers
+
+&amp;    bitwise AND            integers
+|    bitwise OR             integers
+^    bitwise XOR            integers
+&amp;^   bit clear (AND NOT)    integers
+
+&lt;&lt;   left shift             integer &lt;&lt; unsigned integer
+&gt;&gt;   right shift            integer &gt;&gt; unsigned integer
+</pre>
+
+<p>
+Strings can be concatenated using the <code>+</code> operator
+or the <code>+=</code> assignment operator:
+</p>
+
+<pre>
+s := "hi" + string(c)
+s += " and good bye"
+</pre>
+
+<p>
+String addition creates a new string by concatenating the operands.
+</p>
+<p>
+For two integer values <code>x</code> and <code>y</code>, the integer quotient
+<code>q = x / y</code> and remainder <code>r = x % y</code> satisfy the following
+relationships:
+</p>
+
+<pre>
+x = q*y + r  and  |r| &lt; |y|
+</pre>
+
+<p>
+with <code>x / y</code> truncated towards zero
+(<a href="http://en.wikipedia.org/wiki/Modulo_operation">"truncated division"</a>).
+</p>
+
+<pre>
+ x     y     x / y     x % y
+ 5     3       1         2
+-5     3      -1        -2
+ 5    -3      -1         2
+-5    -3       1        -2
+</pre>
+
+<p>
+As an exception to this rule, if the dividend <code>x</code> is the most
+negative value for the int type of <code>x</code>, the quotient
+<code>q = x / -1</code> is equal to <code>x</code> (and <code>r = 0</code>).
+</p>
+
+<pre>
+			 x, q
+int8                     -128
+int16                  -32768
+int32             -2147483648
+int64    -9223372036854775808
+</pre>
+
+<p>
+If the divisor is a <a href="#Constants">constant</a>, it must not be zero.
+If the divisor is zero at run time, a <a href="#Run_time_panics">run-time panic</a> occurs.
+If the dividend is non-negative and the divisor is a constant power of 2,
+the division may be replaced by a right shift, and computing the remainder may
+be replaced by a bitwise AND operation:
+</p>
+
+<pre>
+ x     x / 4     x % 4     x &gt;&gt; 2     x &amp; 3
+ 11      2         3         2          3
+-11     -2        -3        -3          1
+</pre>
+
+<p>
+The shift operators shift the left operand by the shift count specified by the
+right operand. They implement arithmetic shifts if the left operand is a signed
+integer and logical shifts if it is an unsigned integer.
+There is no upper limit on the shift count. Shifts behave
+as if the left operand is shifted <code>n</code> times by 1 for a shift
+count of <code>n</code>.
+As a result, <code>x &lt;&lt; 1</code> is the same as <code>x*2</code>
+and <code>x &gt;&gt; 1</code> is the same as
+<code>x/2</code> but truncated towards negative infinity.
+</p>
+
+<p>
+For integer operands, the unary operators
+<code>+</code>, <code>-</code>, and <code>^</code> are defined as
+follows:
+</p>
+
+<pre class="grammar">
++x                          is 0 + x
+-x    negation              is 0 - x
+^x    bitwise complement    is m ^ x  with m = "all bits set to 1" for unsigned x
+                                      and  m = -1 for signed x
+</pre>
+
+<p>
+For floating-point and complex numbers,
+<code>+x</code> is the same as <code>x</code>,
+while <code>-x</code> is the negation of <code>x</code>.
+The result of a floating-point or complex division by zero is not specified beyond the
+IEEE-754 standard; whether a <a href="#Run_time_panics">run-time panic</a>
+occurs is implementation-specific.
+</p>
+
+<h3 id="Integer_overflow">Integer overflow</h3>
+
+<p>
+For unsigned integer values, the operations <code>+</code>,
+<code>-</code>, <code>*</code>, and <code>&lt;&lt;</code> are
+computed modulo 2<sup><i>n</i></sup>, where <i>n</i> is the bit width of
+the <a href="#Numeric_types">unsigned integer</a>'s type.
+Loosely speaking, these unsigned integer operations
+discard high bits upon overflow, and programs may rely on ``wrap around''.
+</p>
+<p>
+For signed integers, the operations <code>+</code>,
+<code>-</code>, <code>*</code>, and <code>&lt;&lt;</code> may legally
+overflow and the resulting value exists and is deterministically defined
+by the signed integer representation, the operation, and its operands.
+No exception is raised as a result of overflow. A
+compiler may not optimize code under the assumption that overflow does
+not occur. For instance, it may not assume that <code>x &lt; x + 1</code> is always true.
+</p>
+
+
+<h3 id="Comparison_operators">Comparison operators</h3>
+
+<p>
+Comparison operators compare two operands and yield an untyped boolean value.
+</p>
+
+<pre class="grammar">
+==    equal
+!=    not equal
+&lt;     less
+&lt;=    less or equal
+&gt;     greater
+&gt;=    greater or equal
+</pre>
+
+<p>
+In any comparison, the first operand
+must be <a href="#Assignability">assignable</a>
+to the type of the second operand, or vice versa.
+</p>
+<p>
+The equality operators <code>==</code> and <code>!=</code> apply
+to operands that are <i>comparable</i>.
+The ordering operators <code>&lt;</code>, <code>&lt;=</code>, <code>&gt;</code>, and <code>&gt;=</code>
+apply to operands that are <i>ordered</i>.
+These terms and the result of the comparisons are defined as follows:
+</p>
+
+<ul>
+	<li>
+	Boolean values are comparable.
+	Two boolean values are equal if they are either both
+	<code>true</code> or both <code>false</code>.
+	</li>
+
+	<li>
+	Integer values are comparable and ordered, in the usual way.
+	</li>
+
+	<li>
+	Floating point values are comparable and ordered,
+	as defined by the IEEE-754 standard.
+	</li>
+
+	<li>
+	Complex values are comparable.
+	Two complex values <code>u</code> and <code>v</code> are
+	equal if both <code>real(u) == real(v)</code> and
+	<code>imag(u) == imag(v)</code>.
+	</li>
+
+	<li>
+	String values are comparable and ordered, lexically byte-wise.
+	</li>
+
+	<li>
+	Pointer values are comparable.
+	Two pointer values are equal if they point to the same variable or if both have value <code>nil</code>.
+	Pointers to distinct <a href="#Size_and_alignment_guarantees">zero-size</a> variables may or may not be equal.
+	</li>
+
+	<li>
+	Channel values are comparable.
+	Two channel values are equal if they were created by the same call to
+	<a href="#Making_slices_maps_and_channels"><code>make</code></a>
+	or if both have value <code>nil</code>.
+	</li>
+
+	<li>
+	Interface values are comparable.
+	Two interface values are equal if they have <a href="#Type_identity">identical</a> dynamic types
+	and equal dynamic values or if both have value <code>nil</code>.
+	</li>
+
+	<li>
+	A value <code>x</code> of non-interface type <code>X</code> and
+	a value <code>t</code> of interface type <code>T</code> are comparable when values
+	of type <code>X</code> are comparable and
+	<code>X</code> implements <code>T</code>.
+	They are equal if <code>t</code>'s dynamic type is identical to <code>X</code>
+	and <code>t</code>'s dynamic value is equal to <code>x</code>.
+	</li>
+
+	<li>
+	Struct values are comparable if all their fields are comparable.
+	Two struct values are equal if their corresponding
+	non-<a href="#Blank_identifier">blank</a> fields are equal.
+	</li>
+
+	<li>
+	Array values are comparable if values of the array element type are comparable.
+	Two array values are equal if their corresponding elements are equal.
+	</li>
+</ul>
+
+<p>
+A comparison of two interface values with identical dynamic types
+causes a <a href="#Run_time_panics">run-time panic</a> if values
+of that type are not comparable.  This behavior applies not only to direct interface
+value comparisons but also when comparing arrays of interface values
+or structs with interface-valued fields.
+</p>
+
+<p>
+Slice, map, and function values are not comparable.
+However, as a special case, a slice, map, or function value may
+be compared to the predeclared identifier <code>nil</code>.
+Comparison of pointer, channel, and interface values to <code>nil</code>
+is also allowed and follows from the general rules above.
+</p>
+
+<pre>
+const c = 3 &lt; 4            // c is the untyped bool constant true
+
+type MyBool bool
+var x, y int
+var (
+	// The result of a comparison is an untyped bool.
+	// The usual assignment rules apply.
+	b3        = x == y // b3 has type bool
+	b4 bool   = x == y // b4 has type bool
+	b5 MyBool = x == y // b5 has type MyBool
+)
+</pre>
+
+<h3 id="Logical_operators">Logical operators</h3>
+
+<p>
+Logical operators apply to <a href="#Boolean_types">boolean</a> values
+and yield a result of the same type as the operands.
+The right operand is evaluated conditionally.
+</p>
+
+<pre class="grammar">
+&amp;&amp;    conditional AND    p &amp;&amp; q  is  "if p then q else false"
+||    conditional OR     p || q  is  "if p then true else q"
+!     NOT                !p      is  "not p"
+</pre>
+
+
+<h3 id="Address_operators">Address operators</h3>
+
+<p>
+For an operand <code>x</code> of type <code>T</code>, the address operation
+<code>&amp;x</code> generates a pointer of type <code>*T</code> to <code>x</code>.
+The operand must be <i>addressable</i>,
+that is, either a variable, pointer indirection, or slice indexing
+operation; or a field selector of an addressable struct operand;
+or an array indexing operation of an addressable array.
+As an exception to the addressability requirement, <code>x</code> may also be a
+(possibly parenthesized)
+<a href="#Composite_literals">composite literal</a>.
+If the evaluation of <code>x</code> would cause a <a href="#Run_time_panics">run-time panic</a>,
+then the evaluation of <code>&amp;x</code> does too.
+</p>
+
+<p>
+For an operand <code>x</code> of pointer type <code>*T</code>, the pointer
+indirection <code>*x</code> denotes the <a href="#Variables">variable</a> of type <code>T</code> pointed
+to by <code>x</code>.
+If <code>x</code> is <code>nil</code>, an attempt to evaluate <code>*x</code>
+will cause a <a href="#Run_time_panics">run-time panic</a>.
+</p>
+
+<pre>
+&amp;x
+&amp;a[f(2)]
+&amp;Point{2, 3}
+*p
+*pf(x)
+
+var x *int = nil
+*x   // causes a run-time panic
+&amp;*x  // causes a run-time panic
+</pre>
+
+
+<h3 id="Receive_operator">Receive operator</h3>
+
+<p>
+For an operand <code>ch</code> of <a href="#Channel_types">channel type</a>,
+the value of the receive operation <code>&lt;-ch</code> is the value received
+from the channel <code>ch</code>. The channel direction must permit receive operations,
+and the type of the receive operation is the element type of the channel.
+The expression blocks until a value is available.
+Receiving from a <code>nil</code> channel blocks forever.
+A receive operation on a <a href="#Close">closed</a> channel can always proceed
+immediately, yielding the element type's <a href="#The_zero_value">zero value</a>
+after any previously sent values have been received.
+</p>
+
+<pre>
+v1 := &lt;-ch
+v2 = &lt;-ch
+f(&lt;-ch)
+&lt;-strobe  // wait until clock pulse and discard received value
+</pre>
+
+<p>
+A receive expression used in an <a href="#Assignments">assignment</a> or initialization of the special form
+</p>
+
+<pre>
+x, ok = &lt;-ch
+x, ok := &lt;-ch
+var x, ok = &lt;-ch
+</pre>
+
+<p>
+yields an additional untyped boolean result reporting whether the
+communication succeeded. The value of <code>ok</code> is <code>true</code>
+if the value received was delivered by a successful send operation to the
+channel, or <code>false</code> if it is a zero value generated because the
+channel is closed and empty.
+</p>
+
+
+<h3 id="Conversions">Conversions</h3>
+
+<p>
+Conversions are expressions of the form <code>T(x)</code>
+where <code>T</code> is a type and <code>x</code> is an expression
+that can be converted to type <code>T</code>.
+</p>
+
+<pre class="ebnf">
+Conversion = Type "(" Expression [ "," ] ")" .
+</pre>
+
+<p>
+If the type starts with the operator <code>*</code> or <code>&lt;-</code>,
+or if the type starts with the keyword <code>func</code>
+and has no result list, it must be parenthesized when
+necessary to avoid ambiguity:
+</p>
+
+<pre>
+*Point(p)        // same as *(Point(p))
+(*Point)(p)      // p is converted to *Point
+&lt;-chan int(c)    // same as &lt;-(chan int(c))
+(&lt;-chan int)(c)  // c is converted to &lt;-chan int
+func()(x)        // function signature func() x
+(func())(x)      // x is converted to func()
+(func() int)(x)  // x is converted to func() int
+func() int(x)    // x is converted to func() int (unambiguous)
+</pre>
+
+<p>
+A <a href="#Constants">constant</a> value <code>x</code> can be converted to
+type <code>T</code> in any of these cases:
+</p>
+
+<ul>
+	<li>
+	<code>x</code> is representable by a value of type <code>T</code>.
+	</li>
+	<li>
+	<code>x</code> is a floating-point constant,
+	<code>T</code> is a floating-point type,
+	and <code>x</code> is representable by a value
+	of type <code>T</code> after rounding using
+	IEEE 754 round-to-even rules.
+	The constant <code>T(x)</code> is the rounded value.
+	</li>
+	<li>
+	<code>x</code> is an integer constant and <code>T</code> is a
+	<a href="#String_types">string type</a>.
+	The <a href="#Conversions_to_and_from_a_string_type">same rule</a>
+	as for non-constant <code>x</code> applies in this case.
+	</li>
+</ul>
+
+<p>
+Converting a constant yields a typed constant as result.
+</p>
+
+<pre>
+uint(iota)               // iota value of type uint
+float32(2.718281828)     // 2.718281828 of type float32
+complex128(1)            // 1.0 + 0.0i of type complex128
+float32(0.49999999)      // 0.5 of type float32
+string('x')              // "x" of type string
+string(0x266c)           // "â™¬" of type string
+MyString("foo" + "bar")  // "foobar" of type MyString
+string([]byte{'a'})      // not a constant: []byte{'a'} is not a constant
+(*int)(nil)              // not a constant: nil is not a constant, *int is not a boolean, numeric, or string type
+int(1.2)                 // illegal: 1.2 cannot be represented as an int
+string(65.0)             // illegal: 65.0 is not an integer constant
+</pre>
+
+<p>
+A non-constant value <code>x</code> can be converted to type <code>T</code>
+in any of these cases:
+</p>
+
+<ul>
+	<li>
+	<code>x</code> is <a href="#Assignability">assignable</a>
+	to <code>T</code>.
+	</li>
+	<li>
+	<code>x</code>'s type and <code>T</code> have identical
+	<a href="#Types">underlying types</a>.
+	</li>
+	<li>
+	<code>x</code>'s type and <code>T</code> are unnamed pointer types
+	and their pointer base types have identical underlying types.
+	</li>
+	<li>
+	<code>x</code>'s type and <code>T</code> are both integer or floating
+	point types.
+	</li>
+	<li>
+	<code>x</code>'s type and <code>T</code> are both complex types.
+	</li>
+	<li>
+	<code>x</code> is an integer or a slice of bytes or runes
+	and <code>T</code> is a string type.
+	</li>
+	<li>
+	<code>x</code> is a string and <code>T</code> is a slice of bytes or runes.
+	</li>
+</ul>
+
+<p>
+Specific rules apply to (non-constant) conversions between numeric types or
+to and from a string type.
+These conversions may change the representation of <code>x</code>
+and incur a run-time cost.
+All other conversions only change the type but not the representation
+of <code>x</code>.
+</p>
+
+<p>
+There is no linguistic mechanism to convert between pointers and integers.
+The package <a href="#Package_unsafe"><code>unsafe</code></a>
+implements this functionality under
+restricted circumstances.
+</p>
+
+<h4>Conversions between numeric types</h4>
+
+<p>
+For the conversion of non-constant numeric values, the following rules apply:
+</p>
+
+<ol>
+<li>
+When converting between integer types, if the value is a signed integer, it is
+sign extended to implicit infinite precision; otherwise it is zero extended.
+It is then truncated to fit in the result type's size.
+For example, if <code>v := uint16(0x10F0)</code>, then <code>uint32(int8(v)) == 0xFFFFFFF0</code>.
+The conversion always yields a valid value; there is no indication of overflow.
+</li>
+<li>
+When converting a floating-point number to an integer, the fraction is discarded
+(truncation towards zero).
+</li>
+<li>
+When converting an integer or floating-point number to a floating-point type,
+or a complex number to another complex type, the result value is rounded
+to the precision specified by the destination type.
+For instance, the value of a variable <code>x</code> of type <code>float32</code>
+may be stored using additional precision beyond that of an IEEE-754 32-bit number,
+but float32(x) represents the result of rounding <code>x</code>'s value to
+32-bit precision. Similarly, <code>x + 0.1</code> may use more than 32 bits
+of precision, but <code>float32(x + 0.1)</code> does not.
+</li>
+</ol>
+
+<p>
+In all non-constant conversions involving floating-point or complex values,
+if the result type cannot represent the value the conversion
+succeeds but the result value is implementation-dependent.
+</p>
+
+<h4 id="Conversions_to_and_from_a_string_type">Conversions to and from a string type</h4>
+
+<ol>
+<li>
+Converting a signed or unsigned integer value to a string type yields a
+string containing the UTF-8 representation of the integer. Values outside
+the range of valid Unicode code points are converted to <code>"\uFFFD"</code>.
+
+<pre>
+string('a')       // "a"
+string(-1)        // "\ufffd" == "\xef\xbf\xbd"
+string(0xf8)      // "\u00f8" == "Ã¸" == "\xc3\xb8"
+type MyString string
+MyString(0x65e5)  // "\u65e5" == "æ—¥" == "\xe6\x97\xa5"
+</pre>
+</li>
+
+<li>
+Converting a slice of bytes to a string type yields
+a string whose successive bytes are the elements of the slice.
+
+<pre>
+string([]byte{'h', 'e', 'l', 'l', '\xc3', '\xb8'})   // "hellÃ¸"
+string([]byte{})                                     // ""
+string([]byte(nil))                                  // ""
+
+type MyBytes []byte
+string(MyBytes{'h', 'e', 'l', 'l', '\xc3', '\xb8'})  // "hellÃ¸"
+</pre>
+</li>
+
+<li>
+Converting a slice of runes to a string type yields
+a string that is the concatenation of the individual rune values
+converted to strings.
+
+<pre>
+string([]rune{0x767d, 0x9d6c, 0x7fd4})   // "\u767d\u9d6c\u7fd4" == "ç™½éµ¬ç¿”"
+string([]rune{})                         // ""
+string([]rune(nil))                      // ""
+
+type MyRunes []rune
+string(MyRunes{0x767d, 0x9d6c, 0x7fd4})  // "\u767d\u9d6c\u7fd4" == "ç™½éµ¬ç¿”"
+</pre>
+</li>
+
+<li>
+Converting a value of a string type to a slice of bytes type
+yields a slice whose successive elements are the bytes of the string.
+
+<pre>
+[]byte("hellÃ¸")   // []byte{'h', 'e', 'l', 'l', '\xc3', '\xb8'}
+[]byte("")        // []byte{}
+
+MyBytes("hellÃ¸")  // []byte{'h', 'e', 'l', 'l', '\xc3', '\xb8'}
+</pre>
+</li>
+
+<li>
+Converting a value of a string type to a slice of runes type
+yields a slice containing the individual Unicode code points of the string.
+
+<pre>
+[]rune(MyString("ç™½éµ¬ç¿”"))  // []rune{0x767d, 0x9d6c, 0x7fd4}
+[]rune("")                 // []rune{}
+
+MyRunes("ç™½éµ¬ç¿”")           // []rune{0x767d, 0x9d6c, 0x7fd4}
+</pre>
+</li>
+</ol>
+
+
+<h3 id="Constant_expressions">Constant expressions</h3>
+
+<p>
+Constant expressions may contain only <a href="#Constants">constant</a>
+operands and are evaluated at compile time.
+</p>
+
+<p>
+Untyped boolean, numeric, and string constants may be used as operands
+wherever it is legal to use an operand of boolean, numeric, or string type,
+respectively.
+Except for shift operations, if the operands of a binary operation are
+different kinds of untyped constants, the operation and, for non-boolean operations, the result use
+the kind that appears later in this list: integer, rune, floating-point, complex.
+For example, an untyped integer constant divided by an
+untyped complex constant yields an untyped complex constant.
+</p>
+
+<p>
+A constant <a href="#Comparison_operators">comparison</a> always yields
+an untyped boolean constant.  If the left operand of a constant
+<a href="#Operators">shift expression</a> is an untyped constant, the
+result is an integer constant; otherwise it is a constant of the same
+type as the left operand, which must be of
+<a href="#Numeric_types">integer type</a>.
+Applying all other operators to untyped constants results in an untyped
+constant of the same kind (that is, a boolean, integer, floating-point,
+complex, or string constant).
+</p>
+
+<pre>
+const a = 2 + 3.0          // a == 5.0   (untyped floating-point constant)
+const b = 15 / 4           // b == 3     (untyped integer constant)
+const c = 15 / 4.0         // c == 3.75  (untyped floating-point constant)
+const Î˜ float64 = 3/2      // Î˜ == 1.0   (type float64, 3/2 is integer division)
+const Î  float64 = 3/2.     // Î  == 1.5   (type float64, 3/2. is float division)
+const d = 1 &lt;&lt; 3.0         // d == 8     (untyped integer constant)
+const e = 1.0 &lt;&lt; 3         // e == 8     (untyped integer constant)
+const f = int32(1) &lt;&lt; 33   // illegal    (constant 8589934592 overflows int32)
+const g = float64(2) &gt;&gt; 1  // illegal    (float64(2) is a typed floating-point constant)
+const h = "foo" &gt; "bar"    // h == true  (untyped boolean constant)
+const j = true             // j == true  (untyped boolean constant)
+const k = 'w' + 1          // k == 'x'   (untyped rune constant)
+const l = "hi"             // l == "hi"  (untyped string constant)
+const m = string(k)        // m == "x"   (type string)
+const Î£ = 1 - 0.707i       //            (untyped complex constant)
+const Î” = Î£ + 2.0e-4       //            (untyped complex constant)
+const Î¦ = iota*1i - 1/1i   //            (untyped complex constant)
+</pre>
+
+<p>
+Applying the built-in function <code>complex</code> to untyped
+integer, rune, or floating-point constants yields
+an untyped complex constant.
+</p>
+
+<pre>
+const ic = complex(0, c)   // ic == 3.75i  (untyped complex constant)
+const iÎ˜ = complex(0, Î˜)   // iÎ˜ == 1i     (type complex128)
+</pre>
+
+<p>
+Constant expressions are always evaluated exactly; intermediate values and the
+constants themselves may require precision significantly larger than supported
+by any predeclared type in the language. The following are legal declarations:
+</p>
+
+<pre>
+const Huge = 1 &lt;&lt; 100         // Huge == 1267650600228229401496703205376  (untyped integer constant)
+const Four int8 = Huge &gt;&gt; 98  // Four == 4                                (type int8)
+</pre>
+
+<p>
+The divisor of a constant division or remainder operation must not be zero:
+</p>
+
+<pre>
+3.14 / 0.0   // illegal: division by zero
+</pre>
+
+<p>
+The values of <i>typed</i> constants must always be accurately representable as values
+of the constant type. The following constant expressions are illegal:
+</p>
+
+<pre>
+uint(-1)     // -1 cannot be represented as a uint
+int(3.14)    // 3.14 cannot be represented as an int
+int64(Huge)  // 1267650600228229401496703205376 cannot be represented as an int64
+Four * 300   // operand 300 cannot be represented as an int8 (type of Four)
+Four * 100   // product 400 cannot be represented as an int8 (type of Four)
+</pre>
+
+<p>
+The mask used by the unary bitwise complement operator <code>^</code> matches
+the rule for non-constants: the mask is all 1s for unsigned constants
+and -1 for signed and untyped constants.
+</p>
+
+<pre>
+^1         // untyped integer constant, equal to -2
+uint8(^1)  // illegal: same as uint8(-2), -2 cannot be represented as a uint8
+^uint8(1)  // typed uint8 constant, same as 0xFF ^ uint8(1) = uint8(0xFE)
+int8(^1)   // same as int8(-2)
+^int8(1)   // same as -1 ^ int8(1) = -2
+</pre>
+
+<p>
+Implementation restriction: A compiler may use rounding while
+computing untyped floating-point or complex constant expressions; see
+the implementation restriction in the section
+on <a href="#Constants">constants</a>.  This rounding may cause a
+floating-point constant expression to be invalid in an integer
+context, even if it would be integral when calculated using infinite
+precision.
+</p>
+
+
+<h3 id="Order_of_evaluation">Order of evaluation</h3>
+
+<p>
+At package level, <a href="#Package_initialization">initialization dependencies</a>
+determine the evaluation order of individual initialization expressions in
+<a href="#Variable_declarations">variable declarations</a>.
+Otherwise, when evaluating the <a href="#Operands">operands</a> of an
+expression, assignment, or
+<a href="#Return_statements">return statement</a>,
+all function calls, method calls, and
+communication operations are evaluated in lexical left-to-right
+order.
+</p>
+
+<p>
+For example, in the (function-local) assignment
+</p>
+<pre>
+y[f()], ok = g(h(), i()+x[j()], &lt;-c), k()
+</pre>
+<p>
+the function calls and communication happen in the order
+<code>f()</code>, <code>h()</code>, <code>i()</code>, <code>j()</code>,
+<code>&lt;-c</code>, <code>g()</code>, and <code>k()</code>.
+However, the order of those events compared to the evaluation
+and indexing of <code>x</code> and the evaluation
+of <code>y</code> is not specified.
+</p>
+
+<pre>
+a := 1
+f := func() int { a++; return a }
+x := []int{a, f()}            // x may be [1, 2] or [2, 2]: evaluation order between a and f() is not specified
+m := map[int]int{a: 1, a: 2}  // m may be {2: 1} or {2: 2}: evaluation order between the two map assignments is not specified
+n := map[int]int{a: f()}      // n may be {2: 3} or {3: 3}: evaluation order between the key and the value is not specified
+</pre>
+
+<p>
+At package level, initialization dependencies override the left-to-right rule
+for individual initialization expressions, but not for operands within each
+expression:
+</p>
+
+<pre>
+var a, b, c = f() + v(), g(), sqr(u()) + v()
+
+func f() int        { return c }
+func g() int        { return a }
+func sqr(x int) int { return x*x }
+
+// functions u and v are independent of all other variables and functions
+</pre>
+
+<p>
+The function calls happen in the order
+<code>u()</code>, <code>sqr()</code>, <code>v()</code>,
+<code>f()</code>, <code>v()</code>, and <code>g()</code>.
+</p>
+
+<p>
+Floating-point operations within a single expression are evaluated according to
+the associativity of the operators.  Explicit parentheses affect the evaluation
+by overriding the default associativity.
+In the expression <code>x + (y + z)</code> the addition <code>y + z</code>
+is performed before adding <code>x</code>.
+</p>
+
+<h2 id="Statements">Statements</h2>
+
+<p>
+Statements control execution.
+</p>
+
+<pre class="ebnf">
+Statement =
+	Declaration | LabeledStmt | SimpleStmt |
+	GoStmt | ReturnStmt | BreakStmt | ContinueStmt | GotoStmt |
+	FallthroughStmt | Block | IfStmt | SwitchStmt | SelectStmt | ForStmt |
+	DeferStmt .
+
+SimpleStmt = EmptyStmt | ExpressionStmt | SendStmt | IncDecStmt | Assignment | ShortVarDecl .
+</pre>
+
+<h3 id="Terminating_statements">Terminating statements</h3>
+
+<p>
+A terminating statement is one of the following:
+</p>
+
+<ol>
+<li>
+	A <a href="#Return_statements">"return"</a> or
+    	<a href="#Goto_statements">"goto"</a> statement.
+	<!-- ul below only for regular layout -->
+	<ul> </ul>
+</li>
+
+<li>
+	A call to the built-in function
+	<a href="#Handling_panics"><code>panic</code></a>.
+	<!-- ul below only for regular layout -->
+	<ul> </ul>
+</li>
+
+<li>
+	A <a href="#Blocks">block</a> in which the statement list ends in a terminating statement.
+	<!-- ul below only for regular layout -->
+	<ul> </ul>
+</li>
+
+<li>
+	An <a href="#If_statements">"if" statement</a> in which:
+	<ul>
+	<li>the "else" branch is present, and</li>
+	<li>both branches are terminating statements.</li>
+	</ul>
+</li>
+
+<li>
+	A <a href="#For_statements">"for" statement</a> in which:
+	<ul>
+	<li>there are no "break" statements referring to the "for" statement, and</li>
+	<li>the loop condition is absent.</li>
+	</ul>
+</li>
+
+<li>
+	A <a href="#Switch_statements">"switch" statement</a> in which:
+	<ul>
+	<li>there are no "break" statements referring to the "switch" statement,</li>
+	<li>there is a default case, and</li>
+	<li>the statement lists in each case, including the default, end in a terminating
+	    statement, or a possibly labeled <a href="#Fallthrough_statements">"fallthrough"
+	    statement</a>.</li>
+	</ul>
+</li>
+
+<li>
+	A <a href="#Select_statements">"select" statement</a> in which:
+	<ul>
+	<li>there are no "break" statements referring to the "select" statement, and</li>
+	<li>the statement lists in each case, including the default if present,
+	    end in a terminating statement.</li>
+	</ul>
+</li>
+
+<li>
+	A <a href="#Labeled_statements">labeled statement</a> labeling
+	a terminating statement.
+</li>
+</ol>
+
+<p>
+All other statements are not terminating.
+</p>
+
+<p>
+A <a href="#Blocks">statement list</a> ends in a terminating statement if the list
+is not empty and its final statement is terminating.
+</p>
+
+
+<h3 id="Empty_statements">Empty statements</h3>
+
+<p>
+The empty statement does nothing.
+</p>
+
+<pre class="ebnf">
+EmptyStmt = .
+</pre>
+
+
+<h3 id="Labeled_statements">Labeled statements</h3>
+
+<p>
+A labeled statement may be the target of a <code>goto</code>,
+<code>break</code> or <code>continue</code> statement.
+</p>
+
+<pre class="ebnf">
+LabeledStmt = Label ":" Statement .
+Label       = identifier .
+</pre>
+
+<pre>
+Error: log.Panic("error encountered")
+</pre>
+
+
+<h3 id="Expression_statements">Expression statements</h3>
+
+<p>
+With the exception of specific built-in functions,
+function and method <a href="#Calls">calls</a> and
+<a href="#Receive_operator">receive operations</a>
+can appear in statement context. Such statements may be parenthesized.
+</p>
+
+<pre class="ebnf">
+ExpressionStmt = Expression .
+</pre>
+
+<p>
+The following built-in functions are not permitted in statement context:
+</p>
+
+<pre>
+append cap complex imag len make new real
+unsafe.Alignof unsafe.Offsetof unsafe.Sizeof
+</pre>
+
+<pre>
+h(x+y)
+f.Close()
+&lt;-ch
+(&lt;-ch)
+len("foo")  // illegal if len is the built-in function
+</pre>
+
+
+<h3 id="Send_statements">Send statements</h3>
+
+<p>
+A send statement sends a value on a channel.
+The channel expression must be of <a href="#Channel_types">channel type</a>,
+the channel direction must permit send operations,
+and the type of the value to be sent must be <a href="#Assignability">assignable</a>
+to the channel's element type.
+</p>
+
+<pre class="ebnf">
+SendStmt = Channel "&lt;-" Expression .
+Channel  = Expression .
+</pre>
+
+<p>
+Both the channel and the value expression are evaluated before communication
+begins. Communication blocks until the send can proceed.
+A send on an unbuffered channel can proceed if a receiver is ready.
+A send on a buffered channel can proceed if there is room in the buffer.
+A send on a closed channel proceeds by causing a <a href="#Run_time_panics">run-time panic</a>.
+A send on a <code>nil</code> channel blocks forever.
+</p>
+
+<pre>
+ch &lt;- 3  // send value 3 to channel ch
+</pre>
+
+
+<h3 id="IncDec_statements">IncDec statements</h3>
+
+<p>
+The "++" and "--" statements increment or decrement their operands
+by the untyped <a href="#Constants">constant</a> <code>1</code>.
+As with an assignment, the operand must be <a href="#Address_operators">addressable</a>
+or a map index expression.
+</p>
+
+<pre class="ebnf">
+IncDecStmt = Expression ( "++" | "--" ) .
+</pre>
+
+<p>
+The following <a href="#Assignments">assignment statements</a> are semantically
+equivalent:
+</p>
+
+<pre class="grammar">
+IncDec statement    Assignment
+x++                 x += 1
+x--                 x -= 1
+</pre>
+
+
+<h3 id="Assignments">Assignments</h3>
+
+<pre class="ebnf">
+Assignment = ExpressionList assign_op ExpressionList .
+
+assign_op = [ add_op | mul_op ] "=" .
+</pre>
+
+<p>
+Each left-hand side operand must be <a href="#Address_operators">addressable</a>,
+a map index expression, or (for <code>=</code> assignments only) the
+<a href="#Blank_identifier">blank identifier</a>.
+Operands may be parenthesized.
+</p>
+
+<pre>
+x = 1
+*p = f()
+a[i] = 23
+(k) = &lt;-ch  // same as: k = &lt;-ch
+</pre>
+
+<p>
+An <i>assignment operation</i> <code>x</code> <i>op</i><code>=</code>
+<code>y</code> where <i>op</i> is a binary arithmetic operation is equivalent
+to <code>x</code> <code>=</code> <code>x</code> <i>op</i>
+<code>y</code> but evaluates <code>x</code>
+only once.  The <i>op</i><code>=</code> construct is a single token.
+In assignment operations, both the left- and right-hand expression lists
+must contain exactly one single-valued expression, and the left-hand
+expression must not be the blank identifier.
+</p>
+
+<pre>
+a[i] &lt;&lt;= 2
+i &amp;^= 1&lt;&lt;n
+</pre>
+
+<p>
+A tuple assignment assigns the individual elements of a multi-valued
+operation to a list of variables.  There are two forms.  In the
+first, the right hand operand is a single multi-valued expression
+such as a function call, a <a href="#Channel_types">channel</a> or
+<a href="#Map_types">map</a> operation, or a <a href="#Type_assertions">type assertion</a>.
+The number of operands on the left
+hand side must match the number of values.  For instance, if
+<code>f</code> is a function returning two values,
+</p>
+
+<pre>
+x, y = f()
+</pre>
+
+<p>
+assigns the first value to <code>x</code> and the second to <code>y</code>.
+In the second form, the number of operands on the left must equal the number
+of expressions on the right, each of which must be single-valued, and the
+<i>n</i>th expression on the right is assigned to the <i>n</i>th
+operand on the left:
+</p>
+
+<pre>
+one, two, three = 'ä¸€', 'äºŒ', 'ä¸‰'
+</pre>
+
+<p>
+The <a href="#Blank_identifier">blank identifier</a> provides a way to
+ignore right-hand side values in an assignment:
+</p>
+
+<pre>
+_ = x       // evaluate x but ignore it
+x, _ = f()  // evaluate f() but ignore second result value
+</pre>
+
+<p>
+The assignment proceeds in two phases.
+First, the operands of <a href="#Index_expressions">index expressions</a>
+and <a href="#Address_operators">pointer indirections</a>
+(including implicit pointer indirections in <a href="#Selectors">selectors</a>)
+on the left and the expressions on the right are all
+<a href="#Order_of_evaluation">evaluated in the usual order</a>.
+Second, the assignments are carried out in left-to-right order.
+</p>
+
+<pre>
+a, b = b, a  // exchange a and b
+
+x := []int{1, 2, 3}
+i := 0
+i, x[i] = 1, 2  // set i = 1, x[0] = 2
+
+i = 0
+x[i], i = 2, 1  // set x[0] = 2, i = 1
+
+x[0], x[0] = 1, 2  // set x[0] = 1, then x[0] = 2 (so x[0] == 2 at end)
+
+x[1], x[3] = 4, 5  // set x[1] = 4, then panic setting x[3] = 5.
+
+type Point struct { x, y int }
+var p *Point
+x[2], p.x = 6, 7  // set x[2] = 6, then panic setting p.x = 7
+
+i = 2
+x = []int{3, 5, 7}
+for i, x[i] = range x {  // set i, x[2] = 0, x[0]
+	break
+}
+// after this loop, i == 0 and x == []int{3, 5, 3}
+</pre>
+
+<p>
+In assignments, each value must be <a href="#Assignability">assignable</a>
+to the type of the operand to which it is assigned, with the following special cases:
+</p>
+
+<ol>
+<li>
+	Any typed value may be assigned to the blank identifier.
+</li>
+
+<li>
+	If an untyped constant
+	is assigned to a variable of interface type or the blank identifier,
+	the constant is first <a href="#Conversions">converted</a> to its
+	 <a href="#Constants">default type</a>.
+</li>
+
+<li>
+	If an untyped boolean value is assigned to a variable of interface type or
+	the blank identifier, it is first converted to type <code>bool</code>.
+</li>
+</ol>
+
+<h3 id="If_statements">If statements</h3>
+
+<p>
+"If" statements specify the conditional execution of two branches
+according to the value of a boolean expression.  If the expression
+evaluates to true, the "if" branch is executed, otherwise, if
+present, the "else" branch is executed.
+</p>
+
+<pre class="ebnf">
+IfStmt = "if" [ SimpleStmt ";" ] Expression Block [ "else" ( IfStmt | Block ) ] .
+</pre>
+
+<pre>
+if x &gt; max {
+	x = max
+}
+</pre>
+
+<p>
+The expression may be preceded by a simple statement, which
+executes before the expression is evaluated.
+</p>
+
+<pre>
+if x := f(); x &lt; y {
+	return x
+} else if x &gt; z {
+	return z
+} else {
+	return y
+}
+</pre>
+
+
+<h3 id="Switch_statements">Switch statements</h3>
+
+<p>
+"Switch" statements provide multi-way execution.
+An expression or type specifier is compared to the "cases"
+inside the "switch" to determine which branch
+to execute.
+</p>
+
+<pre class="ebnf">
+SwitchStmt = ExprSwitchStmt | TypeSwitchStmt .
+</pre>
+
+<p>
+There are two forms: expression switches and type switches.
+In an expression switch, the cases contain expressions that are compared
+against the value of the switch expression.
+In a type switch, the cases contain types that are compared against the
+type of a specially annotated switch expression.
+</p>
+
+<h4 id="Expression_switches">Expression switches</h4>
+
+<p>
+In an expression switch,
+the switch expression is evaluated and
+the case expressions, which need not be constants,
+are evaluated left-to-right and top-to-bottom; the first one that equals the
+switch expression
+triggers execution of the statements of the associated case;
+the other cases are skipped.
+If no case matches and there is a "default" case,
+its statements are executed.
+There can be at most one default case and it may appear anywhere in the
+"switch" statement.
+A missing switch expression is equivalent to the boolean value
+<code>true</code>.
+</p>
+
+<pre class="ebnf">
+ExprSwitchStmt = "switch" [ SimpleStmt ";" ] [ Expression ] "{" { ExprCaseClause } "}" .
+ExprCaseClause = ExprSwitchCase ":" StatementList .
+ExprSwitchCase = "case" ExpressionList | "default" .
+</pre>
+
+<p>
+In a case or default clause, the last non-empty statement
+may be a (possibly <a href="#Labeled_statements">labeled</a>)
+<a href="#Fallthrough_statements">"fallthrough" statement</a> to
+indicate that control should flow from the end of this clause to
+the first statement of the next clause.
+Otherwise control flows to the end of the "switch" statement.
+A "fallthrough" statement may appear as the last statement of all
+but the last clause of an expression switch.
+</p>
+
+<p>
+The expression may be preceded by a simple statement, which
+executes before the expression is evaluated.
+</p>
+
+<pre>
+switch tag {
+default: s3()
+case 0, 1, 2, 3: s1()
+case 4, 5, 6, 7: s2()
+}
+
+switch x := f(); {  // missing switch expression means "true"
+case x &lt; 0: return -x
+default: return x
+}
+
+switch {
+case x &lt; y: f1()
+case x &lt; z: f2()
+case x == 4: f3()
+}
+</pre>
+
+<h4 id="Type_switches">Type switches</h4>
+
+<p>
+A type switch compares types rather than values. It is otherwise similar
+to an expression switch. It is marked by a special switch expression that
+has the form of a <a href="#Type_assertions">type assertion</a>
+using the reserved word <code>type</code> rather than an actual type:
+</p>
+
+<pre>
+switch x.(type) {
+// cases
+}
+</pre>
+
+<p>
+Cases then match actual types <code>T</code> against the dynamic type of the
+expression <code>x</code>. As with type assertions, <code>x</code> must be of
+<a href="#Interface_types">interface type</a>, and each non-interface type
+<code>T</code> listed in a case must implement the type of <code>x</code>.
+</p>
+
+<pre class="ebnf">
+TypeSwitchStmt  = "switch" [ SimpleStmt ";" ] TypeSwitchGuard "{" { TypeCaseClause } "}" .
+TypeSwitchGuard = [ identifier ":=" ] PrimaryExpr "." "(" "type" ")" .
+TypeCaseClause  = TypeSwitchCase ":" StatementList .
+TypeSwitchCase  = "case" TypeList | "default" .
+TypeList        = Type { "," Type } .
+</pre>
+
+<p>
+The TypeSwitchGuard may include a
+<a href="#Short_variable_declarations">short variable declaration</a>.
+When that form is used, the variable is declared at the beginning of
+the <a href="#Blocks">implicit block</a> in each clause.
+In clauses with a case listing exactly one type, the variable
+has that type; otherwise, the variable has the type of the expression
+in the TypeSwitchGuard.
+</p>
+
+<p>
+The type in a case may be <a href="#Predeclared_identifiers"><code>nil</code></a>;
+that case is used when the expression in the TypeSwitchGuard
+is a <code>nil</code> interface value.
+</p>
+
+<p>
+Given an expression <code>x</code> of type <code>interface{}</code>,
+the following type switch:
+</p>
+
+<pre>
+switch i := x.(type) {
+case nil:
+	printString("x is nil")                // type of i is type of x (interface{})
+case int:
+	printInt(i)                            // type of i is int
+case float64:
+	printFloat64(i)                        // type of i is float64
+case func(int) float64:
+	printFunction(i)                       // type of i is func(int) float64
+case bool, string:
+	printString("type is bool or string")  // type of i is type of x (interface{})
+default:
+	printString("don't know the type")     // type of i is type of x (interface{})
+}
+</pre>
+
+<p>
+could be rewritten:
+</p>
+
+<pre>
+v := x  // x is evaluated exactly once
+if v == nil {
+	i := v                                 // type of i is type of x (interface{})
+	printString("x is nil")
+} else if i, isInt := v.(int); isInt {
+	printInt(i)                            // type of i is int
+} else if i, isFloat64 := v.(float64); isFloat64 {
+	printFloat64(i)                        // type of i is float64
+} else if i, isFunc := v.(func(int) float64); isFunc {
+	printFunction(i)                       // type of i is func(int) float64
+} else {
+	_, isBool := v.(bool)
+	_, isString := v.(string)
+	if isBool || isString {
+		i := v                         // type of i is type of x (interface{})
+		printString("type is bool or string")
+	} else {
+		i := v                         // type of i is type of x (interface{})
+		printString("don't know the type")
+	}
+}
+</pre>
+
+<p>
+The type switch guard may be preceded by a simple statement, which
+executes before the guard is evaluated.
+</p>
+
+<p>
+The "fallthrough" statement is not permitted in a type switch.
+</p>
+
+<h3 id="For_statements">For statements</h3>
+
+<p>
+A "for" statement specifies repeated execution of a block. The iteration is
+controlled by a condition, a "for" clause, or a "range" clause.
+</p>
+
+<pre class="ebnf">
+ForStmt = "for" [ Condition | ForClause | RangeClause ] Block .
+Condition = Expression .
+</pre>
+
+<p>
+In its simplest form, a "for" statement specifies the repeated execution of
+a block as long as a boolean condition evaluates to true.
+The condition is evaluated before each iteration.
+If the condition is absent, it is equivalent to the boolean value
+<code>true</code>.
+</p>
+
+<pre>
+for a &lt; b {
+	a *= 2
+}
+</pre>
+
+<p>
+A "for" statement with a ForClause is also controlled by its condition, but
+additionally it may specify an <i>init</i>
+and a <i>post</i> statement, such as an assignment,
+an increment or decrement statement. The init statement may be a
+<a href="#Short_variable_declarations">short variable declaration</a>, but the post statement must not.
+Variables declared by the init statement are re-used in each iteration.
+</p>
+
+<pre class="ebnf">
+ForClause = [ InitStmt ] ";" [ Condition ] ";" [ PostStmt ] .
+InitStmt = SimpleStmt .
+PostStmt = SimpleStmt .
+</pre>
+
+<pre>
+for i := 0; i &lt; 10; i++ {
+	f(i)
+}
+</pre>
+
+<p>
+If non-empty, the init statement is executed once before evaluating the
+condition for the first iteration;
+the post statement is executed after each execution of the block (and
+only if the block was executed).
+Any element of the ForClause may be empty but the
+<a href="#Semicolons">semicolons</a> are
+required unless there is only a condition.
+If the condition is absent, it is equivalent to the boolean value
+<code>true</code>.
+</p>
+
+<pre>
+for cond { S() }    is the same as    for ; cond ; { S() }
+for      { S() }    is the same as    for true     { S() }
+</pre>
+
+<p>
+A "for" statement with a "range" clause
+iterates through all entries of an array, slice, string or map,
+or values received on a channel. For each entry it assigns <i>iteration values</i>
+to corresponding <i>iteration variables</i> if present and then executes the block.
+</p>
+
+<pre class="ebnf">
+RangeClause = [ ExpressionList "=" | IdentifierList ":=" ] "range" Expression .
+</pre>
+
+<p>
+The expression on the right in the "range" clause is called the <i>range expression</i>,
+which may be an array, pointer to an array, slice, string, map, or channel permitting
+<a href="#Receive_operator">receive operations</a>.
+As with an assignment, if present the operands on the left must be
+<a href="#Address_operators">addressable</a> or map index expressions; they
+denote the iteration variables. If the range expression is a channel, at most
+one iteration variable is permitted, otherwise there may be up to two.
+If the last iteration variable is the <a href="#Blank_identifier">blank identifier</a>,
+the range clause is equivalent to the same clause without that identifier.
+</p>
+
+<p>
+The range expression is evaluated once before beginning the loop,
+with one exception: if the range expression is an array or a pointer to an array
+and at most one iteration variable is present, only the range expression's
+length is evaluated; if that length is constant,
+<a href="#Length_and_capacity">by definition</a>
+the range expression itself will not be evaluated.
+</p>
+
+<p>
+Function calls on the left are evaluated once per iteration.
+For each iteration, iteration values are produced as follows
+if the respective iteration variables are present:
+</p>
+
+<pre class="grammar">
+Range expression                          1st value          2nd value
+
+array or slice  a  [n]E, *[n]E, or []E    index    i  int    a[i]       E
+string          s  string type            index    i  int    see below  rune
+map             m  map[K]V                key      k  K      m[k]       V
+channel         c  chan E, &lt;-chan E       element  e  E
+</pre>
+
+<ol>
+<li>
+For an array, pointer to array, or slice value <code>a</code>, the index iteration
+values are produced in increasing order, starting at element index 0.
+If at most one iteration variable is present, the range loop produces
+iteration values from 0 up to <code>len(a)-1</code> and does not index into the array
+or slice itself. For a <code>nil</code> slice, the number of iterations is 0.
+</li>
+
+<li>
+For a string value, the "range" clause iterates over the Unicode code points
+in the string starting at byte index 0.  On successive iterations, the index value will be the
+index of the first byte of successive UTF-8-encoded code points in the string,
+and the second value, of type <code>rune</code>, will be the value of
+the corresponding code point.  If the iteration encounters an invalid
+UTF-8 sequence, the second value will be <code>0xFFFD</code>,
+the Unicode replacement character, and the next iteration will advance
+a single byte in the string.
+</li>
+
+<li>
+The iteration order over maps is not specified
+and is not guaranteed to be the same from one iteration to the next.
+If map entries that have not yet been reached are removed during iteration,
+the corresponding iteration values will not be produced. If map entries are
+created during iteration, that entry may be produced during the iteration or
+may be skipped. The choice may vary for each entry created and from one
+iteration to the next.
+If the map is <code>nil</code>, the number of iterations is 0.
+</li>
+
+<li>
+For channels, the iteration values produced are the successive values sent on
+the channel until the channel is <a href="#Close">closed</a>. If the channel
+is <code>nil</code>, the range expression blocks forever.
+</li>
+</ol>
+
+<p>
+The iteration values are assigned to the respective
+iteration variables as in an <a href="#Assignments">assignment statement</a>.
+</p>
+
+<p>
+The iteration variables may be declared by the "range" clause using a form of
+<a href="#Short_variable_declarations">short variable declaration</a>
+(<code>:=</code>).
+In this case their types are set to the types of the respective iteration values
+and their <a href="#Declarations_and_scope">scope</a> is the block of the "for"
+statement; they are re-used in each iteration.
+If the iteration variables are declared outside the "for" statement,
+after execution their values will be those of the last iteration.
+</p>
+
+<pre>
+var testdata *struct {
+	a *[7]int
+}
+for i, _ := range testdata.a {
+	// testdata.a is never evaluated; len(testdata.a) is constant
+	// i ranges from 0 to 6
+	f(i)
+}
+
+var a [10]string
+for i, s := range a {
+	// type of i is int
+	// type of s is string
+	// s == a[i]
+	g(i, s)
+}
+
+var key string
+var val interface {}  // value type of m is assignable to val
+m := map[string]int{"mon":0, "tue":1, "wed":2, "thu":3, "fri":4, "sat":5, "sun":6}
+for key, val = range m {
+	h(key, val)
+}
+// key == last map key encountered in iteration
+// val == map[key]
+
+var ch chan Work = producer()
+for w := range ch {
+	doWork(w)
+}
+
+// empty a channel
+for range ch {}
+</pre>
+
+
+<h3 id="Go_statements">Go statements</h3>
+
+<p>
+A "go" statement starts the execution of a function call
+as an independent concurrent thread of control, or <i>goroutine</i>,
+within the same address space.
+</p>
+
+<pre class="ebnf">
+GoStmt = "go" Expression .
+</pre>
+
+<p>
+The expression must be a function or method call; it cannot be parenthesized.
+Calls of built-in functions are restricted as for
+<a href="#Expression_statements">expression statements</a>.
+</p>
+
+<p>
+The function value and parameters are
+<a href="#Calls">evaluated as usual</a>
+in the calling goroutine, but
+unlike with a regular call, program execution does not wait
+for the invoked function to complete.
+Instead, the function begins executing independently
+in a new goroutine.
+When the function terminates, its goroutine also terminates.
+If the function has any return values, they are discarded when the
+function completes.
+</p>
+
+<pre>
+go Server()
+go func(ch chan&lt;- bool) { for { sleep(10); ch &lt;- true; }} (c)
+</pre>
+
+
+<h3 id="Select_statements">Select statements</h3>
+
+<p>
+A "select" statement chooses which of a set of possible
+<a href="#Send_statements">send</a> or
+<a href="#Receive_operator">receive</a>
+operations will proceed.
+It looks similar to a
+<a href="#Switch_statements">"switch"</a> statement but with the
+cases all referring to communication operations.
+</p>
+
+<pre class="ebnf">
+SelectStmt = "select" "{" { CommClause } "}" .
+CommClause = CommCase ":" StatementList .
+CommCase   = "case" ( SendStmt | RecvStmt ) | "default" .
+RecvStmt   = [ ExpressionList "=" | IdentifierList ":=" ] RecvExpr .
+RecvExpr   = Expression .
+</pre>
+
+<p>
+A case with a RecvStmt may assign the result of a RecvExpr to one or
+two variables, which may be declared using a
+<a href="#Short_variable_declarations">short variable declaration</a>.
+The RecvExpr must be a (possibly parenthesized) receive operation.
+There can be at most one default case and it may appear anywhere
+in the list of cases.
+</p>
+
+<p>
+Execution of a "select" statement proceeds in several steps:
+</p>
+
+<ol>
+<li>
+For all the cases in the statement, the channel operands of receive operations
+and the channel and right-hand-side expressions of send statements are
+evaluated exactly once, in source order, upon entering the "select" statement.
+The result is a set of channels to receive from or send to,
+and the corresponding values to send.
+Any side effects in that evaluation will occur irrespective of which (if any)
+communication operation is selected to proceed.
+Expressions on the left-hand side of a RecvStmt with a short variable declaration
+or assignment are not yet evaluated.
+</li>
+
+<li>
+If one or more of the communications can proceed,
+a single one that can proceed is chosen via a uniform pseudo-random selection.
+Otherwise, if there is a default case, that case is chosen.
+If there is no default case, the "select" statement blocks until
+at least one of the communications can proceed.
+</li>
+
+<li>
+Unless the selected case is the default case, the respective communication
+operation is executed.
+</li>
+
+<li>
+If the selected case is a RecvStmt with a short variable declaration or
+an assignment, the left-hand side expressions are evaluated and the
+received value (or values) are assigned.
+</li>
+
+<li>
+The statement list of the selected case is executed.
+</li>
+</ol>
+
+<p>
+Since communication on <code>nil</code> channels can never proceed,
+a select with only <code>nil</code> channels and no default case blocks forever.
+</p>
+
+<pre>
+var a []int
+var c, c1, c2, c3, c4 chan int
+var i1, i2 int
+select {
+case i1 = &lt;-c1:
+	print("received ", i1, " from c1\n")
+case c2 &lt;- i2:
+	print("sent ", i2, " to c2\n")
+case i3, ok := (&lt;-c3):  // same as: i3, ok := &lt;-c3
+	if ok {
+		print("received ", i3, " from c3\n")
+	} else {
+		print("c3 is closed\n")
+	}
+case a[f()] = &lt;-c4:
+	// same as:
+	// case t := &lt;-c4
+	//	a[f()] = t
+default:
+	print("no communication\n")
+}
+
+for {  // send random sequence of bits to c
+	select {
+	case c &lt;- 0:  // note: no statement, no fallthrough, no folding of cases
+	case c &lt;- 1:
+	}
+}
+
+select {}  // block forever
+</pre>
+
+
+<h3 id="Return_statements">Return statements</h3>
+
+<p>
+A "return" statement in a function <code>F</code> terminates the execution
+of <code>F</code>, and optionally provides one or more result values.
+Any functions <a href="#Defer_statements">deferred</a> by <code>F</code>
+are executed before <code>F</code> returns to its caller.
+</p>
+
+<pre class="ebnf">
+ReturnStmt = "return" [ ExpressionList ] .
+</pre>
+
+<p>
+In a function without a result type, a "return" statement must not
+specify any result values.
+</p>
+<pre>
+func noResult() {
+	return
+}
+</pre>
+
+<p>
+There are three ways to return values from a function with a result
+type:
+</p>
+
+<ol>
+	<li>The return value or values may be explicitly listed
+		in the "return" statement. Each expression must be single-valued
+		and <a href="#Assignability">assignable</a>
+		to the corresponding element of the function's result type.
+<pre>
+func simpleF() int {
+	return 2
+}
+
+func complexF1() (re float64, im float64) {
+	return -7.0, -4.0
+}
+</pre>
+	</li>
+	<li>The expression list in the "return" statement may be a single
+		call to a multi-valued function. The effect is as if each value
+		returned from that function were assigned to a temporary
+		variable with the type of the respective value, followed by a
+		"return" statement listing these variables, at which point the
+		rules of the previous case apply.
+<pre>
+func complexF2() (re float64, im float64) {
+	return complexF1()
+}
+</pre>
+	</li>
+	<li>The expression list may be empty if the function's result
+		type specifies names for its <a href="#Function_types">result parameters</a>.
+		The result parameters act as ordinary local variables
+		and the function may assign values to them as necessary.
+		The "return" statement returns the values of these variables.
+<pre>
+func complexF3() (re float64, im float64) {
+	re = 7.0
+	im = 4.0
+	return
+}
+
+func (devnull) Write(p []byte) (n int, _ error) {
+	n = len(p)
+	return
+}
+</pre>
+	</li>
+</ol>
+
+<p>
+Regardless of how they are declared, all the result values are initialized to
+the <a href="#The_zero_value">zero values</a> for their type upon entry to the
+function. A "return" statement that specifies results sets the result parameters before
+any deferred functions are executed.
+</p>
+
+<p>
+Implementation restriction: A compiler may disallow an empty expression list
+in a "return" statement if a different entity (constant, type, or variable)
+with the same name as a result parameter is in
+<a href="#Declarations_and_scope">scope</a> at the place of the return.
+</p>
+
+<pre>
+func f(n int) (res int, err error) {
+	if _, err := f(n-1); err != nil {
+		return  // invalid return statement: err is shadowed
+	}
+	return
+}
+</pre>
+
+<h3 id="Break_statements">Break statements</h3>
+
+<p>
+A "break" statement terminates execution of the innermost
+<a href="#For_statements">"for"</a>,
+<a href="#Switch_statements">"switch"</a>, or
+<a href="#Select_statements">"select"</a> statement
+within the same function.
+</p>
+
+<pre class="ebnf">
+BreakStmt = "break" [ Label ] .
+</pre>
+
+<p>
+If there is a label, it must be that of an enclosing
+"for", "switch", or "select" statement,
+and that is the one whose execution terminates.
+</p>
+
+<pre>
+OuterLoop:
+	for i = 0; i &lt; n; i++ {
+		for j = 0; j &lt; m; j++ {
+			switch a[i][j] {
+			case nil:
+				state = Error
+				break OuterLoop
+			case item:
+				state = Found
+				break OuterLoop
+			}
+		}
+	}
+</pre>
+
+<h3 id="Continue_statements">Continue statements</h3>
+
+<p>
+A "continue" statement begins the next iteration of the
+innermost <a href="#For_statements">"for" loop</a> at its post statement.
+The "for" loop must be within the same function.
+</p>
+
+<pre class="ebnf">
+ContinueStmt = "continue" [ Label ] .
+</pre>
+
+<p>
+If there is a label, it must be that of an enclosing
+"for" statement, and that is the one whose execution
+advances.
+</p>
+
+<pre>
+RowLoop:
+	for y, row := range rows {
+		for x, data := range row {
+			if data == endOfRow {
+				continue RowLoop
+			}
+			row[x] = data + bias(x, y)
+		}
+	}
+</pre>
+
+<h3 id="Goto_statements">Goto statements</h3>
+
+<p>
+A "goto" statement transfers control to the statement with the corresponding label
+within the same function.
+</p>
+
+<pre class="ebnf">
+GotoStmt = "goto" Label .
+</pre>
+
+<pre>
+goto Error
+</pre>
+
+<p>
+Executing the "goto" statement must not cause any variables to come into
+<a href="#Declarations_and_scope">scope</a> that were not already in scope at the point of the goto.
+For instance, this example:
+</p>
+
+<pre>
+	goto L  // BAD
+	v := 3
+L:
+</pre>
+
+<p>
+is erroneous because the jump to label <code>L</code> skips
+the creation of <code>v</code>.
+</p>
+
+<p>
+A "goto" statement outside a <a href="#Blocks">block</a> cannot jump to a label inside that block.
+For instance, this example:
+</p>
+
+<pre>
+if n%2 == 1 {
+	goto L1
+}
+for n &gt; 0 {
+	f()
+	n--
+L1:
+	f()
+	n--
+}
+</pre>
+
+<p>
+is erroneous because the label <code>L1</code> is inside
+the "for" statement's block but the <code>goto</code> is not.
+</p>
+
+<h3 id="Fallthrough_statements">Fallthrough statements</h3>
+
+<p>
+A "fallthrough" statement transfers control to the first statement of the
+next case clause in a <a href="#Expression_switches">expression "switch" statement</a>.
+It may be used only as the final non-empty statement in such a clause.
+</p>
+
+<pre class="ebnf">
+FallthroughStmt = "fallthrough" .
+</pre>
+
+
+<h3 id="Defer_statements">Defer statements</h3>
+
+<p>
+A "defer" statement invokes a function whose execution is deferred
+to the moment the surrounding function returns, either because the
+surrounding function executed a <a href="#Return_statements">return statement</a>,
+reached the end of its <a href="#Function_declarations">function body</a>,
+or because the corresponding goroutine is <a href="#Handling_panics">panicking</a>.
+</p>
+
+<pre class="ebnf">
+DeferStmt = "defer" Expression .
+</pre>
+
+<p>
+The expression must be a function or method call; it cannot be parenthesized.
+Calls of built-in functions are restricted as for
+<a href="#Expression_statements">expression statements</a>.
+</p>
+
+<p>
+Each time a "defer" statement
+executes, the function value and parameters to the call are
+<a href="#Calls">evaluated as usual</a>
+and saved anew but the actual function is not invoked.
+Instead, deferred functions are invoked immediately before
+the surrounding function returns, in the reverse order
+they were deferred.
+If a deferred function value evaluates
+to <code>nil</code>, execution <a href="#Handling_panics">panics</a>
+when the function is invoked, not when the "defer" statement is executed.
+</p>
+
+<p>
+For instance, if the deferred function is
+a <a href="#Function_literals">function literal</a> and the surrounding
+function has <a href="#Function_types">named result parameters</a> that
+are in scope within the literal, the deferred function may access and modify
+the result parameters before they are returned.
+If the deferred function has any return values, they are discarded when
+the function completes.
+(See also the section on <a href="#Handling_panics">handling panics</a>.)
+</p>
+
+<pre>
+lock(l)
+defer unlock(l)  // unlocking happens before surrounding function returns
+
+// prints 3 2 1 0 before surrounding function returns
+for i := 0; i &lt;= 3; i++ {
+	defer fmt.Print(i)
+}
+
+// f returns 1
+func f() (result int) {
+	defer func() {
+		result++
+	}()
+	return 0
+}
+</pre>
+
+<h2 id="Built-in_functions">Built-in functions</h2>
+
+<p>
+Built-in functions are
+<a href="#Predeclared_identifiers">predeclared</a>.
+They are called like any other function but some of them
+accept a type instead of an expression as the first argument.
+</p>
+
+<p>
+The built-in functions do not have standard Go types,
+so they can only appear in <a href="#Calls">call expressions</a>;
+they cannot be used as function values.
+</p>
+
+<h3 id="Close">Close</h3>
+
+<p>
+For a channel <code>c</code>, the built-in function <code>close(c)</code>
+records that no more values will be sent on the channel.
+It is an error if <code>c</code> is a receive-only channel.
+Sending to or closing a closed channel causes a <a href="#Run_time_panics">run-time panic</a>.
+Closing the nil channel also causes a <a href="#Run_time_panics">run-time panic</a>.
+After calling <code>close</code>, and after any previously
+sent values have been received, receive operations will return
+the zero value for the channel's type without blocking.
+The multi-valued <a href="#Receive_operator">receive operation</a>
+returns a received value along with an indication of whether the channel is closed.
+</p>
+
+
+<h3 id="Length_and_capacity">Length and capacity</h3>
+
+<p>
+The built-in functions <code>len</code> and <code>cap</code> take arguments
+of various types and return a result of type <code>int</code>.
+The implementation guarantees that the result always fits into an <code>int</code>.
+</p>
+
+<pre class="grammar">
+Call      Argument type    Result
+
+len(s)    string type      string length in bytes
+          [n]T, *[n]T      array length (== n)
+          []T              slice length
+          map[K]T          map length (number of defined keys)
+          chan T           number of elements queued in channel buffer
+
+cap(s)    [n]T, *[n]T      array length (== n)
+          []T              slice capacity
+          chan T           channel buffer capacity
+</pre>
+
+<p>
+The capacity of a slice is the number of elements for which there is
+space allocated in the underlying array.
+At any time the following relationship holds:
+</p>
+
+<pre>
+0 &lt;= len(s) &lt;= cap(s)
+</pre>
+
+<p>
+The length of a <code>nil</code> slice, map or channel is 0.
+The capacity of a <code>nil</code> slice or channel is 0.
+</p>
+
+<p>
+The expression <code>len(s)</code> is <a href="#Constants">constant</a> if
+<code>s</code> is a string constant. The expressions <code>len(s)</code> and
+<code>cap(s)</code> are constants if the type of <code>s</code> is an array
+or pointer to an array and the expression <code>s</code> does not contain
+<a href="#Receive_operator">channel receives</a> or (non-constant)
+<a href="#Calls">function calls</a>; in this case <code>s</code> is not evaluated.
+Otherwise, invocations of <code>len</code> and <code>cap</code> are not
+constant and <code>s</code> is evaluated.
+</p>
+
+<pre>
+const (
+	c1 = imag(2i)                    // imag(2i) = 2.0 is a constant
+	c2 = len([10]float64{2})         // [10]float64{2} contains no function calls
+	c3 = len([10]float64{c1})        // [10]float64{c1} contains no function calls
+	c4 = len([10]float64{imag(2i)})  // imag(2i) is a constant and no function call is issued
+	c5 = len([10]float64{imag(z)})   // invalid: imag(x) is a (non-constant) function call
+)
+var z complex128
+</pre>
+
+<h3 id="Allocation">Allocation</h3>
+
+<p>
+The built-in function <code>new</code> takes a type <code>T</code>,
+allocates storage for a <a href="#Variables">variable</a> of that type
+at run time, and returns a value of type <code>*T</code>
+<a href="#Pointer_types">pointing</a> to it.
+The variable is initialized as described in the section on
+<a href="#The_zero_value">initial values</a>.
+</p>
+
+<pre class="grammar">
+new(T)
+</pre>
+
+<p>
+For instance
+</p>
+
+<pre>
+type S struct { a int; b float64 }
+new(S)
+</pre>
+
+<p>
+allocates storage for a variable of type <code>S</code>,
+initializes it (<code>a=0</code>, <code>b=0.0</code>),
+and returns a value of type <code>*S</code> containing the address
+of the location.
+</p>
+
+<h3 id="Making_slices_maps_and_channels">Making slices, maps and channels</h3>
+
+<p>
+The built-in function <code>make</code> takes a type <code>T</code>,
+which must be a slice, map or channel type,
+optionally followed by a type-specific list of expressions.
+It returns a value of type <code>T</code> (not <code>*T</code>).
+The memory is initialized as described in the section on
+<a href="#The_zero_value">initial values</a>.
+</p>
+
+<pre class="grammar">
+Call             Type T     Result
+
+make(T, n)       slice      slice of type T with length n and capacity n
+make(T, n, m)    slice      slice of type T with length n and capacity m
+
+make(T)          map        map of type T
+make(T, n)       map        map of type T with initial space for n elements
+
+make(T)          channel    unbuffered channel of type T
+make(T, n)       channel    buffered channel of type T, buffer size n
+</pre>
+
+
+<p>
+The size arguments <code>n</code> and <code>m</code> must be of integer type or untyped.
+A <a href="#Constants">constant</a> size argument must be non-negative and
+representable by a value of type <code>int</code>.
+If both <code>n</code> and <code>m</code> are provided and are constant, then
+<code>n</code> must be no larger than <code>m</code>.
+If <code>n</code> is negative or larger than <code>m</code> at run time,
+a <a href="#Run_time_panics">run-time panic</a> occurs.
+</p>
+
+<pre>
+s := make([]int, 10, 100)       // slice with len(s) == 10, cap(s) == 100
+s := make([]int, 1e3)           // slice with len(s) == cap(s) == 1000
+s := make([]int, 1&lt;&lt;63)         // illegal: len(s) is not representable by a value of type int
+s := make([]int, 10, 0)         // illegal: len(s) > cap(s)
+c := make(chan int, 10)         // channel with a buffer size of 10
+m := make(map[string]int, 100)  // map with initial space for 100 elements
+</pre>
+
+
+<h3 id="Appending_and_copying_slices">Appending to and copying slices</h3>
+
+<p>
+The built-in functions <code>append</code> and <code>copy</code> assist in
+common slice operations.
+For both functions, the result is independent of whether the memory referenced
+by the arguments overlaps.
+</p>
+
+<p>
+The <a href="#Function_types">variadic</a> function <code>append</code>
+appends zero or more values <code>x</code>
+to <code>s</code> of type <code>S</code>, which must be a slice type, and
+returns the resulting slice, also of type <code>S</code>.
+The values <code>x</code> are passed to a parameter of type <code>...T</code>
+where <code>T</code> is the <a href="#Slice_types">element type</a> of
+<code>S</code> and the respective
+<a href="#Passing_arguments_to_..._parameters">parameter passing rules</a> apply.
+As a special case, <code>append</code> also accepts a first argument
+assignable to type <code>[]byte</code> with a second argument of
+string type followed by <code>...</code>. This form appends the
+bytes of the string.
+</p>
+
+<pre class="grammar">
+append(s S, x ...T) S  // T is the element type of S
+</pre>
+
+<p>
+If the capacity of <code>s</code> is not large enough to fit the additional
+values, <code>append</code> allocates a new, sufficiently large underlying
+array that fits both the existing slice elements and the additional values.
+Otherwise, <code>append</code> re-uses the underlying array.
+</p>
+
+<pre>
+s0 := []int{0, 0}
+s1 := append(s0, 2)                // append a single element     s1 == []int{0, 0, 2}
+s2 := append(s1, 3, 5, 7)          // append multiple elements    s2 == []int{0, 0, 2, 3, 5, 7}
+s3 := append(s2, s0...)            // append a slice              s3 == []int{0, 0, 2, 3, 5, 7, 0, 0}
+s4 := append(s3[3:6], s3[2:]...)   // append overlapping slice    s4 == []int{3, 5, 7, 2, 3, 5, 7, 0, 0}
+
+var t []interface{}
+t = append(t, 42, 3.1415, "foo")                                  t == []interface{}{42, 3.1415, "foo"}
+
+var b []byte
+b = append(b, "bar"...)            // append string contents      b == []byte{'b', 'a', 'r' }
+</pre>
+
+<p>
+The function <code>copy</code> copies slice elements from
+a source <code>src</code> to a destination <code>dst</code> and returns the
+number of elements copied.
+Both arguments must have <a href="#Type_identity">identical</a> element type <code>T</code> and must be
+<a href="#Assignability">assignable</a> to a slice of type <code>[]T</code>.
+The number of elements copied is the minimum of
+<code>len(src)</code> and <code>len(dst)</code>.
+As a special case, <code>copy</code> also accepts a destination argument assignable
+to type <code>[]byte</code> with a source argument of a string type.
+This form copies the bytes from the string into the byte slice.
+</p>
+
+<pre class="grammar">
+copy(dst, src []T) int
+copy(dst []byte, src string) int
+</pre>
+
+<p>
+Examples:
+</p>
+
+<pre>
+var a = [...]int{0, 1, 2, 3, 4, 5, 6, 7}
+var s = make([]int, 6)
+var b = make([]byte, 5)
+n1 := copy(s, a[0:])            // n1 == 6, s == []int{0, 1, 2, 3, 4, 5}
+n2 := copy(s, s[2:])            // n2 == 4, s == []int{2, 3, 4, 5, 4, 5}
+n3 := copy(b, "Hello, World!")  // n3 == 5, b == []byte("Hello")
+</pre>
+
+
+<h3 id="Deletion_of_map_elements">Deletion of map elements</h3>
+
+<p>
+The built-in function <code>delete</code> removes the element with key
+<code>k</code> from a <a href="#Map_types">map</a> <code>m</code>. The
+type of <code>k</code> must be <a href="#Assignability">assignable</a>
+to the key type of <code>m</code>.
+</p>
+
+<pre class="grammar">
+delete(m, k)  // remove element m[k] from map m
+</pre>
+
+<p>
+If the map <code>m</code> is <code>nil</code> or the element <code>m[k]</code>
+does not exist, <code>delete</code> is a no-op.
+</p>
+
+
+<h3 id="Complex_numbers">Manipulating complex numbers</h3>
+
+<p>
+Three functions assemble and disassemble complex numbers.
+The built-in function <code>complex</code> constructs a complex
+value from a floating-point real and imaginary part, while
+<code>real</code> and <code>imag</code>
+extract the real and imaginary parts of a complex value.
+</p>
+
+<pre class="grammar">
+complex(realPart, imaginaryPart floatT) complexT
+real(complexT) floatT
+imag(complexT) floatT
+</pre>
+
+<p>
+The type of the arguments and return value correspond.
+For <code>complex</code>, the two arguments must be of the same
+floating-point type and the return type is the complex type
+with the corresponding floating-point constituents:
+<code>complex64</code> for <code>float32</code>,
+<code>complex128</code> for <code>float64</code>.
+The <code>real</code> and <code>imag</code> functions
+together form the inverse, so for a complex value <code>z</code>,
+<code>z</code> <code>==</code> <code>complex(real(z),</code> <code>imag(z))</code>.
+</p>
+
+<p>
+If the operands of these functions are all constants, the return
+value is a constant.
+</p>
+
+<pre>
+var a = complex(2, -2)             // complex128
+var b = complex(1.0, -1.4)         // complex128
+x := float32(math.Cos(math.Pi/2))  // float32
+var c64 = complex(5, -x)           // complex64
+var im = imag(b)                   // float64
+var rl = real(c64)                 // float32
+</pre>
+
+<h3 id="Handling_panics">Handling panics</h3>
+
+<p> Two built-in functions, <code>panic</code> and <code>recover</code>,
+assist in reporting and handling <a href="#Run_time_panics">run-time panics</a>
+and program-defined error conditions.
+</p>
+
+<pre class="grammar">
+func panic(interface{})
+func recover() interface{}
+</pre>
+
+<p>
+While executing a function <code>F</code>,
+an explicit call to <code>panic</code> or a <a href="#Run_time_panics">run-time panic</a>
+terminates the execution of <code>F</code>.
+Any functions <a href="#Defer_statements">deferred</a> by <code>F</code>
+are then executed as usual.
+Next, any deferred functions run by <code>F's</code> caller are run,
+and so on up to any deferred by the top-level function in the executing goroutine.
+At that point, the program is terminated and the error
+condition is reported, including the value of the argument to <code>panic</code>.
+This termination sequence is called <i>panicking</i>.
+</p>
+
+<pre>
+panic(42)
+panic("unreachable")
+panic(Error("cannot parse"))
+</pre>
+
+<p>
+The <code>recover</code> function allows a program to manage behavior
+of a panicking goroutine.
+Suppose a function <code>G</code> defers a function <code>D</code> that calls
+<code>recover</code> and a panic occurs in a function on the same goroutine in which <code>G</code>
+is executing.
+When the running of deferred functions reaches <code>D</code>,
+the return value of <code>D</code>'s call to <code>recover</code> will be the value passed to the call of <code>panic</code>.
+If <code>D</code> returns normally, without starting a new
+<code>panic</code>, the panicking sequence stops. In that case,
+the state of functions called between <code>G</code> and the call to <code>panic</code>
+is discarded, and normal execution resumes.
+Any functions deferred by <code>G</code> before <code>D</code> are then run and <code>G</code>'s
+execution terminates by returning to its caller.
+</p>
+
+<p>
+The return value of <code>recover</code> is <code>nil</code> if any of the following conditions holds:
+</p>
+<ul>
+<li>
+<code>panic</code>'s argument was <code>nil</code>;
+</li>
+<li>
+the goroutine is not panicking;
+</li>
+<li>
+<code>recover</code> was not called directly by a deferred function.
+</li>
+</ul>
+
+<p>
+The <code>protect</code> function in the example below invokes
+the function argument <code>g</code> and protects callers from
+run-time panics raised by <code>g</code>.
+</p>
+
+<pre>
+func protect(g func()) {
+	defer func() {
+		log.Println("done")  // Println executes normally even if there is a panic
+		if x := recover(); x != nil {
+			log.Printf("run time panic: %v", x)
+		}
+	}()
+	log.Println("start")
+	g()
+}
+</pre>
+
+
+<h3 id="Bootstrapping">Bootstrapping</h3>
+
+<p>
+Current implementations provide several built-in functions useful during
+bootstrapping. These functions are documented for completeness but are not
+guaranteed to stay in the language. They do not return a result.
+</p>
+
+<pre class="grammar">
+Function   Behavior
+
+print      prints all arguments; formatting of arguments is implementation-specific
+println    like print but prints spaces between arguments and a newline at the end
+</pre>
+
+
+<h2 id="Packages">Packages</h2>
+
+<p>
+Go programs are constructed by linking together <i>packages</i>.
+A package in turn is constructed from one or more source files
+that together declare constants, types, variables and functions
+belonging to the package and which are accessible in all files
+of the same package. Those elements may be
+<a href="#Exported_identifiers">exported</a> and used in another package.
+</p>
+
+<h3 id="Source_file_organization">Source file organization</h3>
+
+<p>
+Each source file consists of a package clause defining the package
+to which it belongs, followed by a possibly empty set of import
+declarations that declare packages whose contents it wishes to use,
+followed by a possibly empty set of declarations of functions,
+types, variables, and constants.
+</p>
+
+<pre class="ebnf">
+SourceFile       = PackageClause ";" { ImportDecl ";" } { TopLevelDecl ";" } .
+</pre>
+
+<h3 id="Package_clause">Package clause</h3>
+
+<p>
+A package clause begins each source file and defines the package
+to which the file belongs.
+</p>
+
+<pre class="ebnf">
+PackageClause  = "package" PackageName .
+PackageName    = identifier .
+</pre>
+
+<p>
+The PackageName must not be the <a href="#Blank_identifier">blank identifier</a>.
+</p>
+
+<pre>
+package math
+</pre>
+
+<p>
+A set of files sharing the same PackageName form the implementation of a package.
+An implementation may require that all source files for a package inhabit the same directory.
+</p>
+
+<h3 id="Import_declarations">Import declarations</h3>
+
+<p>
+An import declaration states that the source file containing the declaration
+depends on functionality of the <i>imported</i> package
+(<a href="#Program_initialization_and_execution">Â§Program initialization and execution</a>)
+and enables access to <a href="#Exported_identifiers">exported</a> identifiers
+of that package.
+The import names an identifier (PackageName) to be used for access and an ImportPath
+that specifies the package to be imported.
+</p>
+
+<pre class="ebnf">
+ImportDecl       = "import" ( ImportSpec | "(" { ImportSpec ";" } ")" ) .
+ImportSpec       = [ "." | PackageName ] ImportPath .
+ImportPath       = string_lit .
+</pre>
+
+<p>
+The PackageName is used in <a href="#Qualified_identifiers">qualified identifiers</a>
+to access exported identifiers of the package within the importing source file.
+It is declared in the <a href="#Blocks">file block</a>.
+If the PackageName is omitted, it defaults to the identifier specified in the
+<a href="#Package_clause">package clause</a> of the imported package.
+If an explicit period (<code>.</code>) appears instead of a name, all the
+package's exported identifiers declared in that package's
+<a href="#Blocks">package block</a> will be declared in the importing source
+file's file block and must be accessed without a qualifier.
+</p>
+
+<p>
+The interpretation of the ImportPath is implementation-dependent but
+it is typically a substring of the full file name of the compiled
+package and may be relative to a repository of installed packages.
+</p>
+
+<p>
+Implementation restriction: A compiler may restrict ImportPaths to
+non-empty strings using only characters belonging to
+<a href="http://www.unicode.org/versions/Unicode6.3.0/">Unicode's</a>
+L, M, N, P, and S general categories (the Graphic characters without
+spaces) and may also exclude the characters
+<code>!"#$%&amp;'()*,:;&lt;=&gt;?[\]^`{|}</code>
+and the Unicode replacement character U+FFFD.
+</p>
+
+<p>
+Assume we have compiled a package containing the package clause
+<code>package math</code>, which exports function <code>Sin</code>, and
+installed the compiled package in the file identified by
+<code>"lib/math"</code>.
+This table illustrates how <code>Sin</code> is accessed in files
+that import the package after the
+various types of import declaration.
+</p>
+
+<pre class="grammar">
+Import declaration          Local name of Sin
+
+import   "lib/math"         math.Sin
+import m "lib/math"         m.Sin
+import . "lib/math"         Sin
+</pre>
+
+<p>
+An import declaration declares a dependency relation between
+the importing and imported package.
+It is illegal for a package to import itself, directly or indirectly,
+or to directly import a package without
+referring to any of its exported identifiers. To import a package solely for
+its side-effects (initialization), use the <a href="#Blank_identifier">blank</a>
+identifier as explicit package name:
+</p>
+
+<pre>
+import _ "lib/math"
+</pre>
+
+
+<h3 id="An_example_package">An example package</h3>
+
+<p>
+Here is a complete Go package that implements a concurrent prime sieve.
+</p>
+
+<pre>
+package main
+
+import "fmt"
+
+// Send the sequence 2, 3, 4, â€¦ to channel 'ch'.
+func generate(ch chan&lt;- int) {
+	for i := 2; ; i++ {
+		ch &lt;- i  // Send 'i' to channel 'ch'.
+	}
+}
+
+// Copy the values from channel 'src' to channel 'dst',
+// removing those divisible by 'prime'.
+func filter(src &lt;-chan int, dst chan&lt;- int, prime int) {
+	for i := range src {  // Loop over values received from 'src'.
+		if i%prime != 0 {
+			dst &lt;- i  // Send 'i' to channel 'dst'.
+		}
+	}
+}
+
+// The prime sieve: Daisy-chain filter processes together.
+func sieve() {
+	ch := make(chan int)  // Create a new channel.
+	go generate(ch)       // Start generate() as a subprocess.
+	for {
+		prime := &lt;-ch
+		fmt.Print(prime, "\n")
+		ch1 := make(chan int)
+		go filter(ch, ch1, prime)
+		ch = ch1
+	}
+}
+
+func main() {
+	sieve()
+}
+</pre>
+
+<h2 id="Program_initialization_and_execution">Program initialization and execution</h2>
+
+<h3 id="The_zero_value">The zero value</h3>
+<p>
+When storage is allocated for a <a href="#Variables">variable</a>,
+either through a declaration or a call of <code>new</code>, or when
+a new value is created, either through a composite literal or a call
+of <code>make</code>,
+and no explicit initialization is provided, the variable or value is
+given a default value.  Each element of such a variable or value is
+set to the <i>zero value</i> for its type: <code>false</code> for booleans,
+<code>0</code> for integers, <code>0.0</code> for floats, <code>""</code>
+for strings, and <code>nil</code> for pointers, functions, interfaces, slices, channels, and maps.
+This initialization is done recursively, so for instance each element of an
+array of structs will have its fields zeroed if no value is specified.
+</p>
+<p>
+These two simple declarations are equivalent:
+</p>
+
+<pre>
+var i int
+var i int = 0
+</pre>
+
+<p>
+After
+</p>
+
+<pre>
+type T struct { i int; f float64; next *T }
+t := new(T)
+</pre>
+
+<p>
+the following holds:
+</p>
+
+<pre>
+t.i == 0
+t.f == 0.0
+t.next == nil
+</pre>
+
+<p>
+The same would also be true after
+</p>
+
+<pre>
+var t T
+</pre>
+
+<h3 id="Package_initialization">Package initialization</h3>
+
+<p>
+Within a package, package-level variables are initialized in
+<i>declaration order</i> but after any of the variables
+they <i>depend</i> on.
+</p>
+
+<p>
+More precisely, a package-level variable is considered <i>ready for
+initialization</i> if it is not yet initialized and either has
+no <a href="#Variable_declarations">initialization expression</a> or
+its initialization expression has no dependencies on uninitialized variables.
+Initialization proceeds by repeatedly initializing the next package-level
+variable that is earliest in declaration order and ready for initialization,
+until there are no variables ready for initialization.
+</p>
+
+<p>
+If any variables are still uninitialized when this
+process ends, those variables are part of one or more initialization cycles,
+and the program is not valid.
+</p>
+
+<p>
+The declaration order of variables declared in multiple files is determined
+by the order in which the files are presented to the compiler: Variables
+declared in the first file are declared before any of the variables declared
+in the second file, and so on.
+</p>
+
+<p>
+Dependency analysis does not rely on the actual values of the
+variables, only on lexical <i>references</i> to them in the source,
+analyzed transitively. For instance, if a variable <code>x</code>'s
+initialization expression refers to a function whose body refers to
+variable <code>y</code> then <code>x</code> depends on <code>y</code>.
+Specifically:
+</p>
+
+<ul>
+<li>
+A reference to a variable or function is an identifier denoting that
+variable or function.
+</li>
+
+<li>
+A reference to a method <code>m</code> is a
+<a href="#Method_values">method value</a> or
+<a href="#Method_expressions">method expression</a> of the form
+<code>t.m</code>, where the (static) type of <code>t</code> is
+not an interface type, and the method <code>m</code> is in the
+<a href="#Method_sets">method set</a> of <code>t</code>.
+It is immaterial whether the resulting function value
+<code>t.m</code> is invoked.
+</li>
+
+<li>
+A variable, function, or method <code>x</code> depends on a variable
+<code>y</code> if <code>x</code>'s initialization expression or body
+(for functions and methods) contains a reference to <code>y</code>
+or to a function or method that depends on <code>y</code>.
+</li>
+</ul>
+
+<p>
+Dependency analysis is performed per package; only references referring
+to variables, functions, and methods declared in the current package
+are considered.
+</p>
+
+<p>
+For example, given the declarations
+</p>
+
+<pre>
+var (
+	a = c + b
+	b = f()
+	c = f()
+	d = 3
+)
+
+func f() int {
+	d++
+	return d
+}
+</pre>
+
+<p>
+the initialization order is <code>d</code>, <code>b</code>, <code>c</code>, <code>a</code>.
+</p>
+
+<p>
+Variables may also be initialized using functions named <code>init</code>
+declared in the package block, with no arguments and no result parameters.
+</p>
+
+<pre>
+func init() { â€¦ }
+</pre>
+
+<p>
+Multiple such functions may be defined, even within a single
+source file. The <code>init</code> identifier is not
+<a href="#Declarations_and_scope">declared</a> and thus
+<code>init</code> functions cannot be referred to from anywhere
+in a program.
+</p>
+
+<p>
+A package with no imports is initialized by assigning initial values
+to all its package-level variables followed by calling all <code>init</code>
+functions in the order they appear in the source, possibly in multiple files,
+as presented to the compiler.
+If a package has imports, the imported packages are initialized
+before initializing the package itself. If multiple packages import
+a package, the imported package will be initialized only once.
+The importing of packages, by construction, guarantees that there
+can be no cyclic initialization dependencies.
+</p>
+
+<p>
+Package initialization&mdash;variable initialization and the invocation of
+<code>init</code> functions&mdash;happens in a single goroutine,
+sequentially, one package at a time.
+An <code>init</code> function may launch other goroutines, which can run
+concurrently with the initialization code. However, initialization
+always sequences
+the <code>init</code> functions: it will not invoke the next one
+until the previous one has returned.
+</p>
+
+<p>
+To ensure reproducible initialization behavior, build systems are encouraged
+to present multiple files belonging to the same package in lexical file name
+order to a compiler.
+</p>
+
+
+<h3 id="Program_execution">Program execution</h3>
+<p>
+A complete program is created by linking a single, unimported package
+called the <i>main package</i> with all the packages it imports, transitively.
+The main package must
+have package name <code>main</code> and
+declare a function <code>main</code> that takes no
+arguments and returns no value.
+</p>
+
+<pre>
+func main() { â€¦ }
+</pre>
+
+<p>
+Program execution begins by initializing the main package and then
+invoking the function <code>main</code>.
+When that function invocation returns, the program exits.
+It does not wait for other (non-<code>main</code>) goroutines to complete.
+</p>
+
+<h2 id="Errors">Errors</h2>
+
+<p>
+The predeclared type <code>error</code> is defined as
+</p>
+
+<pre>
+type error interface {
+	Error() string
+}
+</pre>
+
+<p>
+It is the conventional interface for representing an error condition,
+with the nil value representing no error.
+For instance, a function to read data from a file might be defined:
+</p>
+
+<pre>
+func Read(f *File, b []byte) (n int, err error)
+</pre>
+
+<h2 id="Run_time_panics">Run-time panics</h2>
+
+<p>
+Execution errors such as attempting to index an array out
+of bounds trigger a <i>run-time panic</i> equivalent to a call of
+the built-in function <a href="#Handling_panics"><code>panic</code></a>
+with a value of the implementation-defined interface type <code>runtime.Error</code>.
+That type satisfies the predeclared interface type
+<a href="#Errors"><code>error</code></a>.
+The exact error values that
+represent distinct run-time error conditions are unspecified.
+</p>
+
+<pre>
+package runtime
+
+type Error interface {
+	error
+	// and perhaps other methods
+}
+</pre>
+
+<h2 id="System_considerations">System considerations</h2>
+
+<h3 id="Package_unsafe">Package <code>unsafe</code></h3>
+
+<p>
+The built-in package <code>unsafe</code>, known to the compiler,
+provides facilities for low-level programming including operations
+that violate the type system. A package using <code>unsafe</code>
+must be vetted manually for type safety and may not be portable.
+The package provides the following interface:
+</p>
+
+<pre class="grammar">
+package unsafe
+
+type ArbitraryType int  // shorthand for an arbitrary Go type; it is not a real type
+type Pointer *ArbitraryType
+
+func Alignof(variable ArbitraryType) uintptr
+func Offsetof(selector ArbitraryType) uintptr
+func Sizeof(variable ArbitraryType) uintptr
+</pre>
+
+<p>
+A <code>Pointer</code> is a <a href="#Pointer_types">pointer type</a> but a <code>Pointer</code>
+value may not be <a href="#Address_operators">dereferenced</a>.
+Any pointer or value of <a href="#Types">underlying type</a> <code>uintptr</code> can be converted to
+a <code>Pointer</code> type and vice versa.
+The effect of converting between <code>Pointer</code> and <code>uintptr</code> is implementation-defined.
+</p>
+
+<pre>
+var f float64
+bits = *(*uint64)(unsafe.Pointer(&amp;f))
+
+type ptr unsafe.Pointer
+bits = *(*uint64)(ptr(&amp;f))
+
+var p ptr = nil
+</pre>
+
+<p>
+The functions <code>Alignof</code> and <code>Sizeof</code> take an expression <code>x</code>
+of any type and return the alignment or size, respectively, of a hypothetical variable <code>v</code>
+as if <code>v</code> was declared via <code>var v = x</code>.
+</p>
+<p>
+The function <code>Offsetof</code> takes a (possibly parenthesized) <a href="#Selectors">selector</a>
+<code>s.f</code>, denoting a field <code>f</code> of the struct denoted by <code>s</code>
+or <code>*s</code>, and returns the field offset in bytes relative to the struct's address.
+If <code>f</code> is an <a href="#Struct_types">embedded field</a>, it must be reachable
+without pointer indirections through fields of the struct.
+For a struct <code>s</code> with field <code>f</code>:
+</p>
+
+<pre>
+uintptr(unsafe.Pointer(&amp;s)) + unsafe.Offsetof(s.f) == uintptr(unsafe.Pointer(&amp;s.f))
+</pre>
+
+<p>
+Computer architectures may require memory addresses to be <i>aligned</i>;
+that is, for addresses of a variable to be a multiple of a factor,
+the variable's type's <i>alignment</i>.  The function <code>Alignof</code>
+takes an expression denoting a variable of any type and returns the
+alignment of the (type of the) variable in bytes.  For a variable
+<code>x</code>:
+</p>
+
+<pre>
+uintptr(unsafe.Pointer(&amp;x)) % unsafe.Alignof(x) == 0
+</pre>
+
+<p>
+Calls to <code>Alignof</code>, <code>Offsetof</code>, and
+<code>Sizeof</code> are compile-time constant expressions of type <code>uintptr</code>.
+</p>
+
+<h3 id="Size_and_alignment_guarantees">Size and alignment guarantees</h3>
+
+<p>
+For the <a href="#Numeric_types">numeric types</a>, the following sizes are guaranteed:
+</p>
+
+<pre class="grammar">
+type                                 size in bytes
+
+byte, uint8, int8                     1
+uint16, int16                         2
+uint32, int32, float32                4
+uint64, int64, float64, complex64     8
+complex128                           16
+</pre>
+
+<p>
+The following minimal alignment properties are guaranteed:
+</p>
+<ol>
+<li>For a variable <code>x</code> of any type: <code>unsafe.Alignof(x)</code> is at least 1.
+</li>
+
+<li>For a variable <code>x</code> of struct type: <code>unsafe.Alignof(x)</code> is the largest of
+   all the values <code>unsafe.Alignof(x.f)</code> for each field <code>f</code> of <code>x</code>, but at least 1.
+</li>
+
+<li>For a variable <code>x</code> of array type: <code>unsafe.Alignof(x)</code> is the same as
+   <code>unsafe.Alignof(x[0])</code>, but at least 1.
+</li>
+</ol>
+
+<p>
+A struct or array type has size zero if it contains no fields (or elements, respectively) that have a size greater than zero. Two distinct zero-size variables may have the same address in memory.
+</p>
+                                                                                                                                                                                                                                                                                                                                                               root/go1.4/doc/gopher/                                                                              0040755 0000000 0000000 00000000000 12600426226 013114  5                                                                                                    ustar 00                                                                0000000 0000000                                                                                                                                                                        root/go1.4/doc/gopher/README                                                                        0100644 0000000 0000000 00000000335 12600426226 013772  0                                                                                                    ustar 00                                                                0000000 0000000                                                                                                                                                                        The Go gopher was designed by Renee French. (http://reneefrench.blogspot.com/)
+The design is licensed under the Creative Commons 3.0 Attributions license.
+Read this article for more details: http://blog.golang.org/gopher
+                                                                                                                                                                                                                                                                                                   root/go1.4/doc/gopher/appenginegopher.jpg                                                           0100644 0000000 0000000 00000411312 12600426226 016770  0                                                                                                    ustar 00                                                                0000000 0000000                                                                                                                                                                        ÿØÿà JFIF „„  ÿá¾Exif  MM *                  b       j(       1       r2       ‡i       ¤   Ð ‰T,  ' ‰T,  'Adobe Photoshop CS2 Macintosh 2011:04:07 18:12:56       ÿÿ         —       …                          &(             .      ˆ       H      H   ÿØÿà JFIF   H H  ÿí Adobe_CM ÿî Adobe d€   ÿÛ „ 			
+ÿÀ  e  " ÿÝ  
+ÿÄ?          	
+         	
+ 3 !1AQa"q2‘¡±B#$RÁb34r‚ÑC%’Sðáñcs5¢²ƒ&D“TdEÂ£t6ÒUâeò³„ÃÓuãóF'”¤…´•ÄÔäô¥µÅÕåõVfv†–¦¶ÆÖæö7GWgw‡—§·Ç×ç÷ 5 !1AQaq"2‘¡±B#ÁRÑð3$bár‚’CScs4ñ%¢²ƒ&5ÂÒD“T£dEU6teâò³„ÃÓuãóF”¤…´•ÄÔäô¥µÅÕåõVfv†–¦¶ÆÖæö'7GWgw‡—§·ÇÿÚ   ? õ*iªŠ™M,mUTÐÊë`kZÑµŒcíkÕ4’IJI$’R’I+/ù9w3½_m®cdížøoÒ))2ÃwÖóÉ«êæ0Ïä¡kX-?¤o³$6Ë3ÜÛ+Øæ`Uu_é²qÔ+eÿ Y_êeÓf7C­çÓÆ¸Y˜Z}¶åÐè}=7óªÄ»ô¹¿öªº±¿A“¼Öµ`kD5£@ ìSŠî…Õ2šhu¼£¹Äº¬&×‰P˜Çduÿ îESëÿ V:5]3.Ê¬Ì³“sNm÷eèþ±ífu×±›ý=–zN¿Ñ®PëÌcúQcÌ1Ø·#[å%5ÝõGê«‡ü‚<ÛSOùÌcT]õO¥µ®–eà¸ýceÞÆ´¢æã:×á»ú–ãYWò®;œú+sÄ9Ìipó#TD”â9¿Zúx&·QÖèh$6ÏÕ2¹–R¶Ù“fÏø™Z%Y°ÌLÚïé™V¿Óª¬Úý6½úm®ŒÊÍ½?&Ë7þŽ¬|»mþB×CÈÆÇÊ¡øù52ú,lªÆ‡1ÃÁì|µÉ)"KŸ¥ÙŸW.uyv¿+ ¼ÍVëp§üe®—ätïôYÖ~›þÖú˜ÿ ­S¾×5Íi¤H#PAIK¤’I)I$’JÿÐõT’I%)$–OSúËÓò>ÄÊïÏÏ†¸áaVnµ­q_ô)Æ¯Ýôòn¥%'ë=Sö^¬Ê]•“kÛN&#k®¹ÿ ÍÔ×Ùì­º:Ûíÿ ]×ƒYLéùWõì×lf[Å7eãbÖØÆÇ¶—bT×Ô×þ—+"¿µ;ÓËÉúÎbãáúŠ®w\qëýî¡Ós°±Zûi£ÕmNÌ½¬§Ù‡‘”ïf'í/¥ô=U£×3Ù‹ÕºÙXìÎ¢Ánì
+`Üìk[µÖûÝ]4UöÚ1?XÊ¶š®¿Óþ‰%;©.s5ýa´¾·Õ±ú£ÓÅØçË‡±ê]IŽ©ïú~Ì~EŸð«%¶ýNÈm9§õN½Yh5ädcçfTAÿ ÆfµØÿ öÅ))ê²ºÿ BÃ§™ÔqqŸû¶ß[ù¶=«+­}kú­wJÍÆgWÃ}—cÛ[ZËØâK˜æ€=79¢g}OvK°º]XøY­ÕØnÇûüo–ã_V=Ö{>¶-ô”óô}wú©èW=N‰ÚÙÔ˜1ÇÕýsú¥gÑëcú÷1ŸùñÍ[K'?ë&.aéØÕ]ÔºÛ¿¡Î¬8ncòî±Õca±ß÷fúÿ àÒSc­ô\çìÁêÙO›MÕØ~êÞåyryuõž¡_­›õG!ÃVÕ“•Sìüp®¥¯ÿ ¯¬qÒ:v]8Y=7«}VÌ½Ûª8.uø®x÷©ÇÆvfK>úÿ fX’ž¿ª›Ÿ‹ÒüÓ¿[Îô59¾Ž;¿ðæQgµÿ £ÈÄÅÎ¥RÈÅoÕsV^½Šëƒ3pµÕö‹›ƒ?ÑYVE»²±¢}ŸÕ¾ª©º¿ÓÖÂÎËé¢Þµe¬ëý30V×u<6ƒ}UÖ_HõpéßVF.3mÙálº¼‹òÿ ÉÞŸóz_Y³ús~¬eäÞ×åôüŠ6=Ø¥Ž&¬€)õê²Ç²ŸOmÞ§­¿Ù_éRS²’æp¾±uÌ.ŸKºÿ EË¨ÔÊÙ•—C©Énè»%Øø—?)´îý+ý*.ôØº\¬|Ìzò±lmÔ\Ðúìa–¹§»JJJ’I$§ÿÑõT’I%5úŽm}?§ågÚ«Ä¦ËÞ%µµÖº?Í\Î/QgÕo¨¿·²«~^]õ×›š}­}¹9EŸÎ=Ù]u>æPÏgè±ê]N^-9˜·bd7}º«[âÇ‚Ç·ü×.:Îµ…Ñ:ßW~´VÇ[‰†öcÚ3é¡›iô,{žÖæ9Œ¥—ã>Ï[í/ßGæ$¦¿KúÁXÇÿ ž™˜~›©`è7Ôk½L‹ÞÚ-½¹WO¿*ïKý¦Ç£-i_‘…õSù½™s2·fõ,Ûäû+ö;*êÚæ¿ì”=ìÃé]6§³Õ±õâÓÿ jó+¯õjŒ0ÿ «½#Æ=½'ÌÜºé{lkrìmXÌõYwÓûgT{ÏUú“­¹Õf\ZÕ¾±Ñ†ðeÀc`Ym8øÞóµ­·;ÜŸøÌËS£õ_ê¥ís:ïÖgþ»hÜÏ\‡·¤úŒ£¶µ”U{?Ã[MLý/©è~ùî­$’SO©ôŽÕ±Æ>}-¹!õ»PúÞ>´\Í¶ÑkÒTõŸÐòó1s¯ú½Ô­vMøìàæ<×â“éþ™Ìö;/ßÐd»ô~®ü|ðËË¾´}iúÙÖ~¹]ÑúfeØm«)øX´Qq¡¤±Þ©m¬u[Ýk«õ?Iüßóu.§ê¿Rê½IÝþ°éê½3ªæt«œ%ìû%¹z¾èlôí¦sÐWjJzÏ¬½G3¦Þ§Õ.¸¶×
+»'5ÕXúýFâbÕm»?Óz5«]£át|!‡†Aq²ë¬;­º×=••wÒ»"ç9gþ‹YýHÐ>¸ôAtov.xÇž}IÁ.Ûÿ XõVòJR£Ôééõ;¤õ/FÖå´²ØàáûÕ¶[fæ;ÜËj÷Ôÿ  ®X^ãXà ðOæ¯›i§öÇUÌ]ê?aÉÙmÖ]’Ç¹Ï¹Ÿö•Ìgº§»èÁìôë¯§JJ}oíìû‹­»+¢í³;×úuÎ§:ÝÞvulé¾·äÿ ;•ö/³Ýê}¢ŸCU˜¸¸ç¦Ç­Ð~°¶ßJ©ÝUyc®ÈÇ§oÑÅêxÞ¾S[¿Ó«"œû˜±>¥_Ÿ™Õº]ýG{ò¬è¬½Ä¸=‡*:u—9Óê]v;/·Ýïþq[¬ØÅÍ÷tV¶ê‰þË»ÿ GQ„ú¿ë©)Éè?\þ°tÿ ­´ýJê8ìÈ£ßd®ö5ßh,c7ãeÜ}[+~ü`Ëoö}Ò.¯ Tp:ç[éU€0Úúsñ™.;Xµ¹U4<ŸN¿µaÝÊëö~°°núÇÓúw_ê½w¥çgúØt4_V%¬Øê~Òì–_~]t;ŸM¸>¯óŸÔý
+é~¯tëéûOUÍ{,êUÌ¶ãQ&¶TÆìÄÅ¥ÎÛ¾ºk.©±ž­×]bJvI$”ÿ ÿÒõT’I%)sýWìØX)ê}CcznF#°î¾í¾•66ÆäcúÏ³ÛUy[®gªÿ ÑúôcÕüå´®býb©¹ôlKOè/êõ˜xx¦Œ¼ê˜ùüß´âÐô”‡ëìÇ©”ÕL¥Õ
+Ú×zwäúå¡žßûUþz¥öŒÞ•Õº5•õN›ŸfntºËÏ[éÖïð6ºß±Øÿ ø¯ôjÞBÃé«­t,
+èÈÂÝöœl:XÇdã<7í8íe^Ÿ©‘_§VV'ü=gÿ µ6+m]^Š:ÿ ÕìŠŽSª"‹Ü	¦ú§wÙ3Ø¹¬eßEßÒp2=_Ñÿ JÅ½)·ÑzÆ/YÀff<±ÒkÈÇx"Ê.f—âdVà××}ú[›ÿ 	üÛÕõÆuEy–u'Õõw¬±¹ã¿;!¬;Yö‘„Ëj½Œfúéºÿ ÙÝBªßþùµ®½kÓsF./S¸´á·=„‰öî§öfkiwüf_ýq%6~±ÿ ‹O«ŸXsÏPÉ7ãd¼EÏÆsZ,€×XÛ«¹»ÚÖÿ ƒØ¨`Ÿ«]':›Øö`}_ú¼.£û_ý':øûm”ûÞü¿²cµô7üíùQú,e¡•õ«+í?YœÎÓl±µWÒp]»;1ö(Àû^ÿ Ñzö}/²ì·ìþ»/ôký*­×¿Å¿WúÅ‡E·äãtÛñXkÂét1ÇšËœïJÌÛìÈs}["¬vUú/æ?Â$¦ÿ Súáõg®6ƒÐú•në87'«C¨<Sf«™]5þ½E¶ã9üå•XºžÖpzÎ ÊÄq¤²ú,.¦ÖûmÆÊ¤û©¾§}6Û£^Wþ$ºË²Z:–v5XÜ½Øûì°ÿ %­¶¬v7wïïÿ ­®›©t7tœìK3ó-ÚæbcuìsèæÒâ[ö|^®êšqz–ÎÇ¢Ÿ´eQú;?žþwÖIOx¹þ»Ñ¾¦Pçu¾µ…ŠlnŽ¶ÊÃŽ?Ežý«½ÿ F¶zvÚ³²:OøË©íf7\ÆÌ¢eï}5ã_ýJöãgãmÕ§Äè?XY”3îÆÆ¿¨´»ÒÎê–åšZý»þËƒÓ°êúöŸì¶Ã$¤ø¹7t¬,ï¬½Y…½G«>¶bôùvðÖ‡UÒzUlÝoëv¾ÇÛ“é³ùü›ÿ ÀÐ¥ÔðÇFÿ Y˜W¼9ôtÛj¶Á0ëŸS›cÛº?žÉ±hát-™¬ê}O!ÝG©TÚmsEuPÛ½˜XŒ.m;™ú7ßm™«ôOÊô¿F¨WÔhúÏÖ[‰ˆöÙÒzQ«.ëšç‘x}Ÿbf;™¶»pqr1mºë·þ›3š›«!%-×þ³ô+ú6^QÆÍÎÍ©ø¸”Qk-{î½¿gÇk…ovÆ:ëºÛ6TºJ6-8ÀîÖÚÁñÚ'ðY_[e}?ÀÓöj³±/Í´	ôè¦êò¬½Íÿ FÇÓ_¬ÿ ð4ú™B•´"G	)t’I%?ÿÓõT’I%)b}k˜˜Y…Á‡¨aÙ¸ö\Ì¿ö_2Õ¶±~¹{¾¬çÒêY“XÆ¡¿ðÙn&/ù¹7T’¥Ë]‡Ô1þ³äWõpÕ‹¿gu*ov=÷Ü÷Q‹µ•¸;
+û‰–ì¬º?ý¯”º•‰Ó˜kú×ÖCõu¸øVÖg_Oõº=?ì]EÖ×’S6u~¶ÍÌÉèY±¤ø·ã[S‡g2Ì¼Ž‘ÿ nbÖ£öï­EÍÅéµtöHüë›cÀŸs›…Ó½v[íü×uu´’JyŽ£õK/!˜ùÿ mv_\ÃÈ¯+üeg¶Ü*±êkÛ‰‡Ï¦êýl½þ—ädú¨b}`úÙÕNe+ì+N5·ee+42Çµ•bcú—7Ò¶·ÿ 9Žº¥Çt³Òú-ý~®³™NCº¦FH¦ûÇº—2¯³ÛMn;îe´×íô¿âþšJKÒzŸ×¬ámÁ*ê±òoÅ¶¿Ö1Ý»Çcïe¿¯·ô›74£ŽÞ©õÊœK:–.>F§"Çäbú§&ÛíÅ±øõãÚF>=XŸhªËnþ‘ëúuUú?Ò(}\úËÑzuÔõ<Ù·[—•]y­v;ŸFEÖ_v?®ëï¯ü¦eŸ£ôÖÇÕ&Z:#-¶§ÐroÊÉeV{kÈÈ¿*íüÇ:›k~Ä”ÇþnäáÇì>¥v`‚0íhÊÅ i²ºn,ÊÇ¯÷)ÄÎÇÇ¯ý
+Ng×V8†ÛÓ.iáæ«ê#ãW¯•»þÝ[i$§ô.£žc®u´cÀÝ‡YÆÇ~ŽkÛ”M¹9™5»ó?j«ÏðØÖ&­µôï­ÒÚÛN'PÀ¯0mklÁ}öý™­o±›ñs½Jkÿ G‰ú5¸±~°ï9½µÒž¤ƒÑ›ëÿ à¢Jv\Ö½¥®Íp‡4ê=ŠÆú—c¬ú¥ÑÜîF-ù5cèµYëýJÎ›Ò¯È åº)Â¨Ç¿&â(Ã«Üæ{]‘e~§»ù´~•€Î›Ó1:unÞÌ:k¡¯"…mm{È¿·rJm$’I)ÿÔÛÉ¿?'7ëp8ýo ÚÎœÇûqñO§™’ÍÕÙ·;öŽE¹þƒ×£ÒÅ¦«1_uÊÆëý''$·;§2›2ÚÃ“‘¥Yxþû×º·kêâ_²ÏFßR½ž†VBÅf/Y{*Á¯­ºªv5”ädábÐÆ‹z—K/êÖWS?Ñ¿"ëÃoIOh°³ŸWUúÅ‹ÓX[e=&3ó€ƒ¶çWÒñì÷}?}ùÿ CôeÄ³ü-k}RÎ:YÒpmiå¯ê™ïiþ»-Å±þÚÔÀè}^¶z5YÐ0ÚI&ºÞç8†7Õ»/;Òüß Î›ê}Ö’S¥ÖºÖCÀ~~{È¬Êë`Ýe¶;ù¼|zÿ Âßoæ·þ¹gè·½¡ag4ßÕ:«WRê=JòöQM{¾É‚×ýW«m¹7VßÒåd_³ôŠÂúåÐiÅú§ÕòÝ}ù¹æ~×’ðçµ}VzT2¦S‹S½?Ò3Š}oðþ¢ìÒR’I$”¤+1q­¶»­©–[Iš¬sAs	ÿ FçÌþÊ*I)g5®À2$LÝ:I$¥$’I)K2Ê¿çLªý­-Ø»ŒÜ_‰ê6¡ùÖÓŠË?ë6Ûÿ ·Ulþ›ƒÔ©m9µXÇ‹k2ZöXßæï¢êË-¢úÿ 2ê^ËX’œ¿¬FÜlî™Õ,¦Ìž€û]“] ½õ¾Æ
+1ú‡ÙØ×Y“V-oÊªêêý%jûO§g ¶1òqò©fF-¬¾‹×mnc‡‹ÍÍräþ¬uo¬­è”u¶ž±ˆçÞË=6†æTÊ,»Ø6ÕÔ÷zßéý›/ýy¶+;',u/ª™øôf—¸çt÷•d8ÜìA]E¶ÚÏ³ý«üU95þ%;ýG¨U@±íu¶ØáV>=pl¶×YM[‹[ôZç½ïw¥ML²û½:j±ë‹X:Žu÷Õ~vF?Tªë¨gKéâ—¹­Û(Š.£"ì¬{=Kº‡P·§ôý–~Žº–‡RÇê™O¼›™GUÎÇ¥¸n{þÅ‚?MÔsk¾Ú›»+/ÒÅÂû]˜Øþ…¶ãzá~ÑÒàtì›Ž1°im7³F®?é-yý%Ö¿ü%Ö»Õ³ü"JÿÕõT—Ê©$§ê¤—Ê©$§é?­Ÿ`ÿ ›}Gö«ö/AÞ¿Ùöú»;ú>¯è÷ÿ ]k¯•RIOÕI/•RIOÕI/•RIOÕI/•RIOÕI/•RIOÕI/•RIOÑ_QÕœq[‹ÛëeÃœÝ¤þµ“ùÖmÿ =­Ìÿ UŸ·ÿ gzÑìûw¡»oò>ÕîÚ¾nI%?G}Wÿ šÛ2æöÉ–}£éú›vþ©ý+ôßcô lýOÒþˆ·Ê©$§ÿÙÿí4šPhotoshop 3.0 8BIM%                     8BIMê     <?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>com.apple.print.PageFormat.PMHorizontalRes</key>
+	<dict>
+		<key>com.apple.print.ticket.creator</key>
+		<string>com.apple.jobticket</string>
+		<key>com.apple.print.ticket.itemArray</key>
+		<array>
+			<dict>
+				<key>com.apple.print.PageFormat.PMHorizontalRes</key>
+				<real>72</real>
+				<key>com.apple.print.ticket.stateFlag</key>
+				<integer>0</integer>
+			</dict>
+		</array>
+	</dict>
+	<key>com.apple.print.PageFormat.PMOrientation</key>
+	<dict>
+		<key>com.apple.print.ticket.creator</key>
+		<string>com.apple.jobticket</string>
+		<key>com.apple.print.ticket.itemArray</key>
+		<array>
+			<dict>
+				<key>com.apple.print.PageFormat.PMOrientation</key>
+				<integer>1</integer>
+				<key>com.apple.print.ticket.stateFlag</key>
+				<integer>0</integer>
+			</dict>
+		</array>
+	</dict>
+	<key>com.apple.print.PageFormat.PMScaling</key>
+	<dict>
+		<key>com.apple.print.ticket.creator</key>
+		<string>com.apple.jobticket</string>
+		<key>com.apple.print.ticket.itemArray</key>
+		<array>
+			<dict>
+				<key>com.apple.print.PageFormat.PMScaling</key>
+				<real>1</real>
+				<key>com.apple.print.ticket.stateFlag</key>
+				<integer>0</integer>
+			</dict>
+		</array>
+	</dict>
+	<key>com.apple.print.PageFormat.PMVerticalRes</key>
+	<dict>
+		<key>com.apple.print.ticket.creator</key>
+		<string>com.apple.jobticket</string>
+		<key>com.apple.print.ticket.itemArray</key>
+		<array>
+			<dict>
+				<key>com.apple.print.PageFormat.PMVerticalRes</key>
+				<real>72</real>
+				<key>com.apple.print.ticket.stateFlag</key>
+				<integer>0</integer>
+			</dict>
+		</array>
+	</dict>
+	<key>com.apple.print.PageFormat.PMVerticalScaling</key>
+	<dict>
+		<key>com.apple.print.ticket.creator</key>
+		<string>com.apple.jobticket</string>
+		<key>com.apple.print.ticket.itemArray</key>
+		<array>
+			<dict>
+				<key>com.apple.print.PageFormat.PMVerticalScaling</key>
+				<real>1</real>
+				<key>com.apple.print.ticket.stateFlag</key>
+				<integer>0</integer>
+			</dict>
+		</array>
+	</dict>
+	<key>com.apple.print.subTicket.paper_info_ticket</key>
+	<dict>
+		<key>PMPPDPaperCodeName</key>
+		<dict>
+			<key>com.apple.print.ticket.creator</key>
+			<string>com.apple.jobticket</string>
+			<key>com.apple.print.ticket.itemArray</key>
+			<array>
+				<dict>
+					<key>PMPPDPaperCodeName</key>
+					<string>Letter</string>
+					<key>com.apple.print.ticket.stateFlag</key>
+					<integer>0</integer>
+				</dict>
+			</array>
+		</dict>
+		<key>PMTiogaPaperName</key>
+		<dict>
+			<key>com.apple.print.ticket.creator</key>
+			<string>com.apple.jobticket</string>
+			<key>com.apple.print.ticket.itemArray</key>
+			<array>
+				<dict>
+					<key>PMTiogaPaperName</key>
+					<string>na-letter</string>
+					<key>com.apple.print.ticket.stateFlag</key>
+					<integer>0</integer>
+				</dict>
+			</array>
+		</dict>
+		<key>com.apple.print.PageFormat.PMAdjustedPageRect</key>
+		<dict>
+			<key>com.apple.print.ticket.creator</key>
+			<string>com.apple.jobticket</string>
+			<key>com.apple.print.ticket.itemArray</key>
+			<array>
+				<dict>
+					<key>com.apple.print.PageFormat.PMAdjustedPageRect</key>
+					<array>
+						<integer>0</integer>
+						<integer>0</integer>
+						<real>734</real>
+						<real>576</real>
+					</array>
+					<key>com.apple.print.ticket.stateFlag</key>
+					<integer>0</integer>
+				</dict>
+			</array>
+		</dict>
+		<key>com.apple.print.PageFormat.PMAdjustedPaperRect</key>
+		<dict>
+			<key>com.apple.print.ticket.creator</key>
+			<string>com.apple.jobticket</string>
+			<key>com.apple.print.ticket.itemArray</key>
+			<array>
+				<dict>
+					<key>com.apple.print.PageFormat.PMAdjustedPaperRect</key>
+					<array>
+						<real>-18</real>
+						<real>-18</real>
+						<real>774</real>
+						<real>594</real>
+					</array>
+					<key>com.apple.print.ticket.stateFlag</key>
+					<integer>0</integer>
+				</dict>
+			</array>
+		</dict>
+		<key>com.apple.print.PaperInfo.PMPaperName</key>
+		<dict>
+			<key>com.apple.print.ticket.creator</key>
+			<string>com.apple.jobticket</string>
+			<key>com.apple.print.ticket.itemArray</key>
+			<array>
+				<dict>
+					<key>com.apple.print.PaperInfo.PMPaperName</key>
+					<string>na-letter</string>
+					<key>com.apple.print.ticket.stateFlag</key>
+					<integer>0</integer>
+				</dict>
+			</array>
+		</dict>
+		<key>com.apple.print.PaperInfo.PMUnadjustedPageRect</key>
+		<dict>
+			<key>com.apple.print.ticket.creator</key>
+			<string>com.apple.jobticket</string>
+			<key>com.apple.print.ticket.itemArray</key>
+			<array>
+				<dict>
+					<key>com.apple.print.PaperInfo.PMUnadjustedPageRect</key>
+					<array>
+						<integer>0</integer>
+						<integer>0</integer>
+						<real>734</real>
+						<real>576</real>
+					</array>
+					<key>com.apple.print.ticket.stateFlag</key>
+					<integer>0</integer>
+				</dict>
+			</array>
+		</dict>
+		<key>com.apple.print.PaperInfo.PMUnadjustedPaperRect</key>
+		<dict>
+			<key>com.apple.print.ticket.creator</key>
+			<string>com.apple.jobticket</string>
+			<key>com.apple.print.ticket.itemArray</key>
+			<array>
+				<dict>
+					<key>com.apple.print.PaperInfo.PMUnadjustedPaperRect</key>
+					<array>
+						<real>-18</real>
+						<real>-18</real>
+						<real>774</real>
+						<real>594</real>
+					</array>
+					<key>com.apple.print.ticket.stateFlag</key>
+					<integer>0</integer>
+				</dict>
+			</array>
+		</dict>
+		<key>com.apple.print.PaperInfo.ppd.PMPaperName</key>
+		<dict>
+			<key>com.apple.print.ticket.creator</key>
+			<string>com.apple.jobticket</string>
+			<key>com.apple.print.ticket.itemArray</key>
+			<array>
+				<dict>
+					<key>com.apple.print.PaperInfo.ppd.PMPaperName</key>
+					<string>US Letter</string>
+					<key>com.apple.print.ticket.stateFlag</key>
+					<integer>0</integer>
+				</dict>
+			</array>
+		</dict>
+		<key>com.apple.print.ticket.APIVersion</key>
+		<string>00.20</string>
+		<key>com.apple.print.ticket.type</key>
+		<string>com.apple.print.PaperInfoTicket</string>
+	</dict>
+	<key>com.apple.print.ticket.APIVersion</key>
+	<string>00.20</string>
+	<key>com.apple.print.ticket.type</key>
+	<string>com.apple.print.PageFormatTicket</string>
+</dict>
+</plist>
+8BIMé     x    H H    Þ@ÿîÿîRg(ü    H H    Ø(    d       ÿ              h                                 8BIMí     ƒÿ}  ƒÿ}  8BIM&               ?€  8BIM        8BIM        8BIMó     	         8BIM
+       8BIM'     
+        8BIMô      5    -        8BIM÷       ÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿè  8BIM          @  @    8BIM         8BIM    a             …  —    A p p   E n g i n e   G o p h e r   v 3 - 2                                —  …                                            null      boundsObjc         Rct1       Top long        Leftlong        Btomlong  …    Rghtlong  —   slicesVlLs   Objc        slice      sliceIDlong       groupIDlong       originenum   ESliceOrigin   autoGenerated    Typeenum   
+ESliceType    Img    boundsObjc         Rct1       Top long        Leftlong        Btomlong  …    Rghtlong  —   urlTEXT         nullTEXT         MsgeTEXT        altTagTEXT        cellTextIsHTMLbool   cellTextTEXT        	horzAlignenum   ESliceHorzAlign   default   	vertAlignenum   ESliceVertAlign   default   bgColorTypeenum   ESliceBGColorType    None   	topOutsetlong       
+leftOutsetlong       bottomOutsetlong       rightOutsetlong     8BIM(        ?ð      8BIM        8BIM    ¤          e  à  ½`  ˆ  ÿØÿà JFIF   H H  ÿí Adobe_CM ÿî Adobe d€   ÿÛ „ 			
+ÿÀ  e  " ÿÝ  
+ÿÄ?          	
+         	
+ 3 !1AQa"q2‘¡±B#$RÁb34r‚ÑC%’Sðáñcs5¢²ƒ&D“TdEÂ£t6ÒUâeò³„ÃÓuãóF'”¤…´•ÄÔäô¥µÅÕåõVfv†–¦¶ÆÖæö7GWgw‡—§·Ç×ç÷ 5 !1AQaq"2‘¡±B#ÁRÑð3$bár‚’CScs4ñ%¢²ƒ&5ÂÒD“T£dEU6teâò³„ÃÓuãóF”¤…´•ÄÔäô¥µÅÕåõVfv†–¦¶ÆÖæö'7GWgw‡—§·ÇÿÚ   ? õ*iªŠ™M,mUTÐÊë`kZÑµŒcíkÕ4’IJI$’R’I+/ù9w3½_m®cdížøoÒ))2ÃwÖóÉ«êæ0Ïä¡kX-?¤o³$6Ë3ÜÛ+Øæ`Uu_é²qÔ+eÿ Y_êeÓf7C­çÓÆ¸Y˜Z}¶åÐè}=7óªÄ»ô¹¿öªº±¿A“¼Öµ`kD5£@ ìSŠî…Õ2šhu¼£¹Äº¬&×‰P˜Çduÿ îESëÿ V:5]3.Ê¬Ì³“sNm÷eèþ±ífu×±›ý=–zN¿Ñ®PëÌcúQcÌ1Ø·#[å%5ÝõGê«‡ü‚<ÛSOùÌcT]õO¥µ®–eà¸ýceÞÆ´¢æã:×á»ú–ãYWò®;œú+sÄ9Ìipó#TD”â9¿Zúx&·QÖèh$6ÏÕ2¹–R¶Ù“fÏø™Z%Y°ÌLÚïé™V¿Óª¬Úý6½úm®ŒÊÍ½?&Ë7þŽ¬|»mþB×CÈÆÇÊ¡øù52ú,lªÆ‡1ÃÁì|µÉ)"KŸ¥ÙŸW.uyv¿+ ¼ÍVëp§üe®—ätïôYÖ~›þÖú˜ÿ ­S¾×5Íi¤H#PAIK¤’I)I$’JÿÐõT’I%)$–OSúËÓò>ÄÊïÏÏ†¸áaVnµ­q_ô)Æ¯Ýôòn¥%'ë=Sö^¬Ê]•“kÛN&#k®¹ÿ ÍÔ×Ùì­º:Ûíÿ ]×ƒYLéùWõì×lf[Å7eãbÖØÆÇ¶—bT×Ô×þ—+"¿µ;ÓËÉúÎbãáúŠ®w\qëýî¡Ós°±Zûi£ÕmNÌ½¬§Ù‡‘”ïf'í/¥ô=U£×3Ù‹ÕºÙXìÎ¢Ánì
+`Üìk[µÖûÝ]4UöÚ1?XÊ¶š®¿Óþ‰%;©.s5ýa´¾·Õ±ú£ÓÅØçË‡±ê]IŽ©ïú~Ì~EŸð«%¶ýNÈm9§õN½Yh5ädcçfTAÿ ÆfµØÿ öÅ))ê²ºÿ BÃ§™ÔqqŸû¶ß[ù¶=«+­}kú­wJÍÆgWÃ}—cÛ[ZËØâK˜æ€=79¢g}OvK°º]XøY­ÕØnÇûüo–ã_V=Ö{>¶-ô”óô}wú©èW=N‰ÚÙÔ˜1ÇÕýsú¥gÑëcú÷1ŸùñÍ[K'?ë&.aéØÕ]ÔºÛ¿¡Î¬8ncòî±Õca±ß÷fúÿ àÒSc­ô\çìÁêÙO›MÕØ~êÞåyryuõž¡_­›õG!ÃVÕ“•Sìüp®¥¯ÿ ¯¬qÒ:v]8Y=7«}VÌ½Ûª8.uø®x÷©ÇÆvfK>úÿ fX’ž¿ª›Ÿ‹ÒüÓ¿[Îô59¾Ž;¿ðæQgµÿ £ÈÄÅÎ¥RÈÅoÕsV^½Šëƒ3pµÕö‹›ƒ?ÑYVE»²±¢}ŸÕ¾ª©º¿ÓÖÂÎËé¢Þµe¬ëý30V×u<6ƒ}UÖ_HõpéßVF.3mÙálº¼‹òÿ ÉÞŸóz_Y³ús~¬eäÞ×åôüŠ6=Ø¥Ž&¬€)õê²Ç²ŸOmÞ§­¿Ù_éRS²’æp¾±uÌ.ŸKºÿ EË¨ÔÊÙ•—C©Énè»%Øø—?)´îý+ý*.ôØº\¬|Ìzò±lmÔ\Ðúìa–¹§»JJJ’I$§ÿÑõT’I%5úŽm}?§ågÚ«Ä¦ËÞ%µµÖº?Í\Î/QgÕo¨¿·²«~^]õ×›š}­}¹9EŸÎ=Ù]u>æPÏgè±ê]N^-9˜·bd7}º«[âÇ‚Ç·ü×.:Îµ…Ñ:ßW~´VÇ[‰†öcÚ3é¡›iô,{žÖæ9Œ¥—ã>Ï[í/ßGæ$¦¿KúÁXÇÿ ž™˜~›©`è7Ôk½L‹ÞÚ-½¹WO¿*ïKý¦Ç£-i_‘…õSù½™s2·fõ,Ûäû+ö;*êÚæ¿ì”=ìÃé]6§³Õ±õâÓÿ jó+¯õjŒ0ÿ «½#Æ=½'ÌÜºé{lkrìmXÌõYwÓûgT{ÏUú“­¹Õf\ZÕ¾±Ñ†ðeÀc`Ym8øÞóµ­·;ÜŸøÌËS£õ_ê¥ís:ïÖgþ»hÜÏ\‡·¤úŒ£¶µ”U{?Ã[MLý/©è~ùî­$’SO©ôŽÕ±Æ>}-¹!õ»PúÞ>´\Í¶ÑkÒTõŸÐòó1s¯ú½Ô­vMøìàæ<×â“éþ™Ìö;/ßÐd»ô~®ü|ðËË¾´}iúÙÖ~¹]ÑúfeØm«)øX´Qq¡¤±Þ©m¬u[Ýk«õ?Iüßóu.§ê¿Rê½IÝþ°éê½3ªæt«œ%ìû%¹z¾èlôí¦sÐWjJzÏ¬½G3¦Þ§Õ.¸¶×
+»'5ÕXúýFâbÕm»?Óz5«]£át|!‡†Aq²ë¬;­º×=••wÒ»"ç9gþ‹YýHÐ>¸ôAtov.xÇž}IÁ.Ûÿ XõVòJR£Ôééõ;¤õ/FÖå´²ØàáûÕ¶[fæ;ÜËj÷Ôÿ  ®X^ãXà ðOæ¯›i§öÇUÌ]ê?aÉÙmÖ]’Ç¹Ï¹Ÿö•Ìgº§»èÁìôë¯§JJ}oíìû‹­»+¢í³;×úuÎ§:ÝÞvulé¾·äÿ ;•ö/³Ýê}¢ŸCU˜¸¸ç¦Ç­Ð~°¶ßJ©ÝUyc®ÈÇ§oÑÅêxÞ¾S[¿Ó«"œû˜±>¥_Ÿ™Õº]ýG{ò¬è¬½Ä¸=‡*:u—9Óê]v;/·Ýïþq[¬ØÅÍ÷tV¶ê‰þË»ÿ GQ„ú¿ë©)Éè?\þ°tÿ ­´ýJê8ìÈ£ßd®ö5ßh,c7ãeÜ}[+~ü`Ëoö}Ò.¯ Tp:ç[éU€0Úúsñ™.;Xµ¹U4<ŸN¿µaÝÊëö~°°núÇÓúw_ê½w¥çgúØt4_V%¬Øê~Òì–_~]t;ŸM¸>¯óŸÔý
+é~¯tëéûOUÍ{,êUÌ¶ãQ&¶TÆìÄÅ¥ÎÛ¾ºk.©±ž­×]bJvI$”ÿ ÿÒõT’I%)sýWìØX)ê}CcznF#°î¾í¾•66ÆäcúÏ³ÛUy[®gªÿ ÑúôcÕüå´®býb©¹ôlKOè/êõ˜xx¦Œ¼ê˜ùüß´âÐô”‡ëìÇ©”ÕL¥Õ
+Ú×zwäúå¡žßûUþz¥öŒÞ•Õº5•õN›ŸfntºËÏ[éÖïð6ºß±Øÿ ø¯ôjÞBÃé«­t,
+èÈÂÝöœl:XÇdã<7í8íe^Ÿ©‘_§VV'ü=gÿ µ6+m]^Š:ÿ ÕìŠŽSª"‹Ü	¦ú§wÙ3Ø¹¬eßEßÒp2=_Ñÿ JÅ½)·ÑzÆ/YÀff<±ÒkÈÇx"Ê.f—âdVà××}ú[›ÿ 	üÛÕõÆuEy–u'Õõw¬±¹ã¿;!¬;Yö‘„Ëj½Œfúéºÿ ÙÝBªßþùµ®½kÓsF./S¸´á·=„‰öî§öfkiwüf_ýq%6~±ÿ ‹O«ŸXsÏPÉ7ãd¼EÏÆsZ,€×XÛ«¹»ÚÖÿ ƒØ¨`Ÿ«]':›Øö`}_ú¼.£û_ý':øûm”ûÞü¿²cµô7üíùQú,e¡•õ«+í?YœÎÓl±µWÒp]»;1ö(Àû^ÿ Ñzö}/²ì·ìþ»/ôký*­×¿Å¿WúÅ‡E·äãtÛñXkÂét1ÇšËœïJÌÛìÈs}["¬vUú/æ?Â$¦ÿ Súáõg®6ƒÐú•në87'«C¨<Sf«™]5þ½E¶ã9üå•XºžÖpzÎ ÊÄq¤²ú,.¦ÖûmÆÊ¤û©¾§}6Û£^Wþ$ºË²Z:–v5XÜ½Øûì°ÿ %­¶¬v7wïïÿ ­®›©t7tœìK3ó-ÚæbcuìsèæÒâ[ö|^®êšqz–ÎÇ¢Ÿ´eQú;?žþwÖIOx¹þ»Ñ¾¦Pçu¾µ…ŠlnŽ¶ÊÃŽ?Ežý«½ÿ F¶zvÚ³²:OøË©íf7\ÆÌ¢eï}5ã_ýJöãgãmÕ§Äè?XY”3îÆÆ¿¨´»ÒÎê–åšZý»þËƒÓ°êúöŸì¶Ã$¤ø¹7t¬,ï¬½Y…½G«>¶bôùvðÖ‡UÒzUlÝoëv¾ÇÛ“é³ùü›ÿ ÀÐ¥ÔðÇFÿ Y˜W¼9ôtÛj¶Á0ëŸS›cÛº?žÉ±hát-™¬ê}O!ÝG©TÚmsEuPÛ½˜XŒ.m;™ú7ßm™«ôOÊô¿F¨WÔhúÏÖ[‰ˆöÙÒzQ«.ëšç‘x}Ÿbf;™¶»pqr1mºë·þ›3š›«!%-×þ³ô+ú6^QÆÍÎÍ©ø¸”Qk-{î½¿gÇk…ovÆ:ëºÛ6TºJ6-8ÀîÖÚÁñÚ'ðY_[e}?ÀÓöj³±/Í´	ôè¦êò¬½Íÿ FÇÓ_¬ÿ ð4ú™B•´"G	)t’I%?ÿÓõT’I%)b}k˜˜Y…Á‡¨aÙ¸ö\Ì¿ö_2Õ¶±~¹{¾¬çÒêY“XÆ¡¿ðÙn&/ù¹7T’¥Ë]‡Ô1þ³äWõpÕ‹¿gu*ov=÷Ü÷Q‹µ•¸;
+û‰–ì¬º?ý¯”º•‰Ó˜kú×ÖCõu¸øVÖg_Oõº=?ì]EÖ×’S6u~¶ÍÌÉèY±¤ø·ã[S‡g2Ì¼Ž‘ÿ nbÖ£öï­EÍÅéµtöHüë›cÀŸs›…Ó½v[íü×uu´’JyŽ£õK/!˜ùÿ mv_\ÃÈ¯+üeg¶Ü*±êkÛ‰‡Ï¦êýl½þ—ädú¨b}`úÙÕNe+ì+N5·ee+42Çµ•bcú—7Ò¶·ÿ 9Žº¥Çt³Òú-ý~®³™NCº¦FH¦ûÇº—2¯³ÛMn;îe´×íô¿âþšJKÒzŸ×¬ámÁ*ê±òoÅ¶¿Ö1Ý»Çcïe¿¯·ô›74£ŽÞ©õÊœK:–.>F§"Çäbú§&ÛíÅ±øõãÚF>=XŸhªËnþ‘ëúuUú?Ò(}\úËÑzuÔõ<Ù·[—•]y­v;ŸFEÖ_v?®ëï¯ü¦eŸ£ôÖÇÕ&Z:#-¶§ÐroÊÉeV{kÈÈ¿*íüÇ:›k~Ä”ÇþnäáÇì>¥v`‚0íhÊÅ i²ºn,ÊÇ¯÷)ÄÎÇÇ¯ý
+Ng×V8†ÛÓ.iáæ«ê#ãW¯•»þÝ[i$§ô.£žc®u´cÀÝ‡YÆÇ~ŽkÛ”M¹9™5»ó?j«ÏðØÖ&­µôï­ÒÚÛN'PÀ¯0mklÁ}öý™­o±›ñs½Jkÿ G‰ú5¸±~°ï9½µÒž¤ƒÑ›ëÿ à¢Jv\Ö½¥®Íp‡4ê=ŠÆú—c¬ú¥ÑÜîF-ù5cèµYëýJÎ›Ò¯È åº)Â¨Ç¿&â(Ã«Üæ{]‘e~§»ù´~•€Î›Ó1:unÞÌ:k¡¯"…mm{È¿·rJm$’I)ÿÔÛÉ¿?'7ëp8ýo ÚÎœÇûqñO§™’ÍÕÙ·;öŽE¹þƒ×£ÒÅ¦«1_uÊÆëý''$·;§2›2ÚÃ“‘¥Yxþû×º·kêâ_²ÏFßR½ž†VBÅf/Y{*Á¯­ºªv5”ädábÐÆ‹z—K/êÖWS?Ñ¿"ëÃoIOh°³ŸWUúÅ‹ÓX[e=&3ó€ƒ¶çWÒñì÷}?}ùÿ CôeÄ³ü-k}RÎ:YÒpmiå¯ê™ïiþ»-Å±þÚÔÀè}^¶z5YÐ0ÚI&ºÞç8†7Õ»/;Òüß Î›ê}Ö’S¥ÖºÖCÀ~~{È¬Êë`Ýe¶;ù¼|zÿ Âßoæ·þ¹gè·½¡ag4ßÕ:«WRê=JòöQM{¾É‚×ýW«m¹7VßÒåd_³ôŠÂúåÐiÅú§ÕòÝ}ù¹æ~×’ðçµ}VzT2¦S‹S½?Ò3Š}oðþ¢ìÒR’I$”¤+1q­¶»­©–[Iš¬sAs	ÿ FçÌþÊ*I)g5®À2$LÝ:I$¥$’I)K2Ê¿çLªý­-Ø»ŒÜ_‰ê6¡ùÖÓŠË?ë6Ûÿ ·Ulþ›ƒÔ©m9µXÇ‹k2ZöXßæï¢êË-¢úÿ 2ê^ËX’œ¿¬FÜlî™Õ,¦Ìž€û]“] ½õ¾Æ
+1ú‡ÙØ×Y“V-oÊªêêý%jûO§g ¶1òqò©fF-¬¾‹×mnc‡‹ÍÍräþ¬uo¬­è”u¶ž±ˆçÞË=6†æTÊ,»Ø6ÕÔ÷zßéý›/ýy¶+;',u/ª™øôf—¸çt÷•d8ÜìA]E¶ÚÏ³ý«üU95þ%;ýG¨U@±íu¶ØáV>=pl¶×YM[‹[ôZç½ïw¥ML²û½:j±ë‹X:Žu÷Õ~vF?Tªë¨gKéâ—¹­Û(Š.£"ì¬{=Kº‡P·§ôý–~Žº–‡RÇê™O¼›™GUÎÇ¥¸n{þÅ‚?MÔsk¾Ú›»+/ÒÅÂû]˜Øþ…¶ãzá~ÑÒàtì›Ž1°im7³F®?é-yý%Ö¿ü%Ö»Õ³ü"JÿÕõT—Ê©$§ê¤—Ê©$§é?­Ÿ`ÿ ›}Gö«ö/AÞ¿Ùöú»;ú>¯è÷ÿ ]k¯•RIOÕI/•RIOÕI/•RIOÕI/•RIOÕI/•RIOÕI/•RIOÑ_QÕœq[‹ÛëeÃœÝ¤þµ“ùÖmÿ =­Ìÿ UŸ·ÿ gzÑìûw¡»oò>ÕîÚ¾nI%?G}Wÿ šÛ2æöÉ–}£éú›vþ©ý+ôßcô lýOÒþˆ·Ê©$§ÿÙ8BIM!     U       A d o b e   P h o t o s h o p    A d o b e   P h o t o s h o p   C S 2    8BIM          ÿá:²http://ns.adobe.com/xap/1.0/ <?xpacket begin="ï»¿" id="W5M0MpCehiHzreSzNTczkc9d"?>
+<x:xmpmeta xmlns:x="adobe:ns:meta/" x:xmptk="3.1.1-111">
+   <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
+      <rdf:Description rdf:about=""
+            xmlns:xapMM="http://ns.adobe.com/xap/1.0/mm/"
+            xmlns:stRef="http://ns.adobe.com/xap/1.0/sType/ResourceRef#">
+         <xapMM:DocumentID>uuid:7CE6CFD65DFC11E0BCFAEDCC75B07363</xapMM:DocumentID>
+         <xapMM:InstanceID>uuid:4953275A5EF111E0BCFAEDCC75B07363</xapMM:InstanceID>
+         <xapMM:DerivedFrom rdf:parseType="Resource">
+            <stRef:instanceID>uuid:7CE6CFD55DFC11E0BCFAEDCC75B07363</stRef:instanceID>
+            <stRef:documentID>uuid:7CE6CFD55DFC11E0BCFAEDCC75B07363</stRef:documentID>
+         </xapMM:DerivedFrom>
+      </rdf:Description>
+      <rdf:Description rdf:about=""
+            xmlns:xap="http://ns.adobe.com/xap/1.0/">
+         <xap:CreateDate>2011-04-07T18:12:56-07:00</xap:CreateDate>
+         <xap:ModifyDate>2011-04-07T18:12:56-07:00</xap:ModifyDate>
+         <xap:MetadataDate>2011-04-07T18:12:56-07:00</xap:MetadataDate>
+         <xap:CreatorTool>Adobe Photoshop CS2 Macintosh</xap:CreatorTool>
+      </rdf:Description>
+      <rdf:Description rdf:about=""
+            xmlns:dc="http://purl.org/dc/elements/1.1/">
+         <dc:format>image/jpeg</dc:format>
+      </rdf:Description>
+      <rdf:Description rdf:about=""
+            xmlns:photoshop="http://ns.adobe.com/photoshop/1.0/">
+         <photoshop:ColorMode>1</photoshop:ColorMode>
+         <photoshop:History/>
+         <photoshop:ICCProfile>Dot Gain 20%</photoshop:ICCProfile>
+      </rdf:Description>
+      <rdf:Description rdf:about=""
+            xmlns:tiff="http://ns.adobe.com/tiff/1.0/">
+         <tiff:Orientation>1</tiff:Orientation>
+         <tiff:XResolution>8999980/10000</tiff:XResolution>
+         <tiff:YResolution>8999980/10000</tiff:YResolution>
+         <tiff:ResolutionUnit>2</tiff:ResolutionUnit>
+         <tiff:NativeDigest>256,257,258,259,262,274,277,284,530,531,282,283,296,301,318,319,529,532,306,270,271,272,305,315,33432;A5AFE4F036AAF0AABA261C5207BB848B</tiff:NativeDigest>
+      </rdf:Description>
+      <rdf:Description rdf:about=""
+            xmlns:exif="http://ns.adobe.com/exif/1.0/">
+         <exif:PixelXDimension>1431</exif:PixelXDimension>
+         <exif:PixelYDimension>901</exif:PixelYDimension>
+         <exif:ColorSpace>-1</exif:ColorSpace>
+         <exif:NativeDigest>36864,40960,40961,37121,37122,40962,40963,37510,40964,36867,36868,33434,33437,34850,34852,34855,34856,37377,37378,37379,37380,37381,37382,37383,37384,37385,37386,37396,41483,41484,41486,41487,41488,41492,41493,41495,41728,41729,41730,41985,41986,41987,41988,41989,41990,41991,41992,41993,41994,41995,41996,42016,0,2,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,20,22,23,24,25,26,27,28,30;930B5231C9F210D213E2C6E624742838</exif:NativeDigest>
+      </rdf:Description>
+   </rdf:RDF>
+</x:xmpmeta>
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                            
+<?xpacket end="w"?>ÿâ ICC_PROFILE   ADBE  prtrGRAYXYZ Ï        acspAPPL    none                 öÖ     Ó-ADBE                                               cprt   À   2desc   ô   gwtpt  \   bkpt  p   kTRC  „  text    Copyright 1999 Adobe Systems Incorporated   desc       Dot Gain 20%                                                                                XYZ       öÖ     Ó-XYZ                 curv             0 @ P a    Å ìDu¨ÞRÐY¡ì9ˆÚ.…Þ9–öW»"Šô	a	Ð
+A
+´) •’–£,¸EÔeø$½Wô’2ÔxÆoÈv'ÚŽDü µ!q"."í#­$p%4%ù&Á'Š(U)")ð*À+’,e-:..ê/Ä0 1}2\3=455é6Ð7¹8¤9:~;m<^=Q>E?;@3A,B&C"D EF G#H'I-J4K<LGMSN`OoPQ‘R¥SºTÑUéWXY:ZX[x\™]¼^à`a-bVc€d¬eÙgh8iijkÑmn?oxp²qîs+tjuªvìx/ytzº|}J~•á.‚|ƒÍ…†q‡Å‰Šr‹Ë%ŽÝ‘<’›“ý•_–Ã˜(™š÷œ`ËŸ7 ¥¢£…¤ö¦i§Þ©TªË¬D­¾¯9°¶²4³´µ4¶·¸:¹¿»E¼Í¾V¿àÁlÂùÄ‡ÆÇ¨É;ÊÎÌcÍúÏ’Ñ+ÒÅÔaÕþ×œÙ<ÚÝÜÞ#ßÈánãä¿æièéÁëoíîÐð‚ò5óêõ ÷WùúÊü…þAÿÿÿî Adobe d     ÿÛ C 
+
+ÿÀ …— ÿÝ  ³ÿÄ Ò            	
+ s !1AQa"q2‘¡±B#ÁRÑá3bð$r‚ñ%C4S’¢²csÂ5D'“£³6TdtÃÒâ&ƒ	
+„”EF¤´VÓU(òãóÄÔäôeu…•¥µÅÕåõfv†–¦¶ÆÖæö7GWgw‡—§·Ç×ç÷8HXhxˆ˜¨¸ÈØèø)9IYiy‰™©¹ÉÙéù*:JZjzŠšªºÊÚêúÿÚ   ? õNlÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›66IR%/#QÔ“A‘]gógÊz-Eþ«iª&Voùgÿ …È¹ÿ 9uä}:¢Ú[‹æïˆHðW†s½{þs~CUÑ4<æZÿ É(•äöskþr»Ïz‘>•ÜvhfPÃL&“þ"‡çœoëõbôƒÙgtð1”IqæÝbçyï®d¯óLçõ¶’þâSY%v#Å‰Ä	®ç6,—³Æy$Ž§Ä1&/0êPïÔëOå‘‡ümƒ¡óï˜`þëS½Oõn$©ðÊÛó‹Î6ßÝë7ßMÃŸø“5¶ÿ œ‡óå·ØÕç?ë„ù8‡VŸó•Þ~·ûw±Ì?Ë‚/øÑlç3¼áÿ H‚Æaï©ÿ „›þ5É‡üç ”úî‘ž>œÌŸñ4—$ºüæî%>½¥ÜÅãéºIÿ ô2S¦ÿ Î^yîž´·6Õÿ ~ÀOü˜3d¿JüõòN¨@¶Ö-A=¯éù/éäÇOÕ¬õõ,gŠtñÕÇÞ„à¬Ù³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³gÿÐõNlÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙO"Æ¥Ü…QÔ†Eu¯Í*hµ†«i«ë+7ü‹Œ³ÿ ÂäXÿ œ¶ò.žH‚yï¾!oø”þ‚äXÿ œà³J+I–OžeOøHÒoøžB5ùÌï6]Õlmìí±Îß|ÃþIä#Xÿ œˆóÞ«_[Vš5= ãÆßðÙ	Õ<Å©jÇ–£u=É=å‘Ÿþ&Í…ê¥ ©9&Ñ?,¼Ï®Sôn—w2ŸÚ°_ùÀ'ü6tþqÏÌ0X¡ï<ÀŸø]³¤h?ó„ ZÕ]›ºÛÄÈÉYÿ äÖ~~Î9è>BòÀÖ4f¹’å.#GiXp`ê~HÇ÷žž%ÿ 8£ùmå:Ùj?§ì–êæÖXø³;­Eo‡Œn‹ö¢lôóžDŒQt{§‘ÿ ‰>/ÿ *#Èÿ õf´ÿ €Íÿ *#Èÿ õf´ÿ €Ä_þq÷È®(t{£ýM¥ÿ œmò½t˜ÇÊIGüF\?üâ·%5{'ú·ÜÎ y_°—Qÿ «9ÿ Õð¦ïþp«Ê²oåü7¿æHÂk¿ùÁí=¿Þ]^dÿ ^oø‹Å„7¿óƒúŠWêš¼xz²Ä^\_ÿ ÎùÆÞ¦Þk)Çù2ºŸù)ølj_óŒ~±ßôo¬¾1MÂúœÿ ár+ª~Tù¯K©¼ÒocQû^ƒ•ÿ ƒUeÈÍÅ´¶ÍéÎŽÌ?qË¶»šÕÄ¶îÑ¸èÈJŸ½ri¡~xùÓC ²Õ®J¯E•ýUÿ ¸õFtß-ÎiyŠÈ„Öm-ï£Y+ÿ Á/©ü‘Î×äoùÊŸ(y™–ÞêVÓ.›n7TOù7X¿äo¥‚)’dDÁÑ…C)¨ ÷›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÏÿÑõNlÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ”Ìc@7$ç5óüä_“<¬ÍÅòÜÜ/X­GªÕð.¿¹Sþ¼«œwÌŸó›ÒS@ÒÀ¤º’¿òFÉüæÿ üåžõŠ¨¾‘ŸÙ¶SþJ0y¿ä¦sÍcÍz¾¶ÅµKÛ‹¢ßÒ»ÿ ÄØáZ©c@*NHôoËo2ëTý¦]Î§ö–ãÿ Ç‡ü6NtùÅ_>jT/f–ª{Ï2øXÚY?á2q£ÿ ÎkÐêš´"yOü?Õòo£ÿ ÎùrÜ†Ôo®îHìœ"Sÿ +ÃäãGÿ œgò—BºjÎãö§‘äÿ „gôÿ á2s£ù;EÑ@eµ­:zP¢½a¾lÙÍ?ç$tÏÒ>BÕc¥Lq¤ÃþyÈ’øUláó„Z—§­êvÿ }j’Óþ1¿ùŸžÂÍ›6lÙ³fÍ›6l}¥ZjéÞÃéá"sƒÍgòÉÅMÖ‘l¬ÝL*a?}¹‹9ö¿ÿ 8cå[Ð[L¸º²sÐr ÿ c"úŸò[9_šç¼Ë§“F¸·ÔPtSXd?ìdåü—Î%æ?*j¾Z¹6ZÕ¬¶“Ù•JÔ2²ëþR|8yäÍß3y%‡èKÙ#„˜ãˆÿ Ï9"ÿ ¬œ_ü¬ô7‘ÿ ç5-'ãoæ»&úí~$ù´}Dÿ a$¿êç|òŸæƒæèý]
+ö­ªUŽ?×…¸ÊŸì“$9³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›?ÿÒõNlÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³`MWW³Ò-Ú÷Qš;kxÅZIX*›6ÙÀ¿0ç1ô]'•¯–!:•ÀÛÕzÇ>ßîéàc_ø³<Ùç¿Î¯4ùÜ²ê×¯õfÿ x¿wöôÓûÏùêdl‰iz=æ­:ÚiÐIs;tH»ö(	Î±åùÅ;kad¸‚=>#ÞæJ5?ã^¬Ÿðj™Ô¼¿ÿ 8Ce­ê’Ê{¥¼aüŒ”Íÿ &×:>‡ÿ 8»äM&ŒlÓÚ¸‘ßþ‹þIäÿ Fòn‹¢ º]µ­:zP¢½V¸q›6lÙ³fÍ‘ÿ Ì-7ôŸ—5;WÖ³ ÷1·Ç<eÿ 8¨ýSÏPEZ}fÞx¾åõ¿æN{·6lÙ³fÍ›6lÙ³fÍ›µß.iÞ`¶6Z½´WVíÕ%@Ãæ9}–ÿ )s‚ùïþpÏFÔ¹\ybåôùŽâ+$?%oï£ÿ ‚›ý\ó×ÿ  ¼ßäþR_Y4ÖËþï¶ýìtþfáûÈÿ ç¬ik©­$YíÝ¢•U•`ÉeÜg\òWüåGœ|·Æ+™×R¶_ØºšŸäÜ/äcIþ®w¯%ÿ Îaù_Xãµº\æ€–¤Uÿ Œ±Žcýœ+þ¶v­Ìv» »Ò®bº€þÜ.Â°~lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙÿÓõNlÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lØ\×ôýÙ¯õ[ˆím“«ÊÁGËâêßäý¬ó—æ?üæe¥¯;?'[ýbMÇÖ®XÇùQAðÉ'üôô¿ÔlóGœ<ÿ ®yÊãëzõÜ—N	*¬h‰_÷ÔKHãÿ `¸#É–aó´¾–…g$êR8Ä¿ëÌôŒ«ËŸù9é?Ëÿ ùÃ@·>nº7Rõ6öä¤cÙæ?½“ý‡£ž‚òç”´Ÿ,Û‹MÒHGQ¯»·Úvÿ )Ëa¶lÙ³fÍ›6lÙ³ceeSn¬?#Ÿ=ÿ &œè?˜ºt-±ŠøÛŸöE­¿ã|ú›6lÙ³fÍ›6lÙ³fÍ›6l‚y×ò;Ê^qäú„kpßîøu%|KÇOSþz¬™Àüéÿ 8Sy)ü­|³¯QÐàÿ %š:ÆçýhâÎæïË?1yAÊë–[(4õ
+òŒÿ «<|¢oø<'Ñµëýqw¥ÜKk:ôx]‘¿àŒìþMÿ œ¿ó^‹Æ-]bÕ LƒÓ–žÓD8ÿ ÈÈŸ;¯“ç,üŸ¯ñŠþI4»ƒÚàU+þLñòJ•/¥ƒNÔíu8VêÆhî nSòdªàœÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6ÿÔõNlÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6Õµ‹=Ùïµ)£¶¶ŒU¤•‚¨ÿ dÙçÌ¿ùÌ›;>v^M‡ëRî>µ0+>1CðÉ/úÒzkþCç˜|ÛçgÍ×&÷]º’ê^ÜÏÂµíkû¸×ýE\8òä÷™|öàh¶ŒmëF¸“à…ç«}º,^£ÿ “ž¡ü¹ÿ œAÐ4.~csª]ŠL‚°)ÿ ŒnoùêÜýõâÎÊ–ÚÒ4†TE
+ª<Wá\[6lÙ³fÍ›6lÙ³fÍŸ<¼Þ¿áßÌ«™ÂßWõ‡ËÖõ—þ>†æÍ›6lÙ³fÍ›6lÙ³fÍ›6ll°¤Èc•C£
+aPG¸Î]ç?ùÆ%ù£”†Ïê7-_ÞÚOx¨Ð7üŠåœ'Î_ó†îŸÊo.ÝE¨D7Éû™~B¥¡ùú¹ÃüÍäkÊòúÝ”ÖZ"§ýI?»ö‰y{Íš·—&úÎw5¤½ÌNV¿ëø_ý–v¿&ÿ Îey“Kã½:œ"€¸ýÌ¿ðqƒÈŸöYÝ|›ÿ 9MäÏ1ñŠ{†Ó®ì]+_i×”?ðn™Öm/!¼g¶‘e‰ÅUÑƒ)ä²íŠæÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6ÿÕõNlÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍŒžxàF–f	Y˜Ð :–cÐgüÐÿ œºÑ´v>WQ©ÞŠƒ)$[¡ÿ X|WóÏŒñvyKÏ˜úïî~·¯]<äR>‘§üb‰~ÿ [í·í6	òå?˜¼ù7¥¡Ú³ÄwøbOõåm«þBs“üŒõWå¯üâ.ƒåîžboÒ—¢‡`Sÿ ¾ÔßóÛào÷Îw{{xí£X`UŽ4UP  vUS6lÙ³fÍ›6lÙ³fÍ›6xþrvÄØyÿ Q+·¨a”²Š:ÿ ÃòÏxhW¢ÿ O¶¼‰¡ŽOø%ƒ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lØå”±5½Üi4-³#¨e?5o‡9/œ¿ç¼™æ.RÛ@ÚmÃoÎÔñZûÀüá§ücXó…yËþpßÌºW)´)¡Ôá¢×Ò–ŸêH}#ÿ #ÿ Øçó•µ_.Íõ]bÒkI–T+_õylÃý\å<ëžV—ÖÐïg´jÔˆÜ…?ëÇýÛÿ ³\î>Lÿ œÑÖ¬xÃæKH¯ãï,_º“æWâ…ÿ Ø¤YÝü—ÿ 9#äÏ5qŽ+Ágrßî«±éø		07ûs§#¬Še" Áy³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³ÿÖõNlÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÎcù©ÿ 9åïËõki_ëš˜ZÂA ÿ Åò}˜úß¼þXóÇ™¿ž~cüÁ¦¡7£aZ­¬5XÇ‡©ûS?ùR°TÈ×”<¬ùÂìXhV²]M·.#áPjY÷q¯úíž©ü°ÿ œ=Ót®Þo_\Š«ÆH…OùmðÉ?ü“ü—ÏDYXÁa
+ZÚFÁâ‰…U
+«ð®-›6lÙ³fÍ›6lÙ³fÍ›6lñüæ]‡ÕüåôÚâÊ&úU¥þ4\õgäíÿ ×üŸ£ÜRl SóTXÏüG&³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³`]OJ´Õ!6º„1Ü@ÝRT§ý‹‚¹Ç¼åÿ 8“å{”ºzÉ¥Üë¬u÷‚NKþÆ&‹8Gœÿ çüÙ¡ò›JôµKq¿î	iï¿ª9%Î5«h·º<æÓR‚[i×ªJ…±pH<›ù¯æo&°ý	,1ýÑ<â?óÂNQÿ ÂòÏBþ_ÎhÃ3%¯œ-}Ð}fØ¿ëInÜœÏ'“þ1ç¤´0éþ`´MCI¸ŽêÖO³$l|¿ÉaûJßá†lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›?ÿ×õNlÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ°³Ì~fÓ¼µdúž±:[ZÇöÍ>J£í;·ì¢|mžEüÝÿ œµÔuïSLò—;Ukƒ´òò)þó¡ÿ '÷¿å§ØÎmms©\,0#Ïs3QUAgv> U›=#ùSÿ 8{u}ÃQó«›h´Œþñ¿ã<¿fõ”ŸåDÙê.ycLòÕ¢éÚ5¼v¶ÉÑ#ßù˜ý§òßâÃ<Ù³fÍ›6lÙ³fÍ›6lÙ³fÍžDÿ œà²á©é7”þò	£¯úŽ­ÿ 3³µÎ2_ýsÈaï–3þÆY ÿ …Î£›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ°³_òÆ™æ¦±kÜ'öe@Ôÿ W—Ù?å.pÿ ;ÿ ÎyTå?—g“MœÔˆÚ²Ã_“ŸY?äkÿ ©žhüÆü—ó'åû×W·åhMæ/Ž&ðøÿ Ýl’UFÂ¿"~cë~F¼ÚÃBÇíÆwŽAü²Åö_ýo¶¿°ËžÑüœÿ œŽÑÿ 0X]RÇY¥=o†CüÖÒµÿ ›÷¿ñ“íç]Í›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³ÿÐõNlÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙÏ?7¿;4ËkNWGëŒ«XmPüMþ\‡ýÕùµþëWÏ~bþgë^¾7úÔÅ”éBµDìÅüIÛ÷ûM‡?•?‘z÷æ4¡ì“êúršIw(<>ÒÄ:Í'ù)ðÿ ¿3Ú_–’¾_ü»„2/Rõ…$º–†Vñ
+ÝQÿ Åqÿ ³çö²{›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÏ2ÿ ÎpYrÓ´‹ºw<Ñ×ýuFÿ ™Y)ÿ œ;½úÇ’}*ÿ qy2}â9æfwÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6%wiäOor‹,2®Ž+ÕY[áažcüäÿ œEŠq&¯äp#“v{?Ì,öüS'ÁüŽŸc<­wiu¥\µ½Ê=½ÔFV]}¾Ò²ç¥ÿ #ÿ ç,ÛÓÐüîåâÙb¾;²ø-ßó¯ü_öÿ ß¼¿¼_WÛÜGsÏ,‘8¬¤ ôea³)Å3fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›?ÿÑõNlÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6læ¿ž_œ¶¿–ÚW¨¼eÕnA[hy¥ïèÇÿ %÷kûLž×µëï0_Kªj’µÅÜíÉÝº“ÿ ªý•EøU~ÏD~EÎ+>ª±kþsFŽÔÑâ³5W~ËÜþÔqŸ÷×÷û|?oÖÖVPXÂ–¶‘¬0D¡QU¢ª®Ê1lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6là_óš^·”mî;Ã}ú9—þiÂßùÂ;Îz¥kþû»Wÿ ƒWþeg£ófÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³g5üßü‰Ñ¿1íÌ“mª¢Ò+¤íöRuÿ wEÿ Ÿî·\ðçæåÖ±ä=@éšÜ&7ÜÇ"ï‹þü…ÿ hÃ§íªäçòGþrRü½•tûîWš#Š~(«ÖKbßðÐÿ vÿ ä?Çžßò¿štï4ØG«hÓ­Å¤£áeì{£¯ÚIö‘¾%Ã\Ù³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³gÿÒõNlÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6C5?4´ÏË­)µ=Dó™ª¶ðG•ÿ ••ýÛ'ì/ù\¾}y×ÎšœõIµ­^ORâcÐ}”Qö"‰f4ýŸø&øÙ›=ÿ 8¹ù&ô¼éæ8«£Y@ã¯…ÜŠgþY×þ{¾óÕù³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³gÿ œ³´õü…vô¯£4ÿ %?ù™œßþpróþ;V§þ]œÉu9ê¬Ù³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ°‡Î¾FÒ|é§¾•­À&·SÑÑ»IõG_ùµ¹.x_ó—ò'Uü·¹2µn´‰‘\¨é^‘N¿î¹á$ýÚD(ü¬üÜÖ?.oþ·¦?;iõíœŸN@?âØ•~%ÿ )9&{Çòßó7HüÁÓWSÑäÜPMSÔ‰¿’Eÿ ˆ?ØÙÉflÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙÿÓõNlÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›!ßššZWåÞ˜Ú–¦Ü¥jˆ R9Êÿ Ê¿Ê‹þì“ìÇþ·oþaþaêž}ÕdÖ5w«·Ãkö"Jü1D¿Ê?à¾6Î¹ÿ 8Ýÿ 8ðþi–?3yŽ2ºDg”0°§Ö~ÓË²ùö>Ç<ö‚"¢…P@@2ófÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÎmÿ 9mõ êÉá?ü‘¿ükœþpŠçŽµ©Ûÿ =ª?üñÿ ™™ìÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³`]SKµÕ­d°¿‰'¶™JIŠ«Ù†x³óëþq®çÉfMsËáî4Bjëö¤·ÿ _¼,¿±þíÿ ~?'òOžu_%j)«è“gMˆê®¿µ©ûq·üÜ¼_âÏx~N~ué™V<à"N%½«×þ,‹ýù7ìý™?Êè¹³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³ÿÔõNlÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍœ÷óƒó£Jü¶±õnˆŸQ•OÕíTüLžO÷Ü*~Óÿ ±“gƒ|ñçWÎÚ”š¾µ)–wÙ@Ùf(“ö#_ù¹¹?Å‹þqÛþqÆO5¼~có,f=O(¡j†¸#¿ù6ßå»¾Ê|?{>RXaP‘ 
+ª¢€²ª¨è£›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6l„þwCëy+Y_)›þyÿ Æ¹æùÂË‚žnº‹³ØIøI{S6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ²¤dRŽ+" ƒØç’¿ç çÍˆ—ÌžMˆµ¸«ÜY ©Ní-ªþÔÍìºþ<å y‚ûË×±jšTÍowrGC¸öÿ )[ì²7ÂËð¶{›ò'óþÇóÜX^ñ¶×"Z¼U¢ÊY­ëÿ Ûü¤ø³®æÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³gÿÕõNlÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÎ)ùãÿ 9%§ù$Òtr—zå(VµŽjz}©?–ÿ =8~ß‰µÿ 0_y‚ö]OU™î.æ<žG5'þiUý”_…g=ÿ 8ÿ ÿ 8¾ú¥æ?8ÄR×g‚ÍÅÖK•ý˜¿–µ'û³÷ž¸Ž5‰Dq€¨     t c³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›"ßš‘|§¬ êl.zÿ Æ'Ï#Î¿;üÖsøhÎ{‹6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÏ5ÿ ÎAÿ Î1¦±êù“Ê¾Ýç´QA/v’û3ÿ 4foÙýï÷žJ´¼»Ò.–âÙÞÞîÝê¬¤«£©ÿ ‚VSžÕü€ÿ œŽ·ó²&‡¯2Á®(¢¶Ê— ´’ç‹ö¾Ü_´‘÷LÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6ÿÖõNlÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ±ëè, {»É"RÎîBªûLÍ²ç”?;?ç,¤¼õ4_$3Gë%õ(Íâ-Tïÿ ÅÍûÏ÷ß·žk²²»Õ®’ÚÕâîw¢¢‚Îì}¾Ó1Ïa~DÎ.ÛùsÓ×¼Ø‹>¦(Ñ[ìÑÂ{3þÌÓùìóo=›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³dCó‚ìZy?Y˜šRÆà},Œƒñlòüá¥«Kç9eáŠÆRO…^$ÿ ³Û¹³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6là¿ó_óðùÅd×üº«´£”‘ôKŠxöKå“ìÉöeþuñ|ð]iWF)CÛÝÛ½5WGSÿ ŽžÂÿ œyÿ œ”Ì‚?-ù¦@š¨¢ÁpÔ?‚IÙ.äÿ üdû~ˆÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³ÿ×õNlÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙÏ4?<¼½ùyMB_^üŠ¥¤D~É“öaOòäÿ `¯ž0üÔüñ×¿1¦+~þ†ž¦±ÚDO¦)Ñ¤ý©¤ÿ -ÿ çš&þ]~Wë~½Z,%•Hõf}¢ŒxÉ'üE”û+žÞü¡üŠÑ. @>³ª:Ò[§ÿ i!_÷L_ðïþìvÎ“›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÎkÿ 9#p`ò¬Ãbcà¥‰?ãlá?ó„6ÁµRãºZÆŸðOËþeç°3fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³~}ÿ Î=Ú~`@Ú¦–ß]‰~è³Ò)ÿ Ëÿ }Íû?aþ±áÍSJ¼Ño$°¿íîíß‹£Š2°ÿ ?‡=Sÿ 8óÿ 98/=/,ùÆjO²[Þ9Ùÿ –+–?îÏä›ýÙþìøþ)=?›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³ÿÐõNlÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6%yy”/stë1©gw!U@êÌÍ²®yGó›þrÞYÌš?‘ØÇª½ñÌ*7Ø_ø¹þ?äTûyæg{Fà³—žæfÜš»»1úYÝŽzòþqPÖJj^q-cg³eÚgñgü³¯ü–ÿ &?µž¶ò÷—4ÿ .Y¦™¤@–Ö‘}”ŒP¬{³·í;|mûXc›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍœŸþrø~_ê>ín?ä´YÉ?ç#­Ö²þÛ¼Íÿ 4ç¬ófÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³gÿ œü¡Ñ¼Õ£\k×.¶z†ŸH.i³"^„ào"Ÿ÷Wí£ýŸÚFð~w¿É_ùÊMCÊB=#Ì|ï´‘EI+Y¡ä–þú%ÿ }¿Ä¿î·ÿ uç±¼¹æm;Ì¶I©èó¥Í¬ŸeÐ×~êÃí#¯í#ük†y³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÏÿÑõNlÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ› ëzÝž…g.§©Ê°Z@¥ä‘Í øÿ *ý¦o…sÂÿ žŸóÿ ˜—adZÛC‰¾kF”Ž“\Ó¯ù}ˆÿ Ê!Ÿ—_–zÏŸïÆ¢ÅÊ”2ÌÛGŸÚ•ÿ â(¿þÊç¶ÿ ) t/ËÈ–xÔ]ê¤|wR(¨=Åºoè'ú¿¼oÛ“:vlÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙÉ?ç*ÿ ò_êëÛÿ Éè³•Îÿ ­ÿ ©kúçÏXfÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÏ5Îf~b}GO·ò…£ÒkÂ'¸¡éÝ!ÿ Œ³/?ùãþVFçÿ ç´ß8ùbëTó
+:µóð³‘5ŽªÓ§ì·©/$âêËÆ/ò³–þlþEëŸ—3º_¬éŒiÜ`ð5è²¯û¦Oò[áo÷[¾~_~fë~B½úö‡9JÓÔ‰·ŠAü²Çßýïö=§ùCÿ 9¡þ`ªYÈEŽ¯Míämœ÷6Ò»ã÷¿ä²üyÕófÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÏÿÒõNlÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ€u½rÇC´“PÕ'KkX…ZI þ­üª¿~Îx[óóóâçóóêV<¡ÐíÚ±Fv20Ûëæÿ }Çþë_òÙ°‹òwòwRüÊÔ¾­mXl! ÜÜ‘²äOç™ÿ a?Ù7Ážøòg’´¿&éÑé,"xú÷goÚ’Wý¹ù¿à~<Í›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6r_ùÊ•-ù¨S³[Ÿù-rùÁ·çZ^å-ÜgÏXæÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³`}Bþ:Ú[Û·Á4’9èª£“±ÿ Usç®«w¨~qyà˜ª%Ô®Fþœ#e¯´éÎOömŸA4-ÛC°·Ò¬W…µ¬kcü•EÊþl{eô/kuË€«£€ÊÀõVVÙ†ysóþq¾¦­äov{?õ#É™?ØIöcÏ.ÝZÝiw-Â=½ÔFV]xƒFF\ô?äïüåµæéé>såwf>»Ìƒþ.ñðŸå}ÿ sÖÚ.¹c®ZG¨is%Í¬¢©$f ÿ oó/Ú\›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍŸÿÓõNlÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³`MWW´Ò-žûQš;{hÅ^I*îÍžrüÌÿ œÈ³²çeäØ~µ(¨úÔÀˆ‡¼Pü2Kþ´žšÿ ’ùæ?8yû[óÏ×5ë¹.ž¿cD_h¢ZGûÃÊËk¯ÌMr=ÖE„q2Ë#~ÌjT;*þÛükÁ?â+ŸAü•äÍ7Éº\Z.§mëûNÇíË+~ÜûMþÅ~8y›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙË?ç'â2~_ê”ý‘û¦‹8ßüàóRÿ X^æÜÒg­ófÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³ÏŸó˜_˜ß¡tHü±hôºÔÏ)hwXïÿ #äø?ÊD™r9ÿ 8aùuÅ.|çv»µm­kà7¸”}<aVÿ &eÏSfÍœ÷óSò?AüÅ€›øýAE#»ˆPS¢ÉÚhÿ ÈùæÉž)üÐü™×¿.®8j‘ú–niÔ`˜ßØŸ÷TŸñ\Ÿì9¯Åÿ -?6µÏËË¿¬èòÖ Ënõ1H?ÊOÙå•>?ö?{ò—ó“HüÉ²3éçÑ½ˆ^ÙÈæŸå/ûòû2¯û>ðä÷6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍŸÿÔõNlÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³þoÎLhžEç§éôÔuuØÄû¸Ïü¼J?h¾S÷ŸÏéçŽüÿ ù¡¯yòçëZíËH Õ!_†$ÿ Œq‡ý›r‘¿iñþ@ü©óŸ'ôt;V’0hó¿Ã¯)Ûý‚s“üŒô]ŸüâV‘åŸ/ê–³+jœVs¼ajÆâ7dd_·+#~ÔÃþ*Îeÿ 87§ç„_çµâ/ÿ ç¹ófÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6s_ùÉýO êÂ•¤qŸºX›8Wüá´Ö5Hë±¶ŒÓäÿ óvzÿ 6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ‰Ü\GmO3Ž5,ÌM  U˜ü†|ôóÆ»}ù»çf{ Y¯g[{U?³<"åü£f—ýi3ß>SòÕ¯–4«]ÄRÞÒ%|M>Ó·ùR7'ò›³fÍu=.×U¶’Æþ$žÚeâñÈ¡•ìÊÙä?ÏoùÅ©<¼’ëþQ6žµy­MYâYâ?jXWö—ûØÿ âÅåÃƒù[Í:‡•µµ}"SÜªÃ¡´Ž¿·ý—FûYôòoórÇó+I°ô4[«zîŒiš?ÝmþÃí#dû6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÏÿÕõNlÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6l¨júu¼——²,6ñ)w‘ÈUUY˜çÿ ;ÿ ç*nõÖ“Eò{½¶ºÉr*²Ëãé~Ôÿ Égÿ ŠþÆyÿ JÒo5›¤±Óâ{‹©š‰`³1ùõOå/üáô6á5?;°–]™l£o€ÌD«ýçüc‹àÿ ‹$ÏKéÚm¶›YØÄ[Ä8¤q¨UQàª»	æ‹¬é7uõ-å_½sÃ_óŠ—>Ÿìÿ »á?ä”ÿ ç¾3fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6sÿ Ïø½_"ë
+7¥±oøVþçoùÂYiæ=B?æ²¯Ý,_óV{'6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍœ/þrÛóü9å±¢Z½/5bc4;¬+ýûÏO†õ^OåÎ}ÿ 8cùuõ‹›Ÿ9]§Ám­j?m‡úD£ýHÊÄ¿ñ–OåÏZæÍ›6lÙãßùÊÈ%ÐÝüßåØ¸ØHÕ»Ñ1?ßÆ£¤7Û_÷Sÿ Åoû¾1ùeù‰äjkO5
+xÍh²Æ¼‰¿âHß±'Ï¢¾Vó-—™ôÛ}gLRÖé¡î?™ù]àuý—\4Í›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙÿÖõNlÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6Ôµ+}2ÚKëÙh¼’9¢ª¨«3ðŸçßçíßæÑÓôòÐhP·îãèf#¤óÿ Ì¨¿Ýñ“"–_•šÇæ 4ý!)PÍ;×Ó‰Oí;wcû¯Æÿ êòe÷Oågäæ‰ùsièé‘ú—Ž šê@=Göÿ ŠâþX“ý—7ø²u›4bThÏF}ùóãòÎ›ù…¦!Ø­ÓÅÿ ²Cÿ gÐœÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ¿Î˜}o%ëIÿ .3Ÿ¹òßüá|ü<áq~Ý„½ü$€ç¶3fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÄ€*v>|~pù¶çóCÎ²~Ž¬±¼«gdƒº†ôÑ‡üf‘šoùéžèò”-ü¡Úh6”)kRÃöœüRÉÿ =$f|?Í›6lÙ±+Ë8oa{[”Y!•J:0¨eaÅ•‡ò°ÏŸŸ•2~]kïg'M¹¬¶Žwø+ñDÇùào¿Èôäý¼éó‡¿š¦j/äëçÿ E½&KjŸ³0cÚx×þFGÿ g±3fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6ÿ×õNlÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6xïþrÓó•õkÖò^“%,­X}m”ÿ y(ÿ tÿ Æ;Úÿ ‹ÿ ãç"ü©ü°Ô?1u„Òl~Vq9X£®íþS·Ù‰?mÿ ÉæËôÉHÓ<—¦E£hÑíã“»;~Ô²·íÈÿ ójñN+‡Ù³fÏžza:æl`ü"ßZãôŽ?ñú›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ²9ù•oõ,jÐÒ¼ìnGü’|ñßüâþ—ž?ß–³¯üEÿ ãL÷>lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍœ¿þrGÏá/']Éñ»½ÿ D†‡zÈªÃýH­_çãžÿ œ8òÕõé¼ÇrµƒLJG^†iAU?óÎ/Pÿ ¬ñ¶{C6lÙ³fÍ›9güäåúyÃÊW&5­í‚›¨€Vhÿ ç¬<¾÷ç§ü¹à'TŸI¼‡Q´nÒ$±°ìÈy©ûÆ}6ò¾¿˜t»MbÛû«¸Reöæ¡¸ü×ìážlÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³gÿÐõNlÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›!œÞ_"yfïXRÏJÜó?ÃÏ‡Å+‘gÎ‚f½ž§”³Ìþå™˜ýìÌÙô7ò;òÂËß/C`T}~p%»~æB?»¯ò@?vŸìŸöÛ:lÙ³gÏ_ÎÈÎ‰ù‰©J61Þ­Àÿ eÂãþ7Ï¡Ê²¢È›« GÈã³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³bsÜÅn9Lê‹âÄøá%ïæ—lkõ½NÎ*uçq?‹áßçÏ‘í?¼Ö-OúÏþMÂKÏùÊ_ [l5)ÿ "	ëFÜÿ Îaù"±õÉÔ„ù8ñáEÏüæÇ–h,oŸæ"_ùšØ[qÿ 9Á¦¯÷Díþ´Ê¿©$ÂÙÿ ç9¿¹ÑE?Êºþa|¿óœ™ºÒ`SþTÌãDÀ’ÿ Îmù€ÿ w§Y¯ÌÈãuÀÒÎkù¥	e`¾¦Ÿò[µOùÌ/6j6³YKob#6"9+Å‡¥fð9Ë¼ç»ÿ #jÑëºP®bWP%”‡RÉU÷þlêÿ ÎcyÙÍTY'Êÿ ¥lÿ ó—>{n“Û¯Êþ8‹ÎXùøš‹È‡°·‹þhÄOüåWæÿ ¥‚Ò<?õK7ýWæý\þ‘áÿ ªY¿èj¿0?êà¿ôýRÍÿ CUùÿ Wÿ ¤xê–=ç+¼þ¢†ú3ó·‡þ©âÉÿ 9içÕ ¨[ÜÛÇüGÿ 9}ç”ë%«|àñ«.
+‹þs+Î‰ö£±œ/ÿ Ì¸:ùÍo5/÷–VþÂQÿ 3°|ó›ÚÐþûKµoõ]×õóÃ+oùÎ9‡ûÑ¢©ä\‘ÿ °ÖÛþs‡No÷£H?Ô™[þ$‘áµ§üæ·•¤ÚâÊú?’ÆÃþO.ZÎ^ùï$¹‡ýx	ÿ “FL<²ÿ œ–òßÙÕQ	í$R§üN:aýç“ï¶·Ö,I=Œè§îv\ÙkÚ}þö—0Íÿ äVÿ ˆœ›6lÙ³fÍ›6lÙ³fÍ›6x›þsÏŸ¦üÈš»VÛJN-N†i(òÿ À'¥ù/êg¤?ç¼‰þò¥¬«Æîè}jr Uþ1EéÇþ²çIÍ›6lÙ³fÊt
+°ª‘BqŸ5¿4|¤|¥æ]CD¡ÛÎÞßmûÈ?ä“¦zÇþpëÍÿ ¥¼­&+Vm2b ÅrÖXÿ ä§¬¿ìs¼æÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6ÿÑõNlÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›<sÿ 9Ÿçƒ¬ÛybýÍ‚zÒþý”| ÿ Æ88ñÿ ŒÍ‘¯ùÅ 3y­u…åi¥(¸jô2“ÆÙàùMÿ <sÝy³fÍ›<+ÿ 9w¦ýSÏ2ÍJ«h%û—Ðÿ ™9ìËLjž[Òï«S5œ~f5åÿ ’,Ù³fÍ›6lÙ³fÍ›6lÙLÁEXÐç#Ú¿æ?–ôjþ‘Ôìà#ö^tÿ Ë–BµoùÊ?!iÕP7;Cÿ Qcÿ ‡Èv«ÿ 9¯åÈ	7—t/Â0áåoøLˆjóœïQ§éÆ;fgü!ÿ ‰dSQÿ œÄó­Õ}ª[ÓÓ„’?äsË‘}Gþr;Ï·äúš´¨h–8ÿ äÒ!ÈÎ¡ù“æmD“yªÞË^Íq!ð<é„7“\žSÈÒb^#ŠÃm,æ‘#9ðPOêÃk_$k·Ÿï6w-’	þ"˜skù/ç;ª´kÚí¯üL.[Î8ùúãìi2Šÿ ;Æ¿ñ9-ÿ ç|ý-XÇšâ/øÕÛaÿ œ=ó¼ƒâ‰þ´ÿ óB6ƒþp·ÍÏýåÍ‚ÏIüÈÁÑÎùˆÿ y¨Y—ªæZà˜ÿ çuƒNz¥°ñ¤næœ]çµ
+üZ¼ {@Çþfcÿ èGoêñý#·ýUÅãÿ œ”ï&´£Ùm‰ýsàÈÿ çí‡ÛÖœü­€ÿ ™øºÎiÀ|Z¼Äû@£þfTÎi4ßU¹¯ücOë—ÿ BA¤ÕÖçþE¦oú#þ®·?ò-3Ðiõu¹ÿ ‘iŒoùÁý,Ÿ‡V¸Þ$?ñ¶"ÿ óƒ¶DžÌ v­ºŸùš04¿óƒi·§­ŸzÚÿ ×ü/üàåØþïYŒüíˆÿ ™Í€æÿ œ!Ö÷Z¥³ò£qú¹á|ÿ ó…iAX¯læÒù’p²ãþpçÎÑ}ƒg'ú³øÞ4ÂËŸùÅ?CR¶QÉOä¸‹þ7tÂ{¯ùÇ_>[}½"cOähßþM»a5ïå›ì·ŸG¾P;‹yûÕNÞyoS²ÿ z­'†ŸÏ¯üIp¸‚6=s+5„a¾ŸçkN§Ô¯î §ûîg_ø‹d£NüþóÎŸOGX¹j¿H—þO¬™,Ó?ç/|ñiO^Kk ?ß°ÿ &9/Ò¿ç7õ jZLŽæZ?ÂEŸ&zGüæ¯–®(º…•å±=Ô$Š>žq¿ü&MôoùÉ!ê”©,ftxÿ áÝ=?ø|hþmÑõ —{otûæTøƒ6æÍ›6lÙ³fÍ„^{ódQÑ/5Ûª´‰œûMöbþzHQ?Ùg…ÿ %|©?æOá:…fŒÊ×·Œ{ª·¨Á¿ã4Ì‘ÏLú›6lÙ³fÍ›6yþs[ÊVÔì<ÉüQ›yHþxþ8É÷xßüñÈ¯üâ?›ÿ ByÁtùZjq4Ãšþúÿ ñ¯üeÏsæÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6ÿÒõNlÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ‰^]Çg—3·¢VwcÙTrc÷gÌ¿:ù–_3ëWºÜõåw;ËCÙIøý‚qLöüâo“FäøïåZ\jŽn÷à?wn¿êð_Uã.vŒÙ³fÍžEÿ œßÒLzž•©´°K	?ñ–Aÿ 'ó³ÿ Î1êÿ ¤ü…§jð	 oö?ù'Ã:žlÙ³fÍ›6lÙ³ce•!S$Œä“@>œ„ùƒó»ÉºVûV¶æ½R&õ[þßÕlçïüæ•lêºm½Ýë‡ŠÆ‡ý”êÉ,çzçüæÖ·=WIÓ­­èfg”ÿ Âý]€k_ó“>|ÕjRkt?³n‰ü:¯«ÿ %2	«ù»XÖI:õÍÑ=}Y]ÿ âlp£4¯'ë:½css_÷Ô.ÿ ñ91Ò¿ç¼ù©SÒÒ¥Œó2EøLèßð¹/Òÿ ç|åuCu%¨ïÎVc÷E¯ü6JôÏùÁÛ†¡Ô5„_¿ážHÿ â)Ó¿ç
+<·íõìÇÁqù7)ÿ †É5‡üâgíiêZÍpGûòwÿ ™F,‘ØþAyÊž–liþüS'üži2Ceä.ØSêšeœTéÂÞ1ú“`´†Üq…‚€?V+›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6l{åý:ûk»X&ýù·üIr;¨~Ny:þ¦ãG²$÷XßC‘­GþqwÈ7»8ÂÞ1M*ÿ ÂúŒŸð¹Ô¿ç¼§q½¥Íí¹ðæŽ>ç‹—ü>DõOùÁÖÜéÚÀ>4ñ¼rÿ Ì¼‡ê¿ó†žp´©´–Îé{‘•¾écEÿ ‡Èf­ÿ 8ñç½.¾¶“4€w„¬¿òa¤l„êž^Ô´“ÇQµžÙ¼%“þ&«€QÙe$ÐŒ•hšþkÐ¨4íVî%ÕfOù'8ÿ ás¢h?ó˜tÓ¨·¦Úý_V.-ÿ naÿ ˆgIò÷üæîŸ-\Ó%„÷{yAÿ "åôOü;gOòçüä‡‘µÚ,Z’[Èbä¿áäü”Î‹eo}žÒTš&èñ°e?ì—l_6lÙ³g–ç4üÿ Å-<ŸjÛ·úUÈ©oÿ eêHËþLM’ùÃß þ…òôža¹Z\êT¯Qd¬ò2OQÿ ÊOK;ölÙ³fÍ›6lÙËÿ ç$ü¡þ&òUòF¼§³î?Å¼Ÿ|UÏèš¼Ú5õ¾§ji=¬©2ò‘ƒ¯üG>œh:Ä:Õ…¾©jkÔI2ªêâX;6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙÿÓõNlÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍœ¯þrkÍ_áï$_n3^ñ´Oùëýïý;¬Ùá/h³kš¶•m¼×sG
+üÝ‚ÆÙôçJÓaÒí!Óí‡mãHx* ‹ÿ 
+¸+6lÙ³gŸç4´_­y^×QQV´»P}–Eeoøu‹ÎkXÐu)MµÐ”•ÿ Ä |ônlÙ³fÍ›6S0PY Ü“O4~zy7Ë<–ÿ S…¥^±Â}W¯‡=N?ìøç#ó7üæÖ›(ô:[ƒÐ=Ãˆ×çéÇë;ÁGœ§ÌŸó–~vÖ*¶ÓE§Æ{[Æ+OøÉ7¬ÿ ð<s˜kžoÖ5ö/«ÞÜ]“¿ï¥g@cA…–öòÜ8ŠiôU“ô›è?‘~t×hl´›Ñ¥_Eà®YÑt/ùÃ5^Qµ+‹K5=G&‘Çû×Óÿ ’¹ÐtOùÂ=[S¸¸=Ä(‘ø¬žhßó‹¾CÓ(ÆÀÜ¸ý©åvÿ „‘ÂdçHò—´j~Óm-Èï(§þ/,>›™³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÆËJ¥$PÊz‚*Dõ¿Ê/)ku7úM¤Œz°‰Q¿äd\þ9þ¹ÿ 8ä­B¦ÍnlXôô¥ä?ànßñ,ç:ÿ üáÚU´]V9<â"ŸòR#/üšÎiæùÆ/=hµo¨}n1ûVÎ²É?†où%œßTÑo´™=FÞ[i–Td?ð.Ñ¼Å©h’úúUÔÖ’õåŒ‡þ®uO+ÎXù×Dâ—SE¨Â?få*ÆX½)?àùçcòŸüæž…{Æ-~Îk=^"&éþîUÿ c™Ú|«ùåï6(mþ¦"¼Àqþ´/ÆUÿ d™#Íˆ_ßC§ÛËytÂ8 F‘ØôUQÉÛýŠçÏ;‰/8<ôxÔIª]Q{úpŽŸò"Ù?á3èV—¦Á¥ÚCaf¡-íãX£QÙPpAÿ 0NlÙ³fÍ›6lØÉ¡IÑ¢”GX„ˆÏ™ÿ ˜W*ë÷Ú×ýwE¯t¯([ýœE=‹ÿ 8‹æÿ Ó~Pt­YôÉZwôÛ÷ÐŸøgãvìÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³gÿÔõNlÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍžOÿ œÝó/)´¿/¡ÙK©úÇÑ‡þ!>@ç<±úgÎÐÝ:Ö->).O‡*z1ÃËÏý†{»6lÙ³fÈçß—ÿ Oy'U´QÉÒ:Žõ„‹¿ä_óWüá˜~£æ›-ÍúÕ¨<^"$_ù$fÏjfÍ›6ldÓ$e•‚"Š–c@¹9Ë¼åÿ 93ä¿,rˆÝýzákû»Aêoÿ ª¶ÿ òW8w›¿ç4õ«ÎQyvÎ+(ûI1õdù…ø!_öK.q4þgy“ÍdþšÔ'¸Cþë.V?ù¿á2=ki5Ü‚diem‚ ,OÉW|èþXÿ œnóÇ˜(ñiïm~ÝÑøý÷üYÖ|µÿ 8C+QõýQWÆ;Xëÿ %¦ãÿ &3©ysþqcÈÚ5KG½~ÕÌ…¿äšzpÿ É<éZ7–t½=-*ÒDéHcTÿ ˆÃ,Ù³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍµ2×QˆÁ}sÄz¤ŠOûg5ó?üã/‘õú±±úœ§öíXÇÿ $þ(?ä–r5Î\FO.jK'„WHTÿ Èèyƒÿ "W8Ï›#<áå^O¨éÒ´+ÖXGª”þbðóáÿ =8d9^(êj4 çQò_üä·œü¯Æ1wõëe§î®Á“oij³¯üãþNwï#ÿ Îdy{Vã˜a“LœÐ½†¿ë õSþE7úøŸüåæå‚ùN=?BºŠåµ†áÎ)F›téÍ½8¸ÿ +I‘ŸùÂß U®üát»
+ÚÛWÇg¸É8•¿ã*ç«3fÍ›6lÙ³fÍ›<mÿ 9£å¨kÖž`‰iü>œ„¿!Ú§ýh^5ÿ žx[ÿ 8wæÿ Ñ>j}V¤:œ% íêÅY£ÿ ’~ºÿ ²ÏmæÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›?ÿÕõNlÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍŸ?¿ç&¼ÃúkÏZSXíJ[/·¦ Iÿ %½\íó„~]ôtÝO\q¼ó%ºh×Ôz¬Ó§üzg6lÙ³fÄî-Òæ'‚QÊ9«ÜB3ç–n$üµóü^¹*4Ûó„÷‘‚Fÿ e3gÑ A3fÍ‘:~gywÉqúšíìVïJˆ«ÊFÿ Rå!ÿ [óÇž¿ç5d~VþR²7âïsóKxÏþÎVÿ ŒyÀ|ßù™æ/89}rúk…&¢2ÜcêÁ—þ	ômP×'šU´·Sž‰
+3Ÿ¹ÎÉåùÄ6ë!eÕ:\'Þ·9)í5_ö2KvÏ)ÿ ÎùKHã&ªÓêrŽ¢Fôãÿ ‘PÑÿ àæ|ëú”t.ÇèèöpZ%)û¨ÕIÿ Y”roöXm›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ²çÉÏ*y¼3jú|/3»zr|ýX¸;³åœ#Îßó…rŸÊ—õêDcð[ˆ‡üJöyçÿ 9þWyÉŽW]±–ëA-9DÕš>Qÿ ±åË"¹è¯É?ùÊx<Ÿ§ÛùsZ±P€Ií¶qR]šXœñ•‹7&dtÿ Q³Õ¾QóÖ‹ço®èWqÝEûAOÄ¾ÒÄÔ’3þºáîlÙ³fÍ›6lÙ³‘ÿ ÎRùCüEä«™c^Séì·iãDøfÿ ’#ÿ °Ïù[_›ËÚ­¦±oýí¤ÑÌÇý—ÙÏ§n¡£mí³r†xÖDoaÍOü	Á³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³gÿÖõNlÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÄ®®RÖ'¸”Ñ#Rì| Ž|¾×uGÕõJ_·s4“7ÍØ¹ÿ ‰g¾?çôÐÞEÓPŠ=Â5Ã{ú¬Ò'ü’ôó§fÍ›6lÙ³Ä¿ó˜žN:GšSZ‰i©b{z±£þEú/þË=1ù	çQæÿ (Xß;r¸…>­?©ÁVÿ Œ‰Â_ùé ˜¿ž~Xòhõ;‘-èZÁG—ýš×Œ_óÙÓ<»ù‡ÿ 9mæ_1¶Ñ)¤ÙšÝžSþTçìÏOõÛ8•ÅÄ×’´Ó»K4†¬ÌK3âÇâc7ÈŸóžoów–Ûê6mCë]V0GŠEOYÿ ä_òóÐ¾Hÿ œ<òÖÆmvI5KBTþê*ÿ Æ8Ï¨ßìåÿ a·EÐ4ýi¥[Ek è A÷ Áù³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6bi¹éï2~qyKËu]OT¶ŽEë¿¨ÿ ò*ROø\æšçüæo”ì‰]>»ÖEOû)[Ôÿ ’YÕ?ç8o‘§i ìf™Ÿþ4‹þ%‘›ßùÌß8ÌsŒ#Ú'?ñ9[
+åÿ œ¶óãý›˜åÆÁ±‘ÿ ÎYùõzÝÂß;xÿ ãU:×þsÎÐŸÞ}N_õá#þMÈ˜omÿ 9±æTþþÂÅÿ Õ¯üÍ|:±ÿ œâ¹RæŽŒ;˜î
+þä›Mÿ œÚòü¤í>îõ1˜äþ	¡É~‘ÿ 9Wä=D…{×µcÚx\ÃF²'ü6NôOÌo-ë´f¥ipÇöRd-ÿ "ùsÿ …ÉlÙ³fÍŒžÞ;ˆÚ•^7e`#Á”õÎ3ùƒÿ 8¥å_3ò¸ÓPéW¿(b'ü»cðÈ–‡<Ãùÿ 8óæŸ#r¸¸ƒëv¿ÖmêÊüZŸÞCþÍ}?ø³ Z¿ Ý%þ•q%­ÌfH˜©ùmÕ|Wìç¦ÿ +?ç1ªSOó¼tè¢öün _øœò'==¤êözÅ²_éÓ%Å´¢©$lHöeÁy³fÍ›6lÙ±ë(¯­ä´¸^pÌ©î¬8²ÿ ÀçÌŸ7ùv_-ê÷š4ÿ ÞZNñâÑ_ýšüYì/ùÇ?Î]|ke®êÖ—V,Öüg•QŠ/Å*»
+§¤ëüóÎŽ?:¼–O­X×þ3§ë®´üÎòµæÖúµ‹Ÿsâx}iox¼íeIWÅ0ÿ …ÅófÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙÿ×õNlÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›#^hüÌòß•ª5­FÞÙÇì3ƒ'ü‰NRÿ Âg+×¿ç2|£bJéñ]_0èUhÙLË'ü’È6§ÿ 9ÃtÄ;Hc,å¿áR8ÿ âYºÿ œÓód‡÷–õ$où€¿èr<ëü–_ò%¿ê®/oÿ 9çÿ ¼‚ÂAïƒþ#6/¬Îcëz¾™u¥ÜX[!º‚H}HÙÔ¯51ó
+æJñåüÙçÜ÷G‘ç%¼„–ºX»{O«Ã*'‰”QGöãÇû?Ï[Bóv¯¯="öÞìR¿¹•\˜CUÃlÙ³fÍ›9_üäŸåáóŸ”ç[då}`~µ Oûè‡üd‡—ý©<ó_üãOçe§ååÍåž¶Î4»¤õ,Vdû<Wþ.OÝ·ùK/‡~hÎXëÞgçe WJÓÍG%5ÇùSî¿Õ‡âÿ ‹_8„QO8HÕæ¸•¶ fcÿ ÌÙÜÿ .¿ç<Ãæ~`a¥Z9NÃþ1}˜¿ç«s_÷ÖzsÈ‘žUò8Y4ËE’íãæzI-|U›á‹þx¬y>Í›6lÙ³fÍ›1 
+†$o!þfp¶ÁÔŸ˜ÅsfÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³dGÏ›[òBW\½Ž)iQ
+ürŸ”)Éÿ Ù7ÿ +<õçoùÍk™KAåK‰:	î¾&ù¬žþÊY?ÕÎæÏÍŸ4y°ŸÓŒóFßî Ü#ÿ ‘1p‹þ"9²ÕK(©=†Ùy?Z¾´°º˜÷Ü.ßñÃx?(|á8¬z5ùþ]¤­qïù3ç4ë¢ßýîRám×åï˜ín4»ØÇ‹[Èâ˜Iqk-³p6ð`Aüq,Ù³d—Ëÿ ™>dòñ¢u+«u²²·ùÄÇÿ GË?ó˜žoÓ(ššÛê1Ž¦Dôßþ	ÿ g_ò§üæ_–5"±ë0O¦ÈiV§­ü_½ÿ ’Ù|µç]ÌñzÚ%ìkÔúN	ë§ÛOök‡Y³fÍ˜ŠìsþhÎ/ùsÎ\ï,iš“Tú¨ôÜÿ ÅÖÿ 
+ÿ ³ÓæçžCüÇü¡óåõÇ¥¬À~®Æ‘ÜGV‰ÿ Õ“ö[þ+“„Ÿäå~[þmk¿—·_XÑ¦ýÃe·z˜¤ÿ ]?e¿âÄã'ùYíÊ?Ïmó»}[TE¬–’‹n¯»£ÿ Wã_÷b.tœÙ³fÍ›9Wæüäo—ÿ /®_KºIîu$UoF4â aÉ9M'ââ¿W<ýæ¯ùÌ¯4êE“F†:#Ðñõdÿ ƒ—÷_òC9n¹ù±æ½pŸÒ:­ÜŠz¨••?ä\|#ÿ …È¬’4Œ]Éf=I58ÜÙ±{KéìßÕµ‘âqûHÅOÞ¹9òïçßt¿TÕgt_Øœ‰–ž¿õ)þÇ;“ÿ ç6.¢+™ôô•:mOùú2–Fÿ ‘±ç |‰ùÁåŸ<(-â<ô©‚O‚Qÿ <Ÿvÿ Z>iþVLófÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›?ÿÐõNlÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³f$SÓ8¿ægüå?–ü¢^ÏM?¥u¨)Ÿø¶ãâ_ö1,ŸåpÏ1ùëþr?În-Ý›+F¯îmk§ƒÉ_ZOöRqÿ '9‹»9,Ä–;’zœnXšÎÚùkT»¶´¸”ä‰Ûþ"¸3üæú¶^ÿ Ò<ŸóF#?“µ«qY¬.•Ö¸W5¼2«!ð`GëÄób\InâXY’E5¤‚>DgMòWüäGžt#µ´¼{äb`¹·"Mïÿ ÕT—=ãå¹µôëyu¨ã‡PxÕ¦Ž"J+Ê)mþ³†Y³fÊ’EK¹
+ª	$š sžnüâÿ œ·µÒLšO“8]]…®ØV$=ýÿ w¿ùÜÿ Æ\òÄïq#M!«»c@7&§a¶v/Ê¯ùÆ0yÐ%ö ™¥µ’Uýãø¦…·ÿ ~IÁ?—ÔÏ\~]þNysÈ1Ñí‡ÖiF¹–3ÏOØ_ò"àŸääÛ6lÙ³fÍ‰ÜÝEkšáÖ8ÔU™È vm³˜y¯þrgÉ]-^ýre¯Áh¾¯Oø·áƒþJç#ó/üæìÍTòþ–ª;Iu!où#ù?œÇYÿ œ¢óæ¦üÖüZ¨5	H£ïeyû'È®§ùµæÝOýëÕï\ÂwQÿ Œ«‘ëföèÖââYùnÍÿ 8±;“–®Ë¸$iæJÌÖÚêxŠHËÿ l’irÓ)õ]bðÐ<­ ÿ ›Ô\›èó—~wÓˆR[ß(ê&„Ù[úÒ|¹ÿ 9»k!	¯ioŒ–Òÿ ’Rúòu³¯yOóÿ Éžg+ž£S·ûªâ°µ”z¼QÏücwÎ‚¬SPweæÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÈ—ææ§—ü…oëë—"9V8Sâ•ÿ ãC·ùoÆ?òóÉÿ ™_ó–Þ`ó{M ~Š±;rCYØ•7û«þxü_ñkg¸¸’æFšvi$sVf$’Ovc×ªX…QRv gIòwüã¿œüÔ[k¶·o÷mÑô–ž!_÷Î?Ô‰³´y_þpŽÝ)'˜µ7sÞ;T
+?ätÜëÿ "W:–ÿ 8Óä]ºrÜ¸ý«–ikþÁÏ¥ÿ $ò{¥ùcJÒ@]:ÎÞØž”HŸñ\3Í›6¼Ó­¯WÓ»‰&CÙÔ0û›!ºçäg’µºýoI¶ÝZ$ô›þ
+ßÒ9ÌüËÿ 8[åËÐ_F»¹±ôW¤Éÿ Þœ¿ò[8÷›¿çüá¡†—OXµ8Gûá¸½=á—‡üm&qíSH¼ÒgkMF	-§^±Ê…±pÍ›³¾žÆU¸´‘á™Uãb¬ù,¿ÎÃäùÊÿ 7ywŒ7ò.«j?fãûÊ“pŸã/­žŒòüå”üÖVÞæS¦^¶ÞÉ	ÿ "çû¯ùé7ù9×ÑÕÔ:TŠ‚:—›6l©évº­´–Wñ$öÒŽ/ŠX”­žQüèÿ œI–ÈI¬y 4°Š³ÙWQßê®w•â—ýïò4Ÿg<Ùiwu¤Ý-Å³½½ÔUe%]Oü²ç°!¿ç(`ó§ y±ÖLÑb¹Ùc˜öY?f)Ïü‹—öx?ÀÞ‰Í›6lÙçùÌŸËŸÒZ\>m´JÏ`DSÓ¼.~ÿ ž37üÏü¹ãœœ~YþOë˜Ï2h~-¸ú¦Yñç^ˆ#¾Êg`Òÿ ç5I :Ž«oˆŠ'“ñvƒ$–ßóƒúZôZáÏù"ÿ ÄšLç	<¿MµÊü£ÿ š0çüàõƒõ]^d=¹À­ÿ ’<‰ë?ó„þ`·´ÍBÖæâ'ðá³šù£òÎž[%æ™,¯Y ¤ËOèóeÿ f«œýÑ•`CBQŽ‚y-Ýe…ŠH†ªÊhAÕ‡Lï¿•ó–Ú¿—Ù4ÿ 4òÔ¬6·ü|F<y®´Ÿ¼ÿ ‹g={åo6ižj±MWE.mdèÊzèëö£uý¤‹³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÏÿÑõNlÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ°ŸÍ¾oÓ<¥§É«ëS,±u'«ÙŽ4ûRHß²‹ž(üãÿ œ•Ö<ôÏ§é¥´ýíé)¤’™±ÿ |§îÿ ›ÔûYÆ°ûÊ^DÖüßqõMÒ[¹Ú(>ÿ Œ’µ#ý›g~òoüáEíÀY¼Ï~¶àîa¶ÛäÓIÆ5oõc—;—ç|‹¢€~¡õ¹íÝ;I_ùçðÁÿ $³ i~TÒ4N²·¶ýõ'üAFæÍˆ]X[ÝŽ71$«àêÃd[Wüžò†¯_®ilOí,Jÿ ÿ †Ï1ÎNþ\ù#È±Ao¡Ã$:½Ñæ#YY‘"jGY}GøÛà‹ã_÷c~Æyã=9ÿ 8‰ù=õÙÿ Æú¬¸ŠÙ+µ ød¹ÿ V/±ü[Í¿ÝYëŒÙ³aOš¼Ù¦ùRÂM[Ymíb³u'²"ý§‘¿eâÏ~uÎGjž~wÓ´îVZ%iéG”5Ë/oø¥wüÞ§ÚÎsäß$jÞr¾]/C·k‰ÛsM•ûòYÃ”ßñ,öWåüâöäÀšŽ³ÇQÕ†á˜~æ#ÿ Äßm—ýý/Åü‰vÜÙ³fÍ›6s¯=Î@yGÉ¼¢½¼Yî—ýÑmû×¯ò·ÝÇÿ =dLó÷ç45«þPùjÖ;ŽÂY{/Ì.Ð§üßëgó?žµÏ4Éêëw³ÝšÔ	•êGýÚ°\"Ë “A×%ågšuÐMÒîæCÑÄLþF8Xÿ á²s¥ÿ Î'yòø’Ö+`ßÓ§êˆÊÙ%³ÿ œ(ó4€›ë½”Èßó)0Åç5R>-ZÜhœÿ ÆÙRÎjÀ~ïU·'Þ'Å°ªûþp¯ÍQ
+Û]ØÍì^E?Œ$Ãd_Uÿ œYóîž-ŠÜ(ïÑ·ü+2?ü.A5ß ùƒ@¯é]>êØÚ’'ÿ Ç‡ü6fÉ‡“?7|ÏäÖ¡¯åŽþécÎ#ÿ <däƒýÏCùþsFÖã·›­»ÅµY>o~õ?ç›Ëþ¦z'ËžiÒüËj/ô[˜®íÏíFÀÐÿ +´þKüXi›6lÙ³fÍ›6lÙ³fÍ›6lÙ±“Ï¼m4Ì4™˜Ð :³1èy“ó‹þrê+C&“ä~2Ëº½ë
+¢Ÿùv¿¼ÿ Œ²~ïùO·žTÕu{½^åïµžâæSÉä‘‹1>ìØ•”÷Ó%­¤o4ò(ˆ¥™‚ªüMÿ òçþpóZÖB^yž_Ñ¶Í¿¢´yÈ÷ÿ uAþÏÔæ‹=/ä_É+y%U´‹$úÂÿ ÇÄ¿¼”ûú¯ö?ç—¦¿ääß6lÙ³fÍ›6lØQæO(é>f€ÚkVÝÃØJ€‘îö‘¿ÊF\ó×æüá¥À{¿'Ü›y7?V¸%ÿ “ÿ ÞGÿ ==_õ×<Íç"k^Nºú–½k%¬»ñ,*¬íE*Ö9ýFÂ˜yWÍzHãcæ»{bvB}+¨‡óG2ü…ÿ }],Ÿä<yÑnÿ ç¿Ä6§?.µµk3ÖièßOþëõüYè“œs_òÞ¥åë“c«ÛKip¿±*•?5¯Ú_ò—áÉwå×ç—™ü†êšmÉ–Èíg«ÄGù^Pÿ ÏLõ—åoüä÷—|èRÊôþŒÔÚƒÒ™‡¦çþ)ŸáSþ¤ž›ÿ /<ìY³fÍœ[óËþq¿OóÚIªé-5À+Ë¤sÓön)ÒOåŸí¿9þÇ‰5íûË÷²éš¬/owqxÜPƒÿ +~Ë/Âß³ž’ÿ œyÿ œœkc–<ã5aÙ-ïî¿ËÓØþIÿ cýÛð|ië C
+ÁÍ›6l	¬i6úÅœúmê‰-®ch¤SÝXqlù«çß(\y?[»Ðnê^ÖR¡¿™ÅŸóÒ2¯’ÈÌOð7š­¯fn67ê÷>›‘ûÃÿ dá/úªßÍŸCA®ã6lÙ³d;Îÿ ”>Yóª0Öl£yˆÚt%óÙ(Íþ«óOòsËßš?óˆº¿—Õõ,;jvKRb"—
+=•~ùçÆOø«<ÿ $mpU”A ŽÇ%¿–¿š:Çåî¢5"OÝ±hŸNUþYù¿’EøÓþ=ñùgù™¥þaikªéMFY¡cñÄÿ Èÿ ó.O³"ÿ ²U–æÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÏÿÒõNlÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lØEço:iÞLÒæÖµy=;xGAöØŠ%ý©öà›àVÏŸÿ šÿ ›:¯æ6¤oµ1ÛFH··SðD§þ'#»%ý¯òSŠ,2$¸‘a…YärUA$“°UQö˜ç§ÿ 'ÿ çÚácÕ¼ñTCFK4b?åêEûñ†?ùä_±ž¤Ñ´KÙ,tÈ#¶¶ŒQc‰B¨ú¿ùX76lÙ³fÂ7ùªËÊšUÎ·©7kT.Þ$ôHÓü¹Š'ùMŸ8¼õç+ß9ë:î¢k5ÃÔ-vEG‘|?ðßk?)..0uè4[z¬?Þ\J÷q)ýãÿ ¬ßÝÇÿ :çÑmHµÑ¬áÓl#ZÛ¢Ç/@ª(0^lÙüÈüÊÒ/ôÆÕuwëUŠûr¿ûî5ÿ ‰¿ØOÚÏ~hþlk˜º½ÕŒO¡n„úq)þ_æþÜ­ñ?ù)ÅóòkòVüÈœN+k¤FÔ–å‡Z}¨í×ýÙ'ü$·üî?#yGòE‚éz…·W‘¿ß“IÕßþ#ûW$9³fÍ›,É
+e`ˆ¢¥˜Ð ;“œGóþrËË^Y/k£×V½ZÝB§ü«‹ŸüñY?×\ó'Ÿÿ ç ¼ÙçRÑ]Ýk6ÿ {jÆ”ðs_V_ùèì¿äç6ËU,B¨©=u/#Î5ùÃÍ¡fK_¨Ú5­wXÁ)wÿ ‘|?ÊÎóåùÃO/˜.¦Ô%Q?sü)i›þF¦v?-þZyoË ~‡Ó­­Ø~ÚÆÿ Èçå)ÿ ƒÉ.lÙ³fÍ˜€Eàä3Ìÿ “^Qó0oÒze»HÝdEôäÿ ‘°zoÿ œgÎó…¥òÍûÛ¿QÈæŸ!,|dAþ²KœÏ?‘¾lòW)uK'kUÿ ˆ?y<YÓâþ{,yÃ,ù³Uò½Ð¿Ñ.d´¸_Ú©Qü®¿bDÿ !Õ—=IùWÿ 9‡k|SNó¬bÚcEqé“ÿ Åö¢ÿ ^>Qÿ ‘ç¤ì¯`¾….­$Y GF¬í+/ÂÃÍ›6lÙ³fÍ›6lÙ³fÍ›
+<×æÍ7Êš|º¾³2ÛÚÄ7cÔŸÙD_´ò7ì¢ç‡ÿ :ÿ ç!õOÌ)ZÆÓ•žˆ§á€ŠJt{–_µþL_Ý§ùmñç"Î­ùGÿ 8ï®þ`²Þ06:Mw¹‘wqÜ[Gðú¿ëü1—ËáÏe~\þPy{òþn>°EæJ4¯ó“öþ+„ääÓ6lÙ³fÍ›6lÙ³fÍ…Úÿ —4ï0Ú>Ÿ«ÛÇujýRE¨ÿ X++¯Ä¹å_ÍÏùÄ+<>§ä¢×0ÚÍÍdQÿ Iþîñ[þ÷ü©[<Õqo%¼êÑÈ„«+#ª²ÁÉÿ 0µ"êªhs¤Ø:ÒEÿ }Íí¯ü2þÃ+g´¼ƒù‰åOÏ,Øj–Ñ5ìkY¬æŠøÍm&Ïéÿ Å‘ð’?Ûãðòæ™¿ó†¬ï¼•1a¹ú¥Ãoò‚ãþ4›þGg™µ­ûCº}?T‚Kk¨Í9«¿·ò¶u¿Ê?ùÉíoÉE4ýT¶¥¤¸9ýìcþ(•¿eßR|ÈÑg²ü‘çíÎÖ#RÐ®x¶½ù&í#ÿ Ä¿c’äƒ6lÙÎ9?%4ÏÌ«§
+Ÿ«Ü¸ÿ Šåÿ ~@ßËûm?ÊðW›¼£©yGR—FÖ"0ÝBw˜~Ì‘·íÆÿ ²ÙèùÆ¿ùÈÆÓZ/)y¦ZÙš%­ËŸîÏE‚fÿ |ÿ ¾äÿ tý†ý×÷^»Í›6lò÷üæåß­·œmâŠ–×T²Mmåoõ_”Gþ2EžLÏ~Î3þaÿ Œ|©
+\?+í:–ÓW©
+?q/üô‹ö¿jD“:ÆlÙ³fÍœsó¿þqÏMóôO©i¡,õÀ*%‰5?bä/í,ÿ mkšü9áÝwA½Ð/eÒõHšÞîã$n7ø«}¥eøY~%ÃïËÌGòûWXÓZ«öf„Ÿ†XëñFÿ ó-ÿ aþ,úäÿ 6Øy·Kƒ[ÒŸÔ¶¸^CÅOGÇìÉ|‡9³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙÿÓõNlÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lNææ;hžyØ$Q©gf4
+ rfcüª3À?Ÿßœs~bëêìË£Ú–ÑôåÙ®]ß’þÏûî>)üü¹¥•”×ÓÇkj,ò°DEff<UU{³÷äüãÍ¯‘ McXUŸ]‘kSºÛƒþë‡þ-ÿ ~MþÂ?ƒâ“µæÍ›6lÙ³gŒ?ç-¿6¿OêcÊzl•°ÓÞ³•;I?B¿êÛ}øËê*gŸØ"Xš :“žýÿ œvü¦_ËýMÚ«_–ä÷]¿umÿ <U¾?øµ¤ÿ ':®lÙüÎüÍÒÿ /4¦ÕuFäæ«*~9^Ÿa<ýù'ÙØ«xóóTóî¨úÆ°ü¶Ž1ö"OÙŠ%ì£þ	Ûâléÿ óŽùÙ“]×ÃA¢)ª/G¸#²wH?ž_Úû:{WMÓm´ËhìlbH-¡P‘Æ€UT`œÙ³fÍœwóOþrwËÞJçedF¥©­G¥âùþ%_øÇ9?›†y'óó³Ì¾~Vä¥¥j¶°Õ"JÖSþT¬ùÍŸò¿þqsÌ^q	{¨ÑzkP‡•Oªãþ)·ø[ýœ¾šÿ /<õoåïäW•¼Š«&j%¼ng£Ë_ò	!ÿ ž(™Ð3fÍ›6lÙ³fÍ›1 ŠÁÎMù‹ÿ 8Ïå_9¸ŠÑ×í¿­l ÿ Å°u'ù\}9?âÌòwæwä™<€Zâê/­iÀíu % ÿ ‹—íÁþÏàþY9®t/Ê¯Îýwòæqõ	=}=d´”ŸM¼Z?÷Ì¿å§û5|öïåææ‰ù‹gõ&N7­lôFOó/íÇü²§Àßë|95Í›6lÙ³fÍ›6lÙ³fÈ÷žü÷¦y#K“YÖdá{*ÞG?f(—ö¿æöø<ù³ù»ªþdj&òü˜­#$[Û)ø#_øÞVÿ vKÿ N+ˆayÝb‰KÈä*ªŠ’NÁUGRsÕÿ ‘ßóŠ	 \ó¼aä4h¬OÙ_»þfÿ Š>Ïû÷—÷kê¢HG
+Š U€ÐŽÍ›6lÙ³fÍ›6lÙ³fÍ›9Wç'üãîù‰] zÂ¯Ár£g§ÙK”Þ/ùÞ§ú¿x{ÎžGÕ|™¨>“­Âa¸MÁê®½¤‰ú<mÿ 6·ÂýZ¼Ñ/"Ô´ÉžÞêä’!¡üþÒý–ý¬÷Gä/çå§æ-¯ÔoøÁ®@µ’1²Ê£ýßüÌý×þ¦M¼ûùg¡yîÓêzíºËAû¹Wá–3ã¿iÕþí¿m<cùÃÿ 8á­y ½ý­oôq¿®‹ñF<.ccþ2¯î¿ãØÎ}äß;êÞM¿MSC zÓuuÿ }ÊŸfD?Êßì~,÷ä¯çþ—ù´”-¦³ÖKrvp>Ô–Ì~Ú2yír_ÞgUÍ›6sïÎOÉÍ;ó+M6÷‡P„mrè‘ÿ žý´ÿ fŸxÍ^VÔ<­¨Í£êñnàn,§¡þWFý¸Ü|Hÿ ´¹éÿ ùÅÏÏãz"òg˜å¬à²ÏÚìÚÈÇö×ýÐß·ý×ÚáÏÓù³fÂ¯5yrÛÌÚUÖ‹|+owDÞ"£áuÿ *6øÓü¥Ïš~eòýÏ—u+øq¸´•¢ššr_ò[í/ù9Ó?çÿ 0ÿ Â>kŠÚáøØêt¶–½þ'û~òRWÏzæÍ›6lÙ³ÿ ÎCþGÃùƒ¦›ý=ë–ˆLL6õTnm¤?òe¿bOòóÁÓBð;E*”‘	VV Š°ñÜÿ ç?6›ÊÚÐòö ôÓ57
+µ;G9øc“ÙfþæOùäß±žÞÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÏÿÔõNlÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lóüææ™Ò¬#òvžô¹¾_RäƒºÂÁü÷uø¿â¨øý™sÇyëïùÄÏÉeÓí“ÎÚÄuº¸Sõ$aö#;øÉ7û¯ùaø¿Ý¿¥³fÍ›6lÙ³™Î@þj/å÷—žkvS¼¬6£¸b>9ÿ Õ~/øÉé¯ígÏ©$i»’ÌÄ’I©$÷9èùÄ¿Ê_ñª|Ó©%tý9Ç¢m%ÇÚ_ö6ÿ ÞÆOKü¼ö–lØAç¯;éÞJÒfÖõgã#eiÜýˆbµ#ÿ Ííð+gÏoÌÏÌKóV“WÕƒìÃ?Q×á?ãwÿ v?ÅGþqÇþqå¼á*y‹Ì1•ÑboÝÆv7?ìYOÛo÷g÷kû|}©À‹*4UTP 6UUcófÍ›#žzüÂÑ|duváapˆ7’CüÇö¿áWöÙsÆÿ ›ó“úçØiE´Ý%¶àûÙü_2ôVÿ }Gð;Kœ[6H¼äcÎ÷ÃLÐ 3K±vè‘¯óÍ'ÙEÿ †oØäÙìÿ Ê/ùÆ}Èá/õ ºŽ®7õ]wÿ —x›Ãýúÿ ¼þ_OìçcÍ›6lÙ³fÍ›6lÙ³fÊ’5‘J8¬ Š‚cžyüàÿ œKÓµá&©å7æ¬Öçh$?äË;ÿ «ûŸòíçµï/ßù~òM7Ví®â4hä#ßü¥?²ëð·ìã¼»æ=CË—±êšDïmw	ªºýÕ»27í#|-ûYîÈ¯ùÈ[Ì(WMÔxÚë±¯Åh“ÖKzÿ ÃÃö“í/4û=‹6lÙ³fÍ›6lÙ³fÂ¯4ù¢ÃÊÚlúÎ­ †ÒÝy3w?Êˆ¿µ#·Â‹ûMŸ??7ÿ 6µÌTß]V+8‰[kp~ÓÄÿ 4Ïþí“ýØUÈf§\jWÙYFÓ\LÁ#Y˜ý•UÏn~AÎ9Úù$ÖuµKuÅGí%¸?±óMþü›ý„_&“·æÍ›6lÙ³fÍ›6lÙ³fÍ›6l‰þdþYé?˜:kiš¼{Š˜fP=HŸùãoøš}‰?k<ù›ùeª~^ê¥j«U5hfQðJŸÎžÿ ïÈþÔmþÅš;¤j÷z=ÜZŽŸ+Au‡ŽD4*Ãüÿ Ùg¾?"?:­¿2tÊMÆ-bÕ@¹„laqÿ }?ü’ƒùú|‘¬ŠQÀeaBàƒØç—¿=çq&½äˆÂÉ»Kb½ùžÓù[þ]þÏûç÷må‹K»½"én-ÝíîíÞªÊJº:Ÿø%e9í_ùÇßùÈ¸<î‰¡kÌ°ëˆ>ÙVàÚOåŸýùí}¸¿i#î™³fÎUùùù'où¦z¶¡cÖ­T›yNÜÇSm+¾ßöýÕ'Åö}N^
+»´ºÒnÞÞá^ÞîÝÊ²š«#©ûÕ•³Üóß«çÝ7ô^¨ãôÝ’R»zÑ…nü¿ÙŸü¿ýÙÅ{>lÙ³È¿ó™ß—¿T½¶ó…ª~îè{’;H£÷øÉ´óÅ›<Ì¬T†SB7gÑoÈïÌç¯+Zj’7+´_BçÇÕáf?ñ•xMÿ =2{›6lÙ³fÏÎ_þT®‘~žpÓ’–×ÍÂä(Ùg¥V_ú8QñÅ¨ÍþíÏ8« ƒB:úùù‰þ;òµµüíÊúô{ŸQ ýçüö„¿ë3gEÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³gÿÕõNlÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6Ôõ4ËY¯îØ$ñ´’1ì¨9»ÀŒù«çÿ 8\yÇ\»×®ëÎêBÊ§öP|0Åÿ <â
+™ üŒü·>ó5¾™(?R‹÷÷D¾Š¥|fr±³åû9ôFRX¢Pˆ€*¨ ‚ŽÍ›6lÙ³c'ž;xÚi˜$h¥™˜Ð Y˜øùáùåù'æ˜¦ÔŸ¨CXmTöO÷”þy›÷þÅ?c"¾Pòµçšõ[mN^WR_^Fÿ "4äïþJçÒ%yFÏÊE¶…§
+AjAîÍö¤•ÿ Ë‘ù;aÞl¨júu¼—·’,Vð¡yªŽLÌ}†xóßóŽãó#W/dÒmI[XŽÕµ<‹þý—þI§þfcOùÇŸÈÙ0õ¯ê*É¡Ú0õ[¡•ÇÅõhÛþO8û	þ[®{ºÒÒ8RÚÙ(bPˆŠ(ª QUTtU®lÙ³güìÿ œ”Ó|ˆ$Ò´ž7ºØØ¥k'Æá—«ÿ Åñ;Gû^,ó_›õO6_>©­Ü=ÍÌØì£ù#O³/ò'Ã„ù³§þKþDjŸ™7>¶öºDMInHëã¸ÿ vKÿ 	íþÊ?¹ü—äm'ÉzziZ»¬íþü•þÔŽæÕâ¸}›6lÙ³fÍ›6lÙ³fÍ›6l„þhþQh¿˜¶_UÕcár€ú7(©ùþÜÏ|-þKüyáÌßÊÝ_òóQ:~¬•ªa»•Gí!ìÃöão?ÕâÍ²½žÆdºµvŠx˜2:X}–V{wþqãþr/=Âº&´Ë¹
+ìvp£¬‰á2ÿ »bÿ ž‘üÖ>á›6lÙ³fÍ›6lØÙ$X”É!
+Š	$š RNx?þr3ó®O?êŸ£ôç#D²b"oUÇÂ×/ÿ ‡ùcø¾Ôœ‚(žgX¢RÎÄP*I= 9íÿ ùÇÈ(ü‘jºî´µÉ×e;ý]v¿ñsïŸþy'ÃÏÔîY³fÍ›6lÙ³fÍ›6lÙ³fÍ›6l‹~cþ\éžÒ¤ÑõeØüQJÇþÌ±Ÿø’þÚü-Ÿ>?0|…¨ùW—DÕV’Gº8û2!ûGþKÂ·$o‰p?’¼ã¨y;Uƒ[Ò_…ÄZ~Ë©ûqH?j9áoù«>‰~\ùúÃÏz4:æšh’
+I?rï!uÿ ‡N/ûY&Îÿ 9ÿ 8åœc“Ì^E‹[AY#pe¹þI?ÝŸbOÙtñx7ZUÕG;{»i=ÕÑÐÿ Á#£ö9îùÇ_Ïˆüýgú'VeMvÙ>.€NƒýÞƒýø?ÝÑÿ ÏDø>í9³fÏ8ÎV~HfÙüå¢GþŸn¿éq¨þö%ßþý~ßóÃÿ ¾/)yKÍWÞTÔàÖ´§ôî­œ2žÄ~Ôn?j9àuþ\ú-ùqçÛ/=è°kºy¢Ê)$dÔÇ þöÿ TýŸçN/ûY&Í›#?™~J‡Î¾_¼Ðf 7ŸMìÈ¿/þÆE^_äçÍ‹ë)¬g’ÒåLsBí©ê¬§‹©ÿ U³¼Î~`þ„óž]¹jZê‹ðW hÿ äl|ãÿ )ý,ö”ÓÇó•‚(îÄøá[yÇECÅ¯íAŒÉÿ 5`û=FÚõyÚKËâŒÂàŒÙ³fÈÿ ŸüŸoçóAº§¨Š«ÙqñE'üó•Uóæ¦¥§Í¦ÜËct¥'Ú9öe<à†woùÃŸ;#Ì’è5-õHÏNÞ´@ÈŸðQzËÿ žÕÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³gÿÖõNlÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6qùËŸ9Ê'M…¸ÏªJ!Û¯¦¿½œþÄßñ—<5žÜÿ œAò Ðü²ÚäëK­Uù‚zˆc%!ì›Õ—ýWLï³fÍ›6lÙç¯ùËÏÍ/ÐzJùRÁéy©/)È;¥¸4ãÿ GðÆ4—ù³ÆìoùÄÊ¿Ñ:sùÃPJ]_/`Fë~)>w?äR/û÷=›6yþrÛóœßN|‘£Éþzê~Ôƒu¶ÿ R/µ/ü[ðº›8§å_åµ÷æ·eUíÏ-*"ˆŽCþWìÆ¿·'ú!å,Xù_MƒFÒ£Z[(T^çùÏí;·ÆíûM†™³fÊf
+1 ’sÊÿ Ÿ¿ó”¥Lž]òT½*“ß!ÿ ‚ŽÐÿ Ä®?äOû÷<¿aaw«Ý%­¤oqw;ñTPYÝ·ÚfÉ·›ükù{n4íL¥Ï™&PÒD¤4vhÂ¡d#i¯d^ßÝ[§ÇûÇhÝ9övÈ/È;ŸÌK¯Ò€ht(’8Ù¥aþè‡þfËûëçºt"ÓG´‹OÓ¢X-`P‘Æ‚Š `¼Ù³fÍ›6lÙ³fÍ›6lÙ³fÍ„^uòN—ç=6MZˆKo'CÑ‘¿fXŸö$Oö-É>ð'æ÷å¥ùm©›+ÏÞÙËV¶¸‹"ŽÇù%O÷dñ£+d/OÔ.4Ûˆïl¤hn!`ñº2°5VSžöü€üì‡óLônÊÇ­Z(ƒŽ‚æ%þGÿ v/ûªOòZ<êÙ³fÍ›6lÙ³fÏ5ÿ Î\þp*×ü¥IK«¥xÊwHÙƒýiþÔŸñOüfÏç«?ç¿$ÏÜ{Ÿ÷‚&ôöÃþßþG¾›=Q›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›9Çç—å·æFŒÖê5K`^ÒcÙ»Âçýõ7Ùoän2~Î|ûÔtë6æ[ØÚ+ˆ£‘P«)âÊß#?þq×óy¿/µÁãŸÑÅc¹ÿ ºîGübÿ vÅ\ÿ k†{í]C¡H¨#¡yçùÉ¿Èóy¯ËÑST…y\Dƒûôí¨ñóÿ Èäø~Ú§/ èZåæƒ}©¦Èa»¶pñºõ~µ?e—ö—álúù9ù§iù¢&§#»Ž‘ÝBØ’¿â©>ÜMþÇí£äë6lÄ(w<%ÿ 91ù;þÖ?Ii©ÇGÔ´`tŠOµ%¿²þÜ?ärO÷V!ÿ 8Õù¸|‰®‹;ç¦‘¨Žj£~‘\ûqûÿ Å_û­3Þ€×q›6lñ'üåçåÿ è2.½l´µÕT»S ™(³ÈÅá/ùNÒg³¼šÊdºµvŠx˜::YO%uaöYNÕ5ÛýYÌºÌ×2ùK#9ûÜ¶ÁW÷2	í%xe6*Gû%ß:ÿ åßüåGš|¯"C©Êu[ @dœþðø®çûÎ_ñ—Õ\ö/åçæ>‘çí8jš,¼”PIm$Mü’§oò[ì?ì6J3fÍžÿ œ¶òhÐ|ÞÚ„+H5HÄâ=Aû©ÇÞ«+Æ\ä¾Y×fòþ©k«Û{i2L¾ü7ö_g>œé·ñj6±^ÛžPÏÈ‡Å\sSÿ pFlÙ³fÍ›6lÙ³fÍ›6lÙ³fÍŸÿ×õNlÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6x£þs+ÌçRóT:BÇ§[¨#ÂIzÿ òKÐÎ¢i2ëÖúm°¬×R¤)þ³°Eÿ ‰gÓ­I‡F±·Ó-E µ‰"AþJ(EýX76lÙLÁAf4rNyÇóOþsÇFšM7ÊP¥ôèJµÌ„ú ÿ ÅJ”yÿ ×åËêgÖ¿ç$¼÷ª¹gÔÞ=XÀù_Sþ	ð:¼è§Ö¯«ï;ŸÀœ<Òç&|û¦F¤Ó¨ý™£Áÿ dÉêÃä'Î~qÔ<ãªM­êîêr+ÄQ@QÁQöQTa÷äÏåÄ¿˜c·Ò "ÔVåÇìÄ§ãßù¤øbOòß>‹ZÚÅi
+[[¨Ž”"*ŠUUTx*â¹³™þþk'åç—Þ{v¥.ëªø5>9éü°/Åÿ =4ý¬ùÿ w•ÈD5Ìï@7fws÷³»œú	ùùKåÎ„¶ÒmNæ’]È7ø©ðÂ­þûƒì¯ó?9?o:FlÙ²¤‘cRîBªŠ’v ç<oÿ 9ÿ 9%'˜š_,ùZBšXªOp¦†æŽ3ÚÛþOÿ Æ/ï8w“ü©ù¿QGÑa3ÜÊz²«ûRJý4ý¦ÿ ³Ô·Ú‡ÿ 8áå³Ï5^©Š)\~Õ>?I÷v°uÛ™¸#ýµôü‘¨j•Ä—·’4·9yK3LÌ}Ît/ÈßÉË¯Ì[ÒnQiVÄ5ÔÃÃöaþ.—þyþK{ûFÑí4[8´Ý:%‚ÖÝGŠüþ&ý¯µƒ3fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙóï‘4ß<iRèº²r†AUqö£qö&ˆþË§ü7Øo…³ç§æ?åî£ä-b]T_‰>(äá–3ö%ýoÚ_Ø~Iû8É~p¿ò~«·¥?‹v­?e—öâ~Ôr/ÂßóV}ü½óÕžth5Ý4þîaGB~(äÞBÿ å!ÿ ‚^/ö[$y³fÍ›6lÙ²;ù…ç[_%hwZõîén•T­¹øb‰×~#üŸµŸ7¼Ã¯]ùƒPŸVÔ_Ôºº‘¤‘½Éíà«öQerwùùPÿ ˜šú[ÎÒí)-Óë_‚ žvøã¨ÿ ³ŸAmíã·`…BG…UQ@ UQÙTcófÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÏ.ÿ Î_~P	¢xÒ£ýâqKåQÕ~ÌW?4øb—üM¿aóÉ¹íùÄ¯Í3æM¼·~ü¯ôµ2Nïoöcÿ ‘û–ÿ #ÑÎù›<iÿ 9Yù(<½v|Ý£GÇN»z\Æ£h¦o÷`þX®üßñ‘9Ÿä·æÇåÖ½¤¤µ”´Šê!ûQ“ö€ÿ ~EýäðeÛ>ˆX_Á¨[Çyhâ[y‘d×pÊÃ’²ÿ ¬¸¾lÙüÂò=Ÿô[
+üQ'_éSƒx¦_ò‘¿à—’~Ö|áó/—nü·©\húŠpºµÆãµGí/Š:ühß´™í/ùÅoÍCæÝô-ûòÔ´°¨I;¼=!“ü¦Oîdÿ V6oï3·æÍœçþrÈão)ÝYD¼¯-ÇÖmü}HÁ<üeÔ‹ýž|ñÍ›6lš~S~f^þ^kqjÖ¥šÜ—0ƒ´‘ñ/úëöâoÙòygÑm+T·Õm!Ô,œIoqËŽ…XrS÷`¬Ù³Ïÿ ó™¾X‡•íõ„“O¸>Ì=7ÿ ’¢ñ^}ÿ œeóÖü‹§³šÉjÕ¿ç“R?ù#égRÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³ÿÐõNlÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6|Öü××Ž¿æ­SR­V[©xò½8¿äš.L?ç¼¼5Ÿ=Y³ŠÇf²\·ûáÝ4‘ç¾sfÍ›<ãÿ 9ƒù¥6‹c”´Ù
+O~†K–SB!¯‹þ{¸~ñ\|>Ì™ãœÙ³fÏuÿ Î+~Z*yiu[¤¦¡ª…™ª7X¿ãÚ?¥[ÖoøÉÇö3´æÆO:[ÆÓLÁ#@Y˜š ìÄøùßùãù™'æ˜æÔŸ¨Ãû›T=¢Söéüó7ï[ýn±cþpÿ ò˜_Ü·u$¬Ìc³V4ŸîÉþPýˆÿ âÞ_µzï6lÙ³Èó“¿óGS’_'ùn_ô4%.çCýãµo÷Jÿ »[ýÚß÷Þðo#ù#Só®©£Gê\K¹'eEnY[öcOùµ~6UÏyþ\þ[h”š…YC$f[ËÇgà91ÿ "ÿ ÝqÄ¤ffñæ÷æUÏæ½6±5VØ~îÚ#û)øúïýäŸå·òñÂ?&ùJûÍÚ­¾‡¥§;›—â<uyÁ#Oóè·åç¬<‹£Á¡éƒàˆUÜŠI÷“IþSÿ Â'û+’LÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙÍÿ =?(­ÿ 1ôV·@«ª[ö’¾/Ú…Ûýõ7Ùoån~Æ|ú¾²šÂy-.‘¢ž(èÂ…YOV*s®Î3þn#k¢Âýé¤j,±ËS´rtŠãÛù%ÿ Šþ/÷Zç¼sfÍ›6lÙ³gŽç1ÿ 1Î§ªÃå+G­µ€ÏN†gŸøÃÁJÿ ËžtŠ6•„q‚ÎÄ ä“ÐúùùfŸ—þ[ƒO‘G×ç¤×Mã#îëü°¯î—ýVÛÎ…›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lBþÂBÞK;´Á24r#nXqe?ë.|äüÜü¾›È>b¹Ñ$©…O©nçöámâoõ—û·ÿ ‹ñÊï=Oäo0Úk°Ô¤/I”~ÜMðÌŸðcþ,àÙôŽÆöø#»¶a$"ÈŒ:2°äŒ?Ö\[ ëÚ¦½c>•¨ –Öå9÷õ0ûJß²ß|ãüÎò×õë
+î¬"<¢ï"oî¥úWáå‘]?g=ÿ 8uù¤o-¤òV õ–Ü­±“ûè?ç“·¨Ÿä;þÌyé¼Ù³g˜¿ç1ÿ +…Õ´~u°OÞÁÆ°T'ŒøÆçÒoò^?Ù<ñùMçù¼‡æ+]r*˜Q¸Nƒöám¥O>4ÿ ‹3èõ•ì7ÐGwjâH&EtuÜ2°äŒ¾Ì¸¶lÙóßþr#È_àÏ7][Â¼lîÏÖ­éÐ,„óAÿ ¥õýN9ÌófÍ›=½ÿ 8{æÇÕü¦údíÊM6vkþûqëG÷9•Õ\îÙ³d3ó›D×“µk*UšÒGQþTc×þ5Ï›Ùëÿ ùÂ\Ë¤êša?Ü\G0ñ•
+ú‡ÏJæÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙÿÑõNlÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›üÇ¨þŒÓ.ïÿ åž	eÿ €Vø×>^»—%›rMNzoþpHç«j„u0ƒÿ ¤où0™ë|Ù³fÏŸ?ó’zÛêÞ{ÔÙV[t5T?òS›g1Í›6O?$/›Ï~gµÒI´Cë\Ÿ“wóÔñ„ÆLú.ˆ±¨DUE  ^làó—_™áí	|¹fô½ÕASªÛ¯÷Ÿò=¿uþ§­žDò?”n¼ß¬ÚèV÷×RåJ…_µ$­þLqòvÏ¤žYòí§–ôÛ}N^Ö±¬h;Ð~Ó–íñ»6æÍ›<óÿ 9Kùä|µlÞSÐä¦§rŸé)Þ˜}…?³<Ëÿ "âøþÓÆÙä//y~÷Ì7ðé:\fk»‡	ä÷?Êª>'oÙ_‹>þM~PX~[iBÒK¨L]\SwoäOå†?÷Zÿ ³o‰³‘ÿ ÎcþhKh¼—`ô’à	®È=ÜÂã#¯ªÿ ä¤³&y=·ÿ 8£ùJ<±£ÿ ‰5é©jH
+Çø£_õ§þõÿ Éô—ö[;ÎlÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³Éÿ ó˜?”¢_<i‰Er±^ªŽöa¹ÿ gýÌŸåz_ÎÙå¼÷wüâçæyó—Ÿzüµ-/Œ2TîñÓýoøôŸü¸ù~ÞvlÙ³fÍ›6ùÇÌÐy_H»Öîÿ º´…¥#Äð'úÒ?_õ³æ†³«Ük7³êW­ÎâæG–Fñg<Û;üâ‡åØóG™Æ«tœ¬´&5Iÿ FOö,­7üòÿ +=Ï›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³Î_þ^sËéæ+T­Þ–jôêÐ9¤Ÿò)øKþJz¹âŒö÷üâŸ½å†Ñn•Î’â1^¦«Áÿ  }H¿ÕDÎí›8WüåŸåó/—ÿ OÙ¥oô \ÐnÐï—þy|¿äú¿Ïž9òš.¼««Úë–&“ÚH²Ù€ûq·ù2'(Ûü–Ï¥^]×­¼Á§[êö-ÊÞê%•³T?å/Ùoò°Ç6l	¬i6ÚÅœÚmò	-®ch¤SÝXqlù±ùƒäÛ&k·zÝK[HB·ó¡øá—þzFÊÙë?ùÃÿ ÌS®è2yríëu¥‘é×©þÇü‰“”ä§£ÿ 6làŸó˜>Dý7å´×­Ö·:Sòju0ÉD—þý)?É_S<M›6lÙëùÁ´q´æ¼[ózç©3fÄ/í–êÞ[wÝdFCòaÇ>ZÍ‰Ú6ê¤ƒôg¤ÿ çnÊêú­¯g¶ÿ àüÍÏ_fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙÿÒõNlÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›!¿œ·FÛÉºÌ ÐýFqÿ ŒŸñ¶|ÝÏbÎZ…Ðõ;žïv©ÿ ·üÍÏHfÍ›6|êüü³{O<ëÈ(Zé¤'Uÿ …|€fÍ›=©ÿ 8wäEÒ<»'˜§Z\ênBÔC(ŸðrúþRúyèØÙ¦HQ¥”…D˜€rN|áüáóôžzó-Þ²I6å½;pføbùsþõÿ Ë‘³Ðÿ ó†—ÒÎ9^'ïnkomQÒ5?¾ÆIWÓÿ žOüùéœÙ³d#ó‡ó6ÛòïA—W–rß»¶ˆþÜ¤|?óÍ?¼—ü…þf\ùÝ«ê×ZÍäºü5ÕÃ™$vêÌÆ§=³ÿ 8Íù$¾IÓF¹«Gþæ¯P0ÞÄ°ÿ “#ý©ÿ ØÅûË°ëÚÕ¶‡aqªÞ·{XžYù*9§ùsæŸœüÓsæ½bï\½þúîVŽ¼GìF¿äÆœc_õraÿ 8ýùkþ=ó<6—ËOµÿ Hºð(§á‹þ{IÆ?õ=FýœúªQ@6 eæÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ› ëº%®»c>•~ž¥µÌm‹â¬)ÿ ü­û-Ÿ6|ýäëŸ&ëwzæïk!PÔ§4?RøÉWÉä?æò/šmu	”Çê÷>›9ŸøÂü&ÿ aŸDATnlÙ³fÍ›<çÿ 9£ç#a¢Zyv£ßÊe”÷Ü4!Oúó:7üòÏç¿ç<Ž<­äëg•xÝjérøÑÇîýŒŸû6|êù³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›êZ|:•´¶7J	ãhäSÝXpuúTçÌï;ybo+kWšÅKÚLñÔþÒƒû·ÿ ž‘ñöYÐÿ ç¼ä|¹ç;h$j[êJmÃ“|PŸ¬¨ŸìÛ=í›4):4R¨hÜe" ƒ±>pþoù¼ækÍ‡ÐGç=âŽ/ŸýÛ–ž’ÿ œ1óÙÔ4›¯+\µe°oZßRGücŸâÿ žùèüÙ³g˜ç4?/„ö¶¾pµ_Ž-®HþF< ‘¿Ô“”óÕ3ƒ~Gyðù#ÍVz£·WoBãÃÒ“áv?ñ‰¸Íÿ <óè¸ ŠŽ™³`M_JƒW³ŸN¼^v÷1¼R/Š¸àßÏ™¾mòäþZÕ®ô[¯ïm&x‰ñâh¯þ«¯Æ¸Q›6l÷¿üâï‘$ò§”"’íJ]ê.nOUV`Cÿ <•dÿ ZFÎ»›6bi¹Ï–š“º˜Á‘¿YÏAÿ ÎùØµÛê_ó2<öFlÙ³fÍ›6lÙ³fÍ›6lÙ³fÍŸÿÓõNlÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ› ÿ ž(_É:È^¿S”ýÂ¹ó=•ÿ 8JàùoP^âøŸ¾(¿¦z+6lÙ³Çÿ ó™þC{MRÛÍp)ô.Ð[ÌGicº-ÿ aøWþ0gšófÁ:fŸ.¥u°å5Ä‹sÁGüÏ§>ZÐ¡Ð4Ë]"Ûû«HR÷¡9²ûXe›8ßüåOŸO–<¥%”ÆïT&Ù)ÔFG+—ÿ ‘ºÿ žÙâO*ùvçÌº¥®‹d+=Ü«øGwoòQ~6ÿ '>—ywA¶òþm¤X¯{X–$Ê8Ôÿ ”ßi¿ÊÃÙ²™‚ÌhäžÙóóþróQ¿0<Äò[9:]•aµˆ÷—9ØÈ¥‰raÿ 8Ÿù@<Ë©Ÿ4j‘òÓ´÷’°ÚIÇÄ¿4·ødoø³Óÿ /=©žyÿ œÊóÉÒô.[µ&Ô¤å ï˜ˆjÏI½?ùùã÷oüâŸåøòÇ•QxÞj¤\=zˆú['üï¿ç¶v|Ù³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍžaÿ œÑò žÖÓÍöËñÂEµÁÑ‰h¿Ô“œóÕ3É9ôþqÃÏ'ÍÞN´–fåwgþ‰7cÓcþ¼&ÿ _–tüÙ³fÍ›<ÿ 9Uæƒ®yÞæ5‡ODµOšR_ù-#¯û€þ_ya¼Ó¯Øh‹Òêá©Ù+Y[ýŒ\Û>˜ÃB‹`* 
+ t tìÙ³fÍ›6lÙ³fÍ›6lÙ³fÈ¯Ÿ¿44!Û}g]¹X™…c‰~)dÿ Œq‹ý›qùŸ<ËçùÍbùš,ZÇcifýì§ß‡÷ÿ «ûïõ³k_œ>oÖ˜µö­vÀþÊJÑ¯ü‹‡ÓOø\ >eÕs7w¼}W¯üKôoÍ¿6èÌÇV¼@?dÌÎ¿ò.Rñÿ Âç[òWüæf¿§2Åæ;xµ:¥ÿ î_ý_N?õóÓ?—›¾^óü>¦‰pê*öò|2§úÑþÒÿ —8ÿ ÊÉžlÙã?ùÍ)?ÌºôKDÔ àçÆHhµÿ ‘/üyúÂö[ˆ®íÏ¡u‘ƒ)ä§þ>ùg[^Òí5h?»»‚9—äêŸEpË6y—þsWÉ"âÆËÍ0/ï-ßêÓüñÂÇÚ9y¯üöÎÿ 8ÿ ç/ðŸœ¬/¸ÛÎÿ V›Ã„¿»«{G'§/ûú›6l&ó—–`óNw¡Ýÿ uwFOò’>	?Öøºÿ «Ÿ3õm2}*îm>íx\[ÈñH¾‡ƒø!žýÿ œuó¹ów“¬î%nWVƒê³xòˆ Œ}ÞIÿ Ölé™³g‹?ç3<¦4ß3[ëQ-#Ô ŒÒ7ÿ ’-yû6lïŸó¿óóy²ê?2kÑÑ`nQ£÷¡Ôì)ÿ ,ÊßÞ7û³û¥ÿ vpöÀØtÍ›6y£S]+I¼ÔÑmíå”ŸõŸøgËòjjzç¨?ç´â×zÅù
+G@û±‘Ïü›\õžlÙ³fÍ›6lÙ³fÍ›6lÙ³fÍŸÿÔõNlÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›#ÿ ˜šwé/.j–@TÍgp€{˜Ø/ãŸ2óÕÿ óƒÚ 1ki?h&Ø‰#øŠg©sfÍ›üïäë9i¦µ‚áiQÕ|QÊŸåÆÿ ÿ Í9ó·óòÿ Rò­.ª¥c†T?bhÏò·ü#|ñ.Fsg[ÿ œ[ò·éï;Ú;ŠÃ`¯vÿ 4bÿ ’òDsß9³g…ç,¼íþ!óséñ5m´¤ëáêŽá¾|øÄßñ‡$ÿ ó…þFÚµ×š.±Ø§£	?ïÙïÆ8>ùïžÃÍ›6q/ùÊßÌ£åO-þ‰³~7ú¯(…ëéþÈ2Â¿ñ‘¿“<[åo-Ýù›T¶Ñtõåsw"Æž¿iÛü„_ÿ É\úIä¯(ÙùCH¶Ð´áH-P-i»7Y%oòä~NØwž ÿ œšóyó'o87(,iiÿ ïºú¿ôðÒä7òçÊoæï0ØèIZ]LªäuŽfÿ c»gÒÛ{xí£X!P‘Æ¡UG@ ¢¨Å3fÍ›6lÙ³fÍ›6lÙ³fÍ›6Ô5;]6#q}4vðŽ¯+„QþÉÈ\‚jó¾DÓX¤Ú¼Ãýô_øhEÂè¿ç(/än?¤é^æ	€ÿ “Y*Ð?6<«æéš¥¬Ò‰êsÿ <äá'ü.JófÍ„^zò´^kÐït9éÆîŒû-JÄÿ óÎNþÇ>g^ZKe<–·
+RX‘Ôõ§‹/ÐsÐßó…¾n6:íß—¥oÝ_CêÆ?âÈ|?Ö…ä¯ücÏdfÍ›6lNæá-¢yå4HÔ³ N|Àó®úÎ¥u©Ëöî¦’f¯‹±øÛ;Oüá·—F¡æÙu'Kg`|B!_ù&Óg¶³fÍ›6lÙ³fÍ›6lÙ³fÍ›8·çïüä5¿åügHÒxÜk’-hwHý™&þiû®ör|}Oëºõö½w&£ªÎ÷7Rš¼’“ÿ 4¨ý•_…g fÍ›6Òõ[­&æ;í>W‚æä’FÅYHþV\öüãçüä„~tá yˆ¬:ÈŽAð¥À¢\4fOµògzÍœ?þsË£Sòa¿QY4ûˆå¯ù/þŽãþ
+Toö9á¼÷¿üâ®¾uo"ÚFæ¯g$¶Çý‹z‘ýÑJ™×sd_óGÊ‹æ¿-j)žâôÿ ã"þòÿ #Q3æ¯ÅwVSò ŒúYùeæñO–´ídš½Åº?ã &ÿ ’ªù&Í›6xwþrïÉƒCógéHW¾«—nžª~êqÿ &åoøË‡¿ó…¾q6ZÕç—%oÝßEëF?âÈ¾ÐëÂîÇþ1g±sfÎÿ 9•åñå(µ5…Ò1?äH/ÿ %=ñ.Ñ4ývålt«y.®_¤q)cÿ ÑÊÏQþPÎ!-³Gªùà¬Ž(Ëd†ªü¼Ê¿oþ1Gð4ö3ÓðA¬0¨HÐUQ@ Ø*¨è?6lÙÉ?ç)<Ôº’.âI¯ÙmPxó<¦ÿ ’	&x=¹ÿ 8oåÓ§yFMJAF¿¹wSâ‘
+ÿ ÉE›;ÆlÙ³fÍ›6lÙ³fÍ›6lÙ³fÍŸÿÕõNlÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›)Ð8*Â ŠŸ1¼ë ·—õ»í!Å­Ä±’±Ù/ÅCþq#Í£yÒ;I[ŒZŒ2[ïÓ¤ÑÃEÁ×ÏufÍ›6l‡þg~Vé?˜šiÓµTã"TÃ:Î&þdñSþìì¿úÜY|'ù¡ù?®~]]ú¤|í\‘Ì`˜ä?÷\ŸÍü_ë/Å|õ¿üá–}+-OÌ.óH–ÑŸd¬¿ðM,_ðéÜØSæß0ÃåÍ&ïY¸þîÒ”#’¯û6øsæV£6£s-íËršwi¼Y6?ðG>ƒÎ>ù4yOÉ¶Ž¼n.ë3xó—ã£{Ç§ûè¹³fÏž_Ÿþ>vóeÝäMÊÎÜýZßÃÓŒ‘Íã,œåÿ g‹þpÃòäsç;Äé[kZúH•áaVÿ ŒËž«ÂÏ3ëqèZ]Þ­7Ø´‚IÈRôÿ …Ï˜——r^M%Ìç”²³;Ý˜òc÷ç¡ÿ ç
+ü¬/uËÝzEªØÀ"Cþ\Ç¨ùE‹ÿ =3Øù³fÍ›6lÙ³fÍ›6lÙ³fÍ5}^ÓGµ“PÔfK{XW“É!T|Îy_óGþsâg{$Æ"ˆlo&Z³{Á|(?Ê›“ÅIžróš5O1Nnõ‹©®æ?µ+–§ú¼¶Eÿ %p¯6lŸùóÓÍ~Je]:ñäµ^¶ó“$TðUoŠ/ùâÑç­¿(?ç$ôO?Ó®Gèý\ì!vªHåÞ]¹ø©¸Éü¾§ÚÎ¿›6xþrwÊÃËþw½ô×Œ7¼nÓþzÞÿ Éu—"•~e>ZóF›«WŠCrœÏù}9¿ä“¾}*Í›6lÙüäÕŽ“äý^ñMlåU?å:úIÿ ùós=}ÿ 8C£ˆ´­ST#y®#„h“Ôÿ ±Œô¶lÙ³fÍ›6lÙ³fÍ›6lÙ³Ÿ~wþiÅùs I¨-þbbµŒ÷¶Ãý÷
+üoþÆ?÷f|öÔõ+Ræ[ëék™Ü¼’9©fcVcsfÍ›6lVÚæ[YRâhåƒ#)¡VªÊÃ£)Ï~ÿ Î=þnÌM•ÙV²ãÊ¹T~îáGòÍÇâþYUÿ gŽu,‰þmhãYòž­cJ—³˜¯úÊ¦Hÿ áÑsæ¾zçþpVõ4ý[L'û©¢˜øÈ­É…ÏMæÍŸ8:|¸<¹çSNQÆ5¸ix$¿¿Œ}	&z‡þpÏÌ?_ò¤úcš½…Ó <P%_ù)ëg}Í›6pïùËï)~˜ò‡é8Ö³i“,µïé¿îe{E#Æ<òå¿šÊ¾bÓõ°h¶×Ïî„ð™ÙDÎ¹ô½:‡SU" Žã/6Aÿ <4ÒþKÕíiSõW”x¿Òþ,ùÇžÁÿ œ#¿ŽMS³â¾¤7(å¨9q‘8ª–û\yBÙé<Ù³fÍž$ÿ œ»üÄ_0ù…4Gåi¥ŒAØÎÔõ¿äRªEþKú¹Ã´ë	µ˜¬­T¼óºÇŽ¥˜ðEúXçÓ$ùf/+h¶Z­¤	#ö˜Þ?û99>æÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙÿÖõNlÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6x“þsÉ§GóJkQ- Õ"OoV "”È¿Eÿ ÙçÑuiô{Ø5+6ãqm*Kðd!×ñô»É¾h¶óV‘i®YÃwÈ^$ý¸ÏùQ¿(Ûü¥ÃœÙ³fÍžuÿ œÕó'Ôü¿e£!£ÞÜ‘
+ÿ ÕI£ÿ ÏçÐßùÇ-ÿ ‡ü‘¦[°ã,ñ}eük1õ–¿(ÙýŽt|ÙÁÿ ç1|Ôt¯)Ç¤ÆÔ—RPø®/ßIÿ %=ÿ ežNü«ò§ø¯ÌúvŠG(ç}Aÿ ¯ïgÿ ’Hùô¥T(
+ è3fÍœ÷óóÎ§ÉþP¾¿‰¸ÜÊŸW€÷õ%ø9/ùQ§9çž|õ°±šþâ+;e/4Î±¢Ž¥˜ñUú[>—yÊpùGC³Ð­©ÂÒ%BGí?Ú–Oùé)wÿ e‡ÙÉ¿ç)uÃ¥yõTÑîš+uÿ dáŸþI$™àL÷üáæ€4ÿ &›ò>;û™$¯ù)Kuÿ †ŠOø,îy³fÍ›6lÙ³fÍ›6lÙ³fÀþ½gåû	µ]NA¥²‘Ï`?âLßeö›áÏþtþwj_™7ÄÐi0±ú½°;Æi©öæoøþÂ~Ó?4Í›6lØèähØ:¬¦ ˆ#¸Ïaÿ Î5ÎD¿˜L~Uó<•Ô@¥µÃï€ÿ tËÿ /
+>Ãÿ »¿ã/÷¾ÍžUÿ œßÐûŠÖÐoûÛg?ð3D?äöyW>™~\k§|·¦êdÕ®-!vÿ X¢úŸðü²E›6lÙÉç*/M¯/ÕzÊÐG÷ËÁsÀ¹î¿ùÄKmäXeññs<Ÿsz?ó+;NlÙ³fÍ›6lÙ³fÍ›6lÙ³Áó“Þo6y¶{xš¶Zemb íÉOúDŸ7›àÿ R8ó‘fÍ›6lÙ³gGÿ œóûy+Í–—nÜlîX[\ŽÞœ„gþ1IÂ_ö9ô7ºn"x_ìº•?")Ÿ-o-Í´Ò@zÆÌ§è4ÏEÎÞ”×u+Jí%¢¿üŠ¿ó;=‰›6x¯þs?C~j·ÔTQo-§Å£f¿äŸ¥†_ó„šß¡­êZQ;\[,À{Äü?â7ì,Ù³a_št(õý*ïHŸû»¸$„ûsRœ¿Øý¬ù‹yi%œÒ[N8Ë20ðe<X}ùôKò+Ìßâ?&iwÌÜ¥d=ùB}¯úÞŸ?öY<Íuk%¿³žÍ·Y¢xÏÉ”®|¸–3´m³) üÆzSþpƒPáªê¶5ÚKx¤§ücrŸó?={›6lÙË¿?ÿ 8aü»Ñ˜[2¶±v¥-S©^Írãù"ýŸç“Š?ŸóLó»K+‘ÉfbjI;–'Äç ç,ÛZÖ[ÍW‰þ‡¦šCQ³NÃoùzŸñ‘áÏhfÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³ÿ×õNlÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6sùÈ¯Ë“ç*Ï²ò¿³ÿ I· nYõ"ñ–.J¿ñg§Ÿ>óÒŸóˆ_›k¥Ý7“5I)ovüíŽË)ûp|§ûQÿ Å¿åMž¿Í›6lÙâ?ùÌ1~‘óri¨jš}²!åÉYßþI´9Æ|·£I­êvºT?Þ]Ï"ž.Á?ãlú{ik¤)mãJG€QÅq\Ùâ¯ùÌÏ2þóLJÇ§Û-G„’ŸUÿ ä—¡ƒç
+ü±õÍz÷\‘j–Vâ4>1ëÿ "¢‘Ùç²3fÍžLÿ œÚóg©u§yn&øbFº”{±ôaÿ T›þFdþqGÊ_óœ7R¯(4Ôk¦¯NC÷p}>«úŸóÏ=á›<ßÿ 9¹©˜´=7Oûë§øÆœæ~xï>þIé_¢¼™£ÚÒ‡ê‘HG¼ƒ×oøi2k›6lÙ³fÍ›6lÙ³fÍ›6lñ—üåÇæÃëz§øGO“ýOjÜq;I?òŸòm¾Çüfõ?‘3Ï³fÍ›6lRÚâKiRxÇ,lM
+°<•”öe9ô+òóA0¼¹ôÄ~·>Ò¾06–ŸË:|ëóOØÎœKþrÿ JžH{ŠTÚ\Ã-|*Zßþgg†3ßó‹:¡¿ò‚±«[´ÐŸ¢Geÿ „uÎ³›6lÙÄ?ç0¤áä‚µ§+¸GÏí·ükžÏ óŒpˆ¿/ôºmÉfcôÍ.uÙ³fÍ›6lÙ³fÍ›6lÙ°§ÍÚØÐ´{ÝY¿ãÒÞY·ñDg«>bÏ3Ï#M),îK1=I;“‰æÍ›6lÙ³fÏ¥•žao1y_LÕd<¤žÖ2çÅÀá/ü”VÉN|Äóœ>Ž·¨D?bîuû¤a‹þpÆR¾qF°–¿DöÎlÙæ?ùÎ(>Ÿ¤ê@oÓBOúê²ù2ÙÈÿ çµO¨ùöÅ	¢Ü$ÐŸ¦7uÿ ‡sß³fÍŸ<ÿ ç"|»úÏœ
+)Ò‹”ùLÍÿ %×;ïüá?˜~³¡ê3šµ¥ÂÊ£ü™–Ÿñ8þ=›6|Åó­ ³×uQ°Šîtÿ ‘—:÷üá¥Ù‡ÎRÅ]¦±•~ç‰ÿ ã\öælÙ²ù»ùË¤þ[Xú×„M(?WµSñ9þwÿ }Â¿µ!ÿ U9>xÎžsÔ¼å©Í­kz—3ö(£ìEþÄiû+þËírÅ|…ä}CÎú¼–µšcñ1h?¼šOòÁ}…ø›>‹ù#ÉÖ>NÒ-ô-1iºR§«±ÞI_ü¹âoù§3fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙÿÐõNlÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lð÷üå/åyGX:þ4EË#h¦?‘’’ÿ {üôO÷^pø¥xdŠºU¡t ç¹?ç?>áóÍšèºÄ5Ûu¦û}a|Ÿñhÿ wGÿ =SàåéöÜÙ³fÏšŸš>aÿ yŸSÕAªOu!Cþ@<"ÿ ’J™3ÿ œXòïéŸ<Ú;
+Çd’\·ûáü–’<÷ÆlÙócógÌâ5êš˜5In¤ÈCéEÿ $Ñ3ÖŸó‡ž]ýäã¨0¤š…Ì’Wü„ýÂÃG'üw<Ù³gÎÿ ùÈ?1Îú¥ÈnQÅ7ÕÓÂCo›£7û,ôüáW–E¦…}®8£Þ\”ÿ ‘
+ÿ &øônlògüçÙ7z5·eŽáÿ àŒKÿ g—óê'—ížkjPF”ÿ UUp~lÙ³fÍ›6lÙ³fÍ›6lÙüÅóZùKË÷ÚëR¶°3 =Ÿ‚ÿ e+"çÍ+«©næ{™Ø¼²±wcÔ³LÇýc‰fÍ›6lÙ³gnÿ œIó«h>m].F¥¶ª†½E¬–íóûqÏl÷6s¯ùÈ‹1wä=^2+Æ ÿ ð’Æ™óÃ=±ÿ 8aveò…Ä'ýÕ ûã…³¾fÍ›6pÿ ùÌHùù#—òÞB	þ6ÏçÐ_ùÆiDŸ—úQ­h³ºis§æÍ›6lÙ³fÍ›6lÙ³fÍœÿ þrV‹ÈºÃ&ÄÛô3*·àsç^lÙ³fÎ¹ù/ÿ 8íª~c©Ôe“êZJ1_X¯&‘‡ÚX#ªòãûR3p_òÛ’çfÔçôG·+c©]GsMšUGJûÆ‹Sþzg™ÿ 1ÿ -õ_ËýQ´a*rŽDÝ$N‚HÛþ$­ñ&Esg¿?çnoËý;—ìÔ|„ÒçXÏ˜¾v”K®ê2/F»œ¦GÎ¿ÿ 8d„ùÊf„¿òröÞlÙÃç1¬EÇ’„ÔÞÈ_ïEÿ 33Ê_’—ßRó¦5h>»
+ìíéøž}Í›6lñïüæÖ…èkZv®¢‚æÙ¡'Þ&åÿ ¸Â¿ùÃsê~k¸Ó˜ü–Aâñ²È¿òOÕÏkfÍŸ6ÿ 8 yÇYŒv¿¸?|Œrkÿ 8“)O>[(ý¸'þ ·ükžïÍõJÛMîï¥H-ãy$`ª£ü¦o„gœÿ 5¿ç0,´õ};Éj.®z¹ô—þ0Æ~)›ü¦ãüeÏ'kzíö»w&£ªL÷7S¼’“ÿ 6ÿ *…gùOÊ:—›5´žêS°~Ô’7D?iÛ=óù/ù7aùi¦ý^"&Ôg ÜÜSíþëù`öö¾Ûÿ “ÐófÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³ÿÑõNlÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6l)ó_•¬<Õ¦Ï£jÑ‰mn‹ãù]ìÈñ£6|ùüÚü©Ô.5VÓïA’ÖBZÚà†Tÿ eO÷l³þ£#4?OÔ.4ëˆï,¤hn!`é"X}–VìÈïùÊK?2,z/šÝ-uM•'4X¦=¹~Ì3Ÿåþéÿ c÷yèLÙ²5ù—æðï–µ-X5½¬¬Ÿëñ+ü”eÏšê¯ùÂ/ÇW\qþú¶C÷Í7üÈÏUfÂ_;ëcBÐïõZÐÚÛM(ùª3/ü6|ÆbXÔîN})üªÐ¿@ù[KÓiFŠÒ.cü¶Q$¿òQ›%Y³`][PM6Î{é>Ä<­òE.V|¼½»{Éäº˜ÖI]‰cÉ³èwä…úÉM­8³Û‰Ûç17ó7'ù³Ç¿ó›¤þ›Óoª¿üœ9çqYœ‡ëÏ©°Š"à1ù³fÍ›6lÙ³fÍ›6lÙ³gÿ œÊÖM—“â²CCyw7ú¨¯7üM#ÏæÍ›6lÙ³fÃO+jï£j¶zœfkq ÿ ¨Êÿ Ã>Ÿ«†àî2ùÞ+ä­f¿òÅ7üG>qg²ç	Oüëº€ÿ —ßù•z/6lÙ³ÿ ÎWY› Þ¸0ÉŸòUþ7Ïç¼?çoEÇí£­LÏú\Ëÿ 3s²fÍ›6lÙ³fÍ›6lÙ³fÍ¯Î½5µ/&kÈ*ßS•À÷Aêÿ Æ™óƒ6lÙ³gÓOËí"ßHòöafÃ¬AiÞªŸæìK·ùM’ó÷üæŽ‘o?•­uë÷ŠˆÝøÈê'û/Mý†x³6}	ÿ œnÓNŸä-*6i#yäd’J¿ðŒ¹Òf”D#lª	?!Ÿ-uŸ­\ËpÝŽÏÿ yg¡ç	mù‡Q¹íŸø9¿æV{6läßó”öþ·5ÝDÑãž ò,ÿ W×ôÙ‡T¼·oºD9ôã6lÙ³Ïóšz?Ö|±g¨Vµ¼
+O‚ÈŽü:Gžrÿ œ|ÕÎ•ç­"zÐ<þ‰ÿ žÊÐÌÌú#›6|ãüðÿ ”ÛYÿ ˜ÙâXmÿ 8Ý®Øè^u³Ô5Yãµµ'å$¬Eb‘V¬™¾õG˜?ç*¼‹¤"»{ÙìÛDÇþJKéEÿ œ“Íßó›÷¡òÖž–àì%¹oQ¾bø"Ÿõž\àþpüÄ×üã7¯¯^ËtAª£"ÿ Æ8SŒIþÅ29#ò£ò#^üÅKjŸVÓQîå†ßia^³ÉþJüÎéžÜü´üªÑ/,~¥£Çû×Öèd”ŽîÝ—ù#_?Öø²a›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›?ÿÒõNlÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙóÏ‘t¿;é’húÔ^¤º°ÙÑ‡Ù–'ý‡_ùµ¹&xGóòGXü·»"åMÆ™#R¤	ðIGûªoòíºÙ³œçdü¨ÿ œ×üÂúº––´)[÷‘ø¢ˆÐ¾äæŸÉéç¬ÿ /;ü¯çµTÒî•.Øom5P|Ã/üñi2{œ?þsÌ£|˜l”ÑïîbŠŸä­nñ‰?à³ÃyïoùÅ_/þˆò-¤Œ)%ì’Ü·û&ôãÿ ’QG{6r¯ùÊcôoµ&qé@?ÙÈœÿ äš¾xWÊšIÖ5{-4
+ýjâ(àÝSþ6Ï§Ê¡@U`2ófÈ/ç¦¦tß$ë Ð›GŒøËûù™Ÿ:màk‰Ý‚™4Ï¨ú]ŠéöÙÇ²AF>JÕ‚sgç7á¦­¥KüÖÒ¯üƒÿ çšã~ÀƒŸS,¥Á‹Ñ‘HúF-›6lÙ³fÍ›6lÙ³fÍ›6y«þs{—è}.•ãõ™+óá·ümž@Í›6lac6¡qª™'Ö8ÔufcÅ¬Ùî¿Ê¿ùÆŸ.ùJÊ95[xµU”e™C¢·òAü
+‰üü}Gû_ØY7›ÿ #ü£æ›f¶¼Ó ‰È¢Ín‹Š™^0¼¿Õ“š“žüÑü½ºò»>…v}A))A$mýÜ”ÿ …uý™×"y³êV’³€7ÚôÒµñâ2ùí0‡ÉË†ÒEÿ ‚ø?ãlùÍžÍÿ œ'„¯–o¥=øº(¿æ¬ô>lÙ³dóÃJ:§’µ‹eoªI ñþüÉ¼ùÇžÆÿ œ%ÕýmQÓI©·ºYià%@¿®ÏGfÍ›6lÙ³fÍ›6lÙ³fÍ‰][GuÛÌ9G"”aâqaŸ2|åå¹¼³¬^h· ú–“<U=À?ÿ ³N.0›6lÙ³Ùßóÿ ó:^¥¤Ûùk_¸K]JÍ1<¬&~¸Èß¬‹û¶Fûm9|\;Õþµc§Ànïn"†ÝEL’:ªÓýv<sÅŸó“ßÖ¾{º‡FÐØ¾•dÅÌ´ K)9 ?î¨“’Æß·Íÿ g†p¬¢é3ëÐi¶‹Ê{™R$,ä"þ¼ús éhÚ}¶—oýÕ¬1Â¿$Pƒþ#…?™z¸Ñü³ªjÐÃg;/úÜ'ü?ùŸž²ÿ œÒ¸Ûjú‘mà…Oú¢IþN&z‹6læ¿ó’)ÏÈ:°ÿ Šã?t±ð/—ß†£jÝi<gþsê&lÙ³g.ÿ œ›Ó?HyS«B"˜°‘¿á9g‚ôUôBÛRŒr{Y£˜
+Ò¥IJÿ ±Ïhy{þsÉú‚¨­Í„ÃÇê/ûƒ›Ÿù¹1µÿ œ†ò%ÈªjðõÃ§üœEÅÛóëÈê*u‹_¡ëü3ÂŸšú½¶±æ½WP±q-´÷r¼n½K|,+üÃ"y³fÍžáÿ œ9Ôþ·ä¶·&¦ÖòhÀð#›þ%+gsÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›?ÿÓõNlÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ°.©¥Úê¶ÒXßÄ“ÛL¥^92°=™NyKó—þq$éÑÏ®y>@mcV–KIš…G'0Lÿ mTºåøÿ âÇû9æ,µb„2š¸#:’ÿ ç$|çåP°ÅyõËe¥"»¨§‚ÉUØËÇ/óŸóÚëó>nmVÓê^¡`ŽY]Ÿ‡ÅÅ”àùŸíg1Š&•Äh*Ì@ w'>ùGD]G²ÒPPZ[Åßä*¡ýXm–T‰yÈÁTw&ƒ<Ùÿ 9‹ç->óËÖº^Ÿuòµâ´«ŠåBÇ%9„'Y¿k8Güã¦™úGÏšLT¨Išcÿ <‘æðÉŸC3fÍœ‡þrºðÛùõ§­$	ÿ %Qÿ ãLñWåå—×¼É¥ÚÄ·¶ê~FD>™æÍžZÿ œã°¬Z5èý–¸Œý"_ø‹g”3é·5©y{M½¾µœ_s“‡Ù³fÍ›6lÙ³fÍ›6lÙ³g	ÿ œÈÑZûÉÉz‚¦Êî9ø+‡€ÿ ÃÉx‡6lÙ²kù+yoeç={²Ky$ôž(ßì\®}Íž1ÿ œÕ½·›ÌÖVñg†Ìz”íÉähÔýû<óÎyKG}kX²Òãk«ˆ¢ýwTÏ§ª¡@`3•ÿ ÎPê"ËÈ:óMèÄ?ÙKá³ÀîoùÃëoäu”ÿ »îç}!ÿ ™YÛ³fÍ›Ô,’þÚ[I·ŽdhÛäÃ‹gËÍWO“M»šÆaI-äx˜{¡(ßˆÎõÿ 8]æeæ[½)ÍöÔ•/_ù&óg´3fÍ›6lÙ³fÍ›6lÙ³fÍžOÿ œÉü±tš/;X¥cp°^PtaðÛÎßë/îýXŸ<·›6lÙ±Í#0
+I tÆæÏGÎþX¾©ª?›ïSýÆ±ÛÔló0øœ{AÈÉù3ØÙÆ¿ç-<Â4¯#Ïl$¿š+qãJúïÿ 	öYá÷oüâF„tÏ#ÃpÂ}<Óý ý]á`ÎÏ›6s_ùÉáäXÿ ÅQ¾X†xËéÏQµ^•ž1ÿ ¹õ6lÙ²+ù­aúCÊz½·w±¸§ÌFÌ¿ðÃ>jä¢óò»ÍGw.—vmæE‘$H™Ð«hÞ¤aÓu8A>›uni42!™Hýcò± F'äpm¯—5;½­­'”Ÿä‰›þ"¹ Ó¿'|á¨ÓêÚ=é»@è?à¤¹,Òç<ù¨PÉeªžóLƒþ6•ÿ árs¢ÿ ÎjÒÐêÚ¼¸…Sÿ %>¯Aÿ œ3ò•Ržêõ»‚â4?ìb_SþKgœ?ç!¼Ÿaå7ÝiZD^…’ÇF€“NQ§/‰Ë1¬œÏÚÎçÿ 8?yÏKÕ­ßw?ü2ÿ Ì¬ôÆlÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙÿÔõNlÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³g.ÿ œ˜ó	Ñ<‹¨¼f’\ª[/üõ`²ÉS>GHÁbh $æ’6ŒñpU‡b(q¹±ÑÈÑ°t%YH ƒBî2@?1üÌ­}Où‰—þkÆKùæ)…$Õ/X‰Oüo…Wz­Ýî÷SI)ÿ -ËÄŽÎáÿ 8yaõŸ;	©þóÚM'ßÂù›žäÍ›6pßùÌixy$/óÞB?ádoø×<©ù#«ç]i_ôØOÜÜ¿†}Í›87üæ^õÏ'Åx£{KÈØŸò]^#ÿ ñç‰3è/üãF´5_!é­Z¼
+ð7·¦ì‰ÿ $øgOÍ›6lÙ³fÍ›6lÙ³fÍ›<ÿ åhüÙ ßhRP}nE'³Ó”OþÂPŸ4o¬¦±žKK•1Í´n§ª²ž.§ýVÄ3fÍ–	SQ±êŸÊ¿ùÌ8-l£Ó|ç¯4J]Â¡ž2U½Oæ’>\ÿ “$¾nÿ œÌòí•³‡àšöìƒÔ_N0|d$úþª'ÅüëžDó?™o¼Í¨Ï¬j²nî_›·OeU²ˆ¿/ì®çsÿ œDòCkžký1*Ö×JŒÈIéê¸1À¿òr_ùåžáÏ<ÿ Îjë_VòÕ–šêï™+7/øycÏçÑ/ùÇí#ôW‘´ˆ¡{Xÿ Ïfkù™6lÙ³gÏßùÉ,ÏáE"¼+tžþ¨¬Ÿò\K‘¯Ê5…<Ñ§k,xÇê$?ñ[þêoù$ïŸIÁTnlÙ³fÍ›6lÙ³fÍ›6lÙ°³£ÚëVsiº„bk[„1ÈÐ«
+úëösçççWäåÿ å¶¨`pÒé“’mn)³÷ÔŸË<µüÿ Þ.s¬Ù³fÍ›'”¿•—æ>ªº})kspGÃÆÒ¿ûª?Úÿ Q]—èG•ü³cå6KÒ´¶@ˆ½ÿ Êf?´îß·í>gç6<Ö.uK/DÕ[Xšy þiOÁ÷Xâåÿ =sÍÂó:Å,îB¨I;ŸM¼‘ååòæ‡c£-?Ñ-ãˆÓ»*€íþÉù6æÍœ£þr–àCù¨ƒÕÌ
+>™¢Ïù>½§B7/wýò Ï§9³fÍ€µËo­X\ÛýHdOø%+Ÿ.H¦ÙôòvèÝy;F”îM¸?ìQSþ5É{(n¢¹B$€>ìvlÙ³g‡ÿ ç1íý/:«ÓûË([îiSþ4É‡üàåÅ'Ö ®Å-šŸ#2ÿ ÆÙëÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³ÿÕõNlÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³gç65—l, šó™÷Æÿ õW8üã~–5>éQ‘UŽG˜ÿ Ï8ÞUÿ ‡EÏÞiwÂ—pE0ÿ ‹[þ$2?{ùSå;íî4‹>?WŒ¼.\ÿ Î=yãíéõ§ü›uÂ¹ÿ çÿ /æ5ýSýYæó7ŸùÅ øò“þ’%ÿ šññÎ*y3S`íó¸›øI†ö?óŽþC² Ç¤@Ä¿Éÿ ']óÍó—º>›¢kö:v‘m¤)d¤ªZIEXF¦‰ûXoÿ 8GkË^Ô®’ÑSþ
+Eoù—žÅÍ›6pŸùÌ¥'Éq‘Úúà&åßÈ—	ç}·O­ ûöÏ£³dó¿ËÇÌMÕlrslÒ ñh¿Òïh³çzóþp“Ì‚m3RÐœüVó%Âòe_Méþ«B¿ðyéŒÙ³fÍ›6lÙ³fÍ›6lÙ³gŽÿ ç.ÿ )_KÔ?ÆzrVÎð…º
+>ÄÝSþEÀÿ ’ßñ•sÍù³fÍ›6l^ÊÎkéãµµF’yX""Š–f<UTx±Ï¡¿‘ÿ –)ùyåØtÇ¡¾—÷×N;ÈÃìü¯×ý^·<cÿ 9£æ1{æKMVÆÛ“˜ò?òJ8siš|šÔ60
+Ë<‰òœ„_ÄçÔ+OM´‚ÆîíãH—äŠâ8+6lÙ³g˜ÿ ç6<žg²°ó4+V·sk1Êÿ ¼„ŸòVE‘ç®y>‡ÿ Î?yØy¿Éö7ŽÜ®m×êÓøó‹àäÞòEéËþÏ:.lÙ³fÍ›6lÙ³fÍ›6lÙ°¯ÌþWÓ¼Ña&“¬B·“
+27ìº7ÚG_Ùuø—<kù·ÿ 8«­yYä¿òê¾¥¥îx¨¬ñø²5þùWýùû8Ó8[¡BU=AÆæÍ–vs´~TÎ/ëÞrt¼Õ•´Í(Ð—‘i,ƒþ(…·ø¿ß²üËê}œö“|—¥y;OM'D„An›šnÌßµ$¯öžFþoø×1“ÎFÓJÁc@Y˜ô nIÏšß™¾po8yŽÿ ]bx\LÆ0{F¿»~ˆ•2Mÿ 8áäóæ:XÄëÊÞÍ¾·/…"ø£¯úÓúIŸA³fÍœ/þsQÞK[zïsySÙD’ÿ Ì¼ò¯ä¥‡×üé£AJ®Dä{#z§þ!ŸG³fÍ›)×*{ŠgË;øý+‰cþWa÷úÿ 8û7«ä]¼-øÿ À³/ðÎƒ›6lÙ³g‹?ç56Z0êlþNÏ†ÿ ó„JêËØÛÄ~çlõælÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙÿÖõNlÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³g—¿ç8Ü‹]{.OÜ!Îgÿ 8o=Û“Õ`œø?Ç=Û›6lÙ³g‡ÿ ç1æõ<ê«ü–P¯ü4­ÿ dÃþpr
+ÜkSx%²ýæsÿ ç¬3fÍœSþrúßÕò4þûº¿Oøß<‹ù?t-|á£Jzûq÷È«üsé.lÙRF²)GV ÷>f~`ye¼¯¯ßè®(-nÝ+X›ý”\'¿ó‹~n]ó­´R·5kGð«Ñ¡ÿ ’é³Ï{æÍ›6lÙ³fÍ›6lÙ³fÍ›ë:=¦µg6›¨Æ³ZÜ!Iº?çö¿g<ùãù¨~\Þ5Ì®4I[÷3Ò¥+ÒŠ}™ì¿Ø—ö~.H¼«6lÙ³bA%Ä‹*^G!UTT’v
+ª:±ÏfÎ7Î;Ÿ)„ó7™]×÷þ®¤}§ÿ ——_ù¿ÛfãèL§uK¹TT“ÐŸ4ÿ 3|Ö|ÙæMC[­Ræv1×ýö¿»€È¤L—ÿ Î1ùTùƒÎöE—”6\®ßÛÓþëþž,÷ölÙ³fÍ‘¿Ì'Çç/Þè2Ò·1„þÌƒã…ÿ ØÊ¨ÙóVîÖ[9žÚáJKu=C)âÊ~M÷þpóóhºì¾[ºj[jkXëÐO%ät\Óü§H—=£›6lÙ³fÍ›6lÙ³fÍ›6lÙ²çOÉ¯*ùÌ´šÅ„opßîèë¿L±qgÿ žœó‘k_ó„š,ì[JÔ®mè²¢JÒ¿W9?óƒ—<¶Ö£ãÿ 0Æ¿ò{tùÂ-&ªj—Žëkü3›Œë>Küò—“™fÒì#7+Òy¿{ >*òrôÿ ç’¦O3fÎ1ÿ 9Wù„<¯åWÓ­ÛîªMºS¨þ>_þ ú?óÛ<%žËÿ œ4ò!Ó4K2Ü-&Ô_ÓˆŸ÷ÌDŽCþ2MÏþE&z'6lÙåùÎlÒt…;“5Ã—£ÿ ™¹Í¿çôoÒz·œŠ­œ3Nà}ÿ †Ÿ=á›6lÙ³åÎ·þ÷ÜÆi?âG=ýÿ 8çÿ (‘ÿ _þNI#6lÙ³fÏÿ Îj8>l´QÔX'üŸ¿çÖº¦¬Ý…¼CïvÏ^fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍŸÿ×õNlÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³g™?ç8m‹iúEÇdštÿ ‚XÛþeç%ÿ œQ¼þ~²BiêÇ:É'øÓ=ë›6lÙ³g…ç/$çç©GòÛ@?áKÆÙÑ¿çãýÎµ%jØSèŸ=I›6læó’úw×¼ƒª(1¤röÆíÿ Ë<åËÿ ÑÚ¥ïOBx¤ÿ €eáŸP•ƒ Ãpwy³g¿ç3ü˜l5Ë_1Â¿º¿‹Òÿ Å±l+þ¼øÄÙç«K©læK˜¤±0taÔ2žJßAÏ¥Ÿ—~o‡Î–½?Ò¢Vp?fAðMû	U×$Y³fÍ›6lÙ³fÍ›6lÙ³fÀú†o©[Ég{Mo*•xÜVöY[cžbüÑÿ œ8»êI”%jÆÎvÛåo9éþ¤ßò;<Ûæ#k~V”Á­ÙMhÕ 2!
+Ô“û·ÿ `Í„Y²ÕKª*O@3¦yþqÛÍÞqdxmÎÍºÜ]ÓÅV_ö	Çü¬õ§å'üãÎ…ùxì®ê´ÞæP>«Ç¸‡ýoŠ_ø³ÃO6r¿ùÉo<)ù>ëÒn7wãêøþðYÿ ØAê|_ÏÃ>ç°¿ç<–l´›Ï3N´{Ùþû‹ûÆÏ3qÿ ž9é,Ù³fÍ›6x‹þrãòèù{Ìc^µJYjÀ¹§E¿_ùëðÍþS4¿ËœCO¿ŸN¹ŠöÑÌw:ÉŽªÊy#õ[>þUyþ>y~Û\‚‚I„è?bUÚTûþ4ÿ ŠÝ%¹³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÊ’EK¹
+ª*IØ ;œùåùõù–|ÿ æYï¡btûÜZŽÞšŸïç»ò“ý^	ûòW•.¼Û¬ZèV#÷×r¯ò¯Y$oòc”þ®}+Ðt[mÂßJ±^Ö±¬QòTqOó`ìÙ³gƒç+¼Ì5¯;Ü@‡”VÇl¾Õ—î–WOö9Ñÿ ç|ºkªëÎ6ýÝªù-7üÈÏUæÍ›6lùo¬?;ÙØw•Ïü1Ï _óŽ©ÇÈZ@?ï–?|’èÙ³fÍ›6xsþsìOçoLîláCô™%ÿ ™™6ÿ œµ<õ«žÀ['üŸlõnlÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙÿÐõNlÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³gÿ œÅÑ÷“ÚŠ›;¸¤'ÁX<þTÏ'~Pk« ù·JÔ\Ñ#ºŒ9ðW>”‡þÛ>’fÍ›6lÙáOùË¸ÊùêbjÞ?àxÿ Æ¹Ò?çä†µ~vÇðŸ=G›6l!óþúoËÚŽ˜MÅ¤Ñ¯úÌŒþ>dçÒÿ ËMlkžYÓ5 jg´…›ýn!dÿ ‡å’\Ù³þyükå;»W•äë6þ>¤`žÿ cõ"ÿ gŸ<3Ô_ó†?˜Â®|›xûK[›ZŸÚý"!þ²•Ô—=c›6lÙ³fÍ›6lÙ³fÍ›6lÙ±;‹h®PÅ:,‘¶ÅXÍNCuOÉ/%êl^çG´äz”ŒFOü‰ôðº/ùÇ?!FÜ—H„‘âÒ÷4”ÉFƒä/ù|†Òtë[WµH­ÿ NðØ›6lð¿üåwæ(óO™Î—jü¬taZšSþô¿ûU‡þy•œFÒn5‹Ø4Û%çqs"Eø³žøçÒÿ &y^*èöš§÷V‘,uþbÇ'ÎGäíþ¶æÍ›6lÙ²ù¿ùwŸü»s¢½Á¥»ŸÙ™»?ê¿÷oÿ »gÎkëì.$³ºCð»G"6ÅYOV÷VÎÁÿ 8Çù¸<‘®~ŽÔ_Ž“¨•I	;G'Hgö_÷\ßä|î¬÷nlÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³Ïó–Ÿ›£ËúgøOMzj‚~ü©Þ8Å×¹ûñ‹ÔþdÏç¯ç¿+…œžsÔ“]ƒ #q?½›þ{:ðOòùeÏKæÍ›¼Ç®A é·:µÙ¤‘<Ïò@ZŸ6Ï™:Ö­6±}q©]Ïu+Ìçü§bíø¶{ëþq¿ÊGË>J°†Eã=Ò›¹;Ëñ%ÕƒÒ\é¹³fÍ‰^J!†IODVo¸gË9_ÔvsûDŸ¿>Œ~FAèy#FCÞÎ6ÿ ‚ÿ ãlœæÍ›6lÙóÛþrCUý'çÍV@j±Èùä‰Ã«g~ÿ œ&Ó>^Ô/È§¯vj\Ùè¼Ù³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³ÿÑõNlÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³dkó/ËâŸ-ê:({›wXÿ ã áÿ ’ª™óH†‰¨j®§äAô—òŸÎ+ç,Øk@ò’XUeö•?w?ü”Vÿ c’ÜÙ³fÍžÿ œÅ‡Óó°oç³…¿þ5É§üàÜô—Z‡Åm›î3ŒõvlÙ³gÍ?Í.-ùŸRÒiE‚æ@ƒü†>¤?òI“=wÿ 8æaªù;ôsµeÓ§’*wàÿ ¿Œÿ ÁI"ÿ °Îã›6lð'üä·å±ò_š%–Ý8éú‰kˆ(6ŸßÃÿ <ä?
+ÿ ¾ž<ç\×î¼½¨Ûêú{p¹µ‘dCî§£’ße×ö—>‘yÎvžtÑmµëû»”–µ(ãá–&ÿ *7ªÿ Ãdƒ6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙÎ?>ÿ 3Óòÿ Ë’ÝÂÀj75†Ñ{ó#â›ýX÷ŸëúiûyóÑÝ¤bîK3’w$œôwüáÇå±Ôµ9|ßxŸèö5ŠÞ½f¼qÿ aoø9Wù3Ø™³fÍ›6lÙ³ÉŸó—¿”	¿ÇTº“Š^ª²ßf+ŸõdÚ)ËôÛýØÙåìö‡üâ·ç`ó’ùOX“ýÉÚ'îŽóB£ìÿ •4ÿ Çû6z6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6D4¿2l?/tYu›âO±5¡–B>×üŸÚ‘¿b<ùÛæ2^ù›QŸYÕ$õnî\»·oeQû(‹ð"þÊd«òWòºÌ]~-4¶1R[©ìÆÙýù7÷qÿ Áý”lú!cc„ÚZ ŽQR4Q@ª£Šªû*âÙ³fÏ;ÿ Îdyüiz$>W¶j\j,$”ÐÆk¿üe›üŠ“<ÁùSä§ó§™,t5Å4 ÌGh“÷“Ÿù¬«þ_úKkˆãQ@ €ƒ›6lØIç›ß¨èÝièÚNÿ ð1³gÌlúgùueõ-iv´¡ŠÊÝH÷¥rC›6lÙ±ûØ¬-å»¸<b…G>
+£“øù…æ^MgQºÔæþòêi&o›±ÿ Ä³ÞóŒþ_:/‘tåqI.Uî[þz±hÿ ä§G6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÿÒõNlÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÏÎKù¼£æë‡‰xÙj$ÝB@Ú®üó›—Ãþûxòyÿ 8sùšºeüÞO¿~0ÞŸVØ“°˜ÞEÿ =£_‡ü¸¸ý©3Ø9³fÍ›<cÿ 9¯iéùžÊà»,T}+$¿ó^ÿ œ"»ã­êvßÏjÿ  _ù›žÂÍ›6lñüæw”NŸæ+mz5¤Z„ÿ Åüï…¡ÿ Àßó‡>qO™åÑ&jC©ÂBƒþýŠ²Gÿ $½uÿ ÏkæÍ›9×çÇå‚þ`ùr[€ý!oY­Xÿ ¿u_åwþ·ýŒùé<ÊRD%YXP‚6eaâ3·ÿ Î-þp'jÇBÕ$ã¤ê. f;E7ÙIÉIº—þy¿ÙL÷lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lØõôIwvë©wv4
+ª931ðQŸ=?<5%üÅ×ä¿RWO‚±ZFv¤`ÿ xËþü™¾7ÿ aû¯"WòÝç™µ;}MNwWRÐvêÍàˆ¿·ì¢çÒ/!ù6ÓÉº-®ƒ`?ulKR…ØüRÊßåI''ÃìÙ³fÍ›6lØRÓmõKilocY­§FŽDaPÊÃ‹)ÏŸ?ÿ ”w_–úÓZQŸM¸%í&=Ó¼NßÐý—þo†OÛÈ.•ªÝi7Qj4708xäSB¬:žúüŠüê´üÈÓ))Xµ‹eæµ{}bþúù$ÿ ~Ã?OÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³aWš|Ó§ù[N›XÕåÚ@¼™Sü¨‹ûr9øQ?k>}þpþl_~djí¨ÜÖ+Hª–ÐV¢4÷þidûR¿û°‰‘-E»ÖïaÓ4èÚk«‡	/ROùüMû+ñgÐ¯ÉŸÊ»_Ë4Ø©%ä´’êaûrS¢ÿ ÅQ}ˆ¿àþÛ¶O3fÍõ-FßL¶–úñÄVð#I#·EU™Ésçæ·Ÿ§óç˜nµÙª#‘¸@‡ö"_†ùñøßþ,wÏIÎþ\?OŸÍ÷‰I¯kµFâ%?½“þ{L¼çùyéLÙ³fÍœûþrSw‘uy«NVæ/ùËüÌÏžv­yq²}©]P|ØñÏ©¶ëm
+@Ÿf5
+>@SÍ›6lÙÅç+¿0Ë^U}*¥î­X¢.·/þ¯Üÿ Ï\ño”<·?™µ{MÔ~öîdˆ ÇâõcNNßêçÓM:Â-:Ú++aÆ#XÐx*
+?àFÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›?ÿÓõNlÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÎcÿ 9ùV?0¼¼ð[(ý'gY­O‹S÷Wùg_‡þ2,Mû9à(f¹Ó.VXËÁunà‚*¬Ž‡ïWFïOÈ_ÏOÌ]=m®™b×-zñtæßX„#~Úÿ ºŸáû<º¾lÙ³g”?ç8´ò&Ñ¯€Ù–â"~F'_ø“d/þpóPú¯½Þ›I£ùRoù•žãÍ›6låó“~F>kòuËB¼®´óõ¸©Ô„Ö_öP4›:¦xKËúÝÆ…¨[ê¶gÅ¬©*t<…}¿›>—ùSÌvÞfÒ­u«X.âYWÚ£âFÿ )àò—sfÍžAÿ œ·üœ:mÑó¶“ú-Ëxª>Ä§e¸ÿ R³'ü]ÿ ³Í9íùÅ¿Ï!æ[Dò¦·'û”µJA#ç‰GÙ¯íO
+ý¯÷ä_ÚY3Ð™³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³ÈŸó•ŸžcS‘ü— Ë[Xš—²©ÙÝOûÌ§ý÷{üÒüî¶çælöoüâwäáòýø·VŽ—÷ÉKta¼pùûIqö¿ã÷ãç¡óe;¬j]ÈU’v žcüöò_—‹%ö©‘z¤$ÌÕðãn$ãþË9æ¯ÿ 9¡åKRVÆÚòèøðD_øy9ÿ É<‹Þÿ Îq ÚÓE'ÞKš~	ÿ ‰a{Îq_’8èð…îìOü›Á6ßóœ’×ý#ER¿äÜ‘ÿ ƒ$:güæÖ)ÿ N»€¦2’ÿ Ðäë@ÿ œ›ò.²B@ZÈfå?ù(G£ÿ %3¤éº­¦©¸°ž;ˆOG‰Ã©ÿ d…—dcóò÷Nóî‘.‹ª/Âÿ rñE ûÇþ¯í/í§$ÏžÞò¥ämV]WN2Çº8û2!ûÄÝÑ¿á[ào‰p•üÑ¨y_P‹WÒ%h.àj«ÿ ÌŽ¿¶ö]íg½%ÿ ;ôßÌ› ¾­
+^ØŸù+~Ü-ÿ ØÙgéY³fÍ›6lÙ³fÍ›6lÙ³fÍ›
+|Õæ½7Êº|º¾³2Ái©cÔŸÙD_´ò?ì¢ç‚ÿ :ÿ ;5Ì»ðX}*ÝÕíëôzÓ4Ì¿ìcû	ûlüâ(žgX¢Rîä*ªŠ’OEQÜœ÷üãoä8ò5 ×5¤[¹M”ïõxÏû¨ÅÏþîoùä¿·êwÙ³fÏ+Î^~q?ÀÚL•?ß:ŸöQZÿ ÌÙ¿çš¿8å_åíÏŸµë}Ú«žsÈ?Ýq/÷²|ÿ a?âÆEÏ£šN—m¤ÚC§Ù ŠÚÞ5Ž4¨â£îÁY³fÍ›8Oüæ>´,¼œ–@üW—q%?É@Ó·ü4qç•&4ÓqÒ,éPnâväÆ}gÿ „³élÙ³fÈæ_çW—¿/àfÔ§^Ò©k+Ü—ýÔŸñdœÉåösÂ?™_˜Ú—æ¯&³ª	"‰~ÌQ³Ä¿mù6zþpëòªDi<ï¨ÆThlƒµøg¸òb?ùíþNz§6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙÿÔõNlÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍždÿ œšÿ œx“Uy<ßåx¹]ÊîÙòS­Ä+Þ_÷ôîßï÷œ½O)é½æ‰wþ+ÛÝÀÜ’D4e#üþ%ÿ bÙëOÊùËûESNó —[(»Aû§÷•â¿Ê^QÆ,ô^©[jP-ÝŒ©<*²FÁ”ò]~›6yóþsOI7>W´¿QSmx û,ˆãþ&‘çœçuÑ^yÒ'&çôOüöV·ýrgÑÙ³fÊt
+°H¡¡ó§ó¿òñ¼‡æ{­-T‹G>µ±ñ‰É(¿óÉ¹Bßñ;‡üá§æh+7’oŸqÊâÎ§·[ˆþO¨ÿ ŒÙê|Ù³`]WK¶Õ­eÓïãY­§FŽDmÃ+
+2çÏ¿Îÿ Ê¿Ë}a­¨Òi—½¬Çº÷‰Ïûú/²ÿ ÍðÉûyÓu2æ;ë)ˆX<n†Œ¬¦ªÊsÞžÖ¿˜¶BÎô¬:åºþú.‚@?ãâü§ýÙû©¿Èáo6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍžvÿ œ•ÿ œ…O.Å'•|·-uI[‰ÿ p§¬hßòÒßòCþ2}’I©ëËþqŸò9¼é~5íb3úÍöVO(ÜEï}fþoî¿Ÿ‡¸@ PlÕµ{=ÚKýFd·¶ˆry$`ª»6y¯ó#þs2f{/&Û‰ØT}jàŸ8 ø]ÿ Ö•£ÿ Œyç?7þhy“Î[[¿šá	¯§ËŒcýX#ãü&E³fÍ›6l1ÐüÇ©h3‹­&ækI‡íBì‡éàwÎíù}ÿ 9®i,–Þh‰u+a±• Žp<výÌ¿&Xÿ ã&z›È™Zží~¹ Ü¬ÜiÎ3ðÉ=¥ˆüKþ·ØoØvÂïÍ¯Êm3ó#L6ãÓºŽ­opZ6?ñ8ŸýÙí®ªÙàO<ùTòN¥&­Dc™7V¤‹û2Äÿ ¶ÿ 6¿øp³DÖït;Èµ-2g·»…¹$ˆhAþŸÌ¿e¾Ëgµ?#ÿ ç&tÿ :,z>¼RÏZ U="œÿ ÅDÿ w)ÿ |·Úÿ urû	Ü³fÍ›6lÙ³fÍ›6lÙ³fÍßÌÏÍòòËëz¼µÁômÒ†IþUý”þi[à_õ¾ð¯æ§æî±ù}õ­M½;hÉô-ŸN0ârÛ•¾&ÿ %>…CÎë*^G!UTT’vUUXç³çÿ ç—Ê¢?2ù•jÌ+qní?Ïü™ÿ _ìú6lÙ³“ÿ Î@~vÁùu¦}^Í–MníH‚>¾˜û&æQü©þë_÷lŸä,™àÉ$¹ÔîK¹yî®$©;³»¹ÿ ‚ww9ï_ùÇÉõü¼ÑyÞ(:½èW¹n¼û®ÙO„Uøÿ š^_³Ã:¶lÙ³fÍžBÿ œÚó ŸTÓ´$;[Bó¸Í+pJü–ø|â–þ|ŸÈšÔ:ý¤1ÜM p«-xüjcfø
+ž\Y³½Øÿ Îq\.×š27¼w‰ÿ âXsüç–¾Òg_õfFýj˜'þ‡sBÿ «mßüóV¹ÿ œáÓ”£é¹ÿ .e_øŠI‘½Wþs{W”¦évðžÆYOø€·ÎoæùÉ/;ù‰Z)uµ…¶)j¢.¿ñb~ûþJç4–W™Ì’1gcRI©'Üá—•~§úZÏô¤~­‘ž12+Ê2ÃÔ^Kºü9ôæÎÎ(RÖÕ("PˆŠ(ª qUUF-›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÿÕõNlÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›<ÿ 9VtõóÅÌl1ÂcŠ!?¦(V³ÈÀmÏ„‘««ñ|YÉE¬Æ/¬ðoD7t<yR¼y}žTýœ8ò·žµÏ*KëèW³Z1ÜˆØñoõâ?»“ýš6v,ÿ Îhy’Àõ‹[{õXV?Js‹þHçHÒ?ç5¼·qA¨ØÝÛ7~%_¿œMÿ 	’›OùÊÿ  ÜSä“Ùà—þe£ŒˆþyþtùÎO¾Ò¬5–ñÂ<)éJ	tu’•x•W’«/ÅžCÒu4ËÈ/áþòÞT•~hÁ×þ#ŸP4ÍB-JÖësX®#IPø«€ëø›6lÙÆ?ç(¿+œü¾uå©é¥@ïû¾sEõcÿ )8/÷™â-]»Ð/àÕtç1Ý[H²FÞOo²ËûKŸFÿ ,¿0,üû¡Á®XÐc­Lr¯÷±7Ëö?ž6Gý¬”æÍ›#žò›ç&]VJÅ&èãíFãìMìéÿ ¿|-Ÿ>2¿-õ?ËýUôUÊ†`>	Södþ7O÷[|8C¢ëWš%äZ–›+AwŽD4 óø—ì²ü-žåü‰ÿ œ„±üÁtíD¥¶»üQôY€ë-½ááûIû<“;lÙ³fÍ›6lÙ³fÍ›6lÙ³fÏ9ÎAÎME¡,¾\ò”‚MHÕ'¹]ÖÌŸÛ¸ÿ +ìÃÿ »ñÜ²¼®ÒHÅ‰,ÄÔ’z’s¥~GþJÞþdê_ht‹væz}>„?Í3ÿ É%øßöýõ¢è¶š%œ:f›Áin#z ?Ïâo´Íñ6yãÎºw’ô©µ½Yø[Â6í;±KûR?üÜß¶xó_óYüÇ½3ß¹ŠÊ2}T'‚ÿ ~KüÒ·û	ðä6lÙ³fÍ›6l3òç™u-^Çªhó½µÜFªè~õaö]ö‘¾Ïu~Bþz[~dÙ{ °kVÊñ²ëö~±ùûiþêòY%_™_–:GæštÝb?‰ja™¼‰íÆßñ8Ûàøðæ§äþ³ùq{õmM=KI	ô.PNAÿ 2åþh›âþ^iñäFÄg ¿'¿ç,5-ˆô¯5¿Ó–Š³Yãå¿Þ„åþ÷ü¶ûë¯+y¿Jó]šê:%ÌwVíûHwùdO·ÿ ê­†ù³fÍ›6lÙ³fÍ›6ldÓ$ÒÌÁ#@K3 RÄôçoÍÏùË?F¦ù;õæênNð¡ÿ Šÿ å¡ÿ äùR}œòF¿æCÌ7’jZ´ïsw)«I!©ù’£öQ~ýœ­A¾×ï#Ót¨^æîcDIÿ šT~Ó7Â¿µž×ü‰ÿ œo³ò"¦±¬ðº×¨=c‚¿³óKüÓ±ùŸ¶æÍ›6s_ÎŸÎÝ;òÚÄò+>­2Ÿ«ÛWþKMO±
+ÿ ÁIöö™<æo3_ù›P›WÕ¥3ÝÜ7'cø*ÙD
+"ý•ÏRÎ.~A6œ#ó—˜â¥ËVP8Ýÿ ©ÿ »ýÒ¿°¿¼û|8zs6lÙ³fÆË*Ä†ITPI'` êN|ÛüØó™óŸ™¯õ°IŠiHŠ½¢OÝCÿ $ÑY¿ÊÉ×åÏüâîµç
+/0ZÝAl³³ˆã˜>ê§‡©Íý§WýŸÙÁwŸó‡>u€ŸHÙÌ?È˜ù9xS7üâŸŸãébþ­Ä_ñ´‹¿èWÿ 0?êÖä|õ[Ûÿ Î(yúSF²Ž1â×ÆŽØ¥ÿ Îy¶äÖòâÊÙ×wo¹#ãÿ “ï.Îi°úæ¥5ÇŠ@‹ùsÎßð©’ŸÌoÊ/+ù+ÈÚ»èÖ1Å0µaë8/)©îÙ9:ÿ °â¹áûPLÈ^CõçÔäÙE|2ófÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍŸÿÖõNlÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ˜šnsæoæ/˜˜¼Å¨êÕªÜÜÊëþ§#é}ÑñÏaÎ+ù:Ú?!'×áI£Ô¦–wI2²ƒõtä­U#Œ<¿Ùbžqÿ œHò†¼Zm=eÒçmÿ pkã¼€ÿ V&‹8÷˜¿ç<ÇfKi–×¨:åÿ ÀŸR?ù+œÿ Uÿ œvóÞ˜H—Iš@;ÂRZÿ È–s‘«¿ËŸ2Ú.4«Øé×•¼ƒþ4ÀcÊ:Ç.Q¹åáè½â8†½¢Üh—Ói·ŠVh£)ò?ì—âÏqÿ Î*ùÔyÉÐZHÕ¹ÓÚ¸ïÀ|Víþ¯¤ÞŸüòlìY³fÍ›<3ÿ 9=ù8|—«kMŽš> å€Q´RŸŠH?ÉGþòòyÇþêÂ/È/Î9.5ŠÜ–}"ì„ºŒoÇù.#_÷ä_òR>Iö¸q÷åôðGwhë,(tu5VV•”ø‹æÍ›"Ÿ™?–Ú_æ–úN¬ž-Ê>8Ÿ´‘Ÿøš}™<ù›ù]«þ^jGNÕ’±µL3¨ýÜ«üÈ›ýùÚOøh¥­Ô¶’¥Å»´sFÁ‘ÐÊFêÊËº°ÏY~IÎXÅx#Ñ<îâ)Å;îˆÞèºßþ.»ÿ ~zm½7©*	#!‘€*ÀÔzqÙ³fÍ›6lÙ³fÍ›6lÙ°.««ZiÒ_ê¥½´C“É#UìsÈžó•Wð“Dò{=¾žÕY.·YeÖ/Ú‚#üßß?üWö[Î9Ô?%?"µ/Ì›±+r¶ÑâjMrGZºmëöåÿ „‹í?ì£ûÃË>YÓü±§Ã¤i,/UüYí»Ÿ‰Ý¾Óa¦x“þróómoÌ¿áèœýKKP
+Ž3€ò¹ÿ Q"_åýçóçÍ›6lÙ³fÍ›6l?ò'œnü­Zë¶$‰m¤V»:¥‰¿É’>IŸKtëøµh¯mÏ(gdCâ¬9©ÿ 8†» Xköriº¬	si(£Ç ¨?óKÙeø—ösÇÿ œó‰ú‡—Ìš¯”ƒßiÂ¬Ðuš!þOü´Gþ¯ïÈ·ž{e(J°¡{aÇ•|ã«yNìjÌ–·©C³å‘Á"’êËžœü¸ÿ œÍ¶œ%Ÿœ­Ì2túÕ¸,‡ü©`ûiÿ <½OøÆ¹è¯.ù«Jó-°½Ñn¢»€þÔLžÎ>Ò7ù/ña®lÙ³fÍ›6lÙ±—ÛÆÓNËh*ÌÄ ‹1éœ[óþr¿ËYo¤±Õ¯E@šDùw?e¿çŠËþÇ<¯ù“ùãæ_?±SŸÒ²­VÖ¤CÃ˜¯)›ü©Yÿ Éãœÿ :'å_än¿ù‹0k(þ¯§I.å §UŒužOòþz:g¶,?(4?Ë«O«é1ó¹5Ì”2IþËö#þX“áÿ Y¾,›æÍ›6pßÎïùÉ­?Ék&‘¡¼Ö¨Tkþ-aýä«þù_ùëÇì7‹5Ívû^¼—RÕ&{‹¹Û“Èæ¤Ÿà¿Ê«ð¯Ù\ôÏüãŸüãK3Eæ¯7ÃE{[9^ë=Êßï¸ýi‘½Y›6lÙ³fÎ+ÿ 9Yù<«å–Ò­^—ú·(V‡u‹þ>dúU½ùëþFx«Ê¾\¹ó6©k¢ØŠÜ]Ê±¯µOÄíþJ/Æÿ ä®}.òæ…oåý:ÛH²mí"H“ä£OùMö›sfÍ›6rïùÉËáiäL÷Eÿ e,cþ#žò­™½Õì­Fæk˜Sþ	ÕsêlÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³gÿ×õNlÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ‘Í-{ô•õ=L<6²”?å•áü”eÏš€4“ŸM¼… /è~’­´Q·úÁG3ô¿,=Í›6lñÏüægN«ÛùªÙq~¢)ˆí4cà'þ2Áÿ &_"Ÿó‹˜ƒÊ^iK;§ãcªo%z¯ú4Ÿò0ú_êÌÙïÙ³fÍ„þnò¥‡›4Éô]V?RÖáx°îìH‡öd¾4lùåù£ùk¨~^ëi€,Ÿj	€¢Ë~ü¯Ù‘?aÿ à³§ÿ Î7ÎB'È¾[ó“£Jßº”ïõvcÿ PÎ~ßûí¿yüùíH¥I‘e‰ƒ£€ÊÊj=O†;6lØIç%é~qÓäÒu¸DöÒt®Ì­û2Dÿ j9ù¿ã\ð÷ç7üãÞ¯ùw+^CÊóFcð\(Ý+Ñ.Tvßñg÷R’ß»ÎOKò›þr_ü½eµVúî•]í¥'áþ¯&í	ÿ 'â‹þ+Ïbþ[~vùsó04¹Äw”«ZÍE”xñ_³*ÿ —ò¸ä÷6lÙ³fÍ›6lÙ³fÍœŸóKþrKËžFkƒPÕ£êð0!Oü¼Mñ$_êürÿ Åyã¯Ì¿ÎóãÕÕæãl„˜­£ªÄŸì?mÿ âÉ9?û„goü€ÿ œv¸óÜ«¬kjðhHv§ÂÓ°?b/å‡ýù7ûþ.M¶´&ÓHµOÓâH-aP±Æ‚Š x›>s~z[Éõ”˜ÆîFþV<Óþ— ™³fÍ›6lÙ³fÍ›=Ãù+ÿ 9å´=;B»¾·Ö¶ÐÀâäzjÌŠ±žÜñ¨øy:·ù9Ü!ž9ÐK…U”ÔâÇç,üÓÿ œvòïŸ¹Ý²}GT?ñóÿ —ˆ¾Äßë|2ÿ Å™äOÌ¿È_2ù ´×ÐýcOk¨*ÑÓþ-nÿ ò»g9Áú6½¡ÜÍ.â[[…èñ9FûÓ;W“¿ç0üÓ£…‡XŽRµ\zrÓþ2Ä8ÁÂÙÚ|¯ÿ 9äýWŠj^¾›)ëê§4ú$ƒ›ÁD™Ô´Ì?/y€¥j6·$þÊJ¥¿ä]yøfÍ›6lªkÚ~ž®¥s²xÍ" ÿ ‡+œßÌ¿ó“þFÐÁQ}õÙGìZ¡’¿ó×àƒþJçówüæÅôá¢òÖž–àì%¹nmóÇÁÿ ­$¹Âüãùæ?99mvú[„­Duãÿ VøÄ?à2/’'y[ó•ÏÔôI.¤¨äTQ½å•©ìÛ=Kù[ÿ 8}§éE58H·×"„[GQ
+Ÿø±¾Ÿþ?øÉžŠµµŠÒ%·¶EŠ$UU¢ª¯Â£Í›6ùÇÏZ7“­þ»t–ÑoÄ1«9³kñÈßê.yó{þr¿Tó8“LòÈ};Nj«KZO ÿ Y¸Cü±üñgìgÒt‹Íjî;:'¸º™¸¤q‚ÌÄû~¼ö'ä_üâí·•Ìzçš‚\ê¢4PæoÙšuþoîãýŽmûÌôlÙ³fÍ›¼¼†Ê	.®\GJÎîÆUG&föUÏ_œß™þ`ùŠ}\ÔZ¯î­þÌJ~¿šOŠWÿ -ó¸ÿ ÎþYÍçkäþh,ë÷\N?äÂ7ügÏUfÍ›6lÙÂç2u!käÔ¶®÷7‘%=•d—þ4\òÇäŽúGÎº<¨úäNG´gÖ?òo>ŽæÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6ÿÐõNlÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍœOþr÷\ýä—µSF¾¹†{)7ÿ &3È•šéï4éziY®â?ÈOù&­ŸJófÍ›6D¿5|‡ž¼»w¡KA$©Ê?±*üP¿üÂÿ ñ[>|à¾²ŸN¹’ÒåLW;#©Ø«)âËóVÏ~ÿ Î=~h/Ÿ¼··]JÊ]å€ýÜÿ óÝ>/øËê¯ìçOÍ›6lÙüÓü°Ó14–ÒµÂU«A8hŸù×ù‘¿Ý‘þÚÿ •Á—ç÷Ÿ|…ªyT“FÖ#á*n®>Ä‰û2Äß´ÿ öâÎ±ùÿ 9'?“z˜™§ÑI¤r}§·¯ò÷’ßù£ûQÿ º¿ßmí7S¶Õ-£¾±•'¶™CÇ"ÊÀþÒ°Á9³fÆOoÄmÊ²Fà«+ Aª²Šœó7æÿ üâ7¦MWÉa˜ÕšÉÍü»Hºÿ ŒR~ïù^?³žUÖ´;íéôýR	-®¢4häR¬>ƒÛÁ°,Éo"Í‘*ÊH ŽêÃ¦wË¿ùËo2yp%®´­f´ñ˜iè}OùìŽßåç¤¼ÿ 9äÿ 7Š+±gvßî‹ªFÕðY	ôdÿ a'/òs¦«”ÔÁy³fÍ›6lÙ±;›¨­ciîc‰Yœ…P?ÊfØgóßüåW”|²)N©v»p¶ûÿ .å¿wÿ "½oõsÍ˜ßó“jó˜{d—ôuƒmèÛ	Ïýìžü}8ÿ â¼äÙ³Ò?ßó‹“ë&-Î´6<VPò÷VŸö¢ƒüï%ÿ !>ß¯í­¢µ`8£PªŠ UeUQ²¨Å0³Ì^hÓ<·j×úÍÌV–ëûr0?Ê£í;Ÿy×óþsFÖÜµ¯”-~°â \Ü‚©óŽ¤ÿ =/õ3Ì^pó~£æýJ]kXKw592ª¨¢Ž8 Qð¨ã„¹³fÍ›6lÙ³fÍ›6K<“ù©æ?%HC½’ëS	<¢oõ¡~Qÿ ²ûåg¦-ç1´ÝP¥—›¡ú„æƒëU¡'ü´ø¥‡þJ§ó2g¢,5}F»²•'·rI#`ÊÃÅY~ŠÉÊ¦9 d`ATz‚3…~gÎ%è>e/{åò4«æ©â¢°9ÿ */÷OúÐü?ñSg•|ýùAæO"HWZ´e‚´[ˆþ8[å*ýŸõ$àÿ ää36X4Üaî“çß0iý¨ÝÛÐG;¨ÿ Vã’›/ùÈ¯>YÐG«ÌÀ¿þN£á¼_ó•¾ŒPßFÿ ë[Åÿ Æ¸öÿ œ±óñ‘qoüÑ…×Ÿó“>ºÙµF@’(—þ#r9ª~my·To5{×SÕ}wUÿ €FUÈ´÷\9’ggsÕ˜’~ó‰ã‘F€³@äçIògüã·œ¼×ÅíìZÖÙ¿Ý×_ºZx…oß?û›=ä/ùÃmJ+sæYßRœoé%c„zZ_ø8ÿ ãw½#F²Ñ­–ËL‚;kdû1Ä¡T±\›6lŒyËó7Ë¾MŒÉ®ßEnÔ¨Ž¼¤oõ`NR·üóæüæ}ÍÀ{O'[z
+j>³p?Î8(Óþz4Ÿñ<å¯ùQóÓ_ê÷]\¿W•‹õE~Êÿ ’¿t/ÊÏùÇO1yô¥×¨éf„ÜÌä?åÞ-žoõ¾¿âÌöWåŸäþƒùymèéò¹p·2PÊÿ ì¿a?â¸ø§û/‹&Ù³fÍ›6lÙæùËßÍñmøJ“÷²€÷¬§ì§ÚŽÛýi?¼—þ+à¿îÆÏ8þ[ùïÏZå¶…ePfjÈô¨Ž1ýì­þªýŸæ~	ûYô{@Ð­44==;[XÖ8×ÙGo´ÍûMƒófÍ›6lòßüç­Æ#Lvyæaþ¨Ž4ÿ ‰¾s?ùÄ½/ëÞ{¶”Š‹Xg˜ÿ Àz#þl÷†lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³gÿÑõNlÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍžUÿ œáÖã‘¥)ÿ NÃþ8ÿ ænsßùÄ}ô‡ža¸"¢ÎÞi¾’>®¿ò=Ù›6lÙ³gç0*NŸxžtÓ“ýèˆîÀfZR9¿Õ™Gÿ ‹Sù¥ÎSù!ù¡/åß˜"ÔX–°›÷WH;ÆOÛýù~ñ?Ù'íçÐû;ÈoaŽêÙÄÊ¡ÑÔÔ2°ä¬§Á—Í›6lÙüÌü¯Ò0ôÓ¦êÉGZ˜gP=H›ùÿ /óÆ~ÿ eðoæå6³ùu}õ=V>P9>ÂéÊòŸÙ“ùâoÕâøiùEùé­~[Ü¶o¬éŽÕ–ÑÏÂkÕáo÷L¿å/ÂßîÄlößå¿æÎ…ùƒkõaë([w –?õÓºÿ Å‰Ê?ò²c›6lÙóÏå¾…ç‹oªkÖ©8à“ìÈŸñŠUø×ý_°ß´¹åŸÌùÃÍcGçwåY?IZý¢Î£Û¤Sÿ ±ôßþ*Î©iwZ\íi–÷hÑÈ¥X|Õþ,’ß)~ly£ÊT]Qž—¤E¹Çÿ "%çü&v/,ÿ Îkkv€G®XÁx£«ÄÆú¾þ:n‡ÿ 9“åàüwVOß”bEÿ ‚…™ÿ ä–NtÏÏß#j@zÅ²×´¬bÿ “â<’ÚyÛB¼ Úê6’×ù'¿â-†)ªZÉB“FÕéGøãdÕìâ’x”{ºã…—¿˜]±ÝjvqSùî#­ò-ªÿ ÎEyLÕÕ¡ŽÐ‡–¿ò%r¯ÎhùbÎ«¦ZÝ^8èHXÿ ²fy?ä–rï3ÿ ÎfùŸP="ÞßOCÑ¨e²’‘ÉãÞgóî»æ—õ5Ëéîû…‘ÉQþ¤_Ý§ûÂØeåï-ê>c¼M3Hînåû)©ÿ Y»"/í;|ûYìÉ?ùÅË)õ2ð½Õ…#ë'üšÿ }2ÿ ¿àO÷Zÿ »3½ãe•!F’V
+Š	f&€Ô“žsüÚÿ œ¼°ÑËé¾NU¾ºVºoîPÿ ÅCí\7ù__ñ—<¥æ¯8êÞk»:†¹u%Ôç¡s²åÁ’Š«„Ù>ò/äg›<ëÆ]2É’Õ¿ãâÝÅOgø¤ÿ ž)&Kÿ 0?ç<ËåKÔ¬Ù5DU&t·Vç;ª7Ç4å*óÿ ŠøüYÄÈ ÐìFVlÙ³fÍ›6lè•?‘úïæ-À6Q˜4å4’î@x
+}¥ýý/ù	ÿ =3Ùúä/”t­=Kn¢]ÞIÐ4®çíJeûhÇþ+eà¿
+ç5ó¿üáŽ‹¨ŸË72XLwKYbùrþþ?Ÿ)ÕÏ8~`~KyŸÈŒ[W´cjÄ_Gþz/÷êÊ±¶A²oùkùÃ¯þ^Ü	t‰‹[1¬–ÒU¢ö°ÿ ñd|_=µùIùß¢þd[¡·ÕõÅe´Žkþ\gýÝùkÿ =3¡ã'‚;ˆÚ•^7e` öe=sŒyûþqCÊ¾f-q¦«iWm¿( 1þU³|?ò%¡Ï:ùãþqgÎY--´Sµ]ùÚîÔÿ *Ý¿{_øÇêÿ ­œ’æÖ[Y„håCFWÊVÜbY³a¶‰åMO]<tËw¸jÒ‰Bàzä²×þqûÏW?Ýè÷¿ÏÅ?äã.H4ïùÄß>^SÕµ†ØòÎŸó$ÊÙ3Ñ¿çµy¨u]NÞÜB)ÿ ‡ú¾t_.ÿ ÎyOO£êrÜß¸êÄhØÂ=Où-_Ë?—]ò¸¡tû{f¶¨ý37)OüHófÀ÷º…µŠnåHcZF
+?à› žaÿ œ‚òF…È\êÊëûõ˜×Ã÷Eÿ ‚lå~hÿ œÙÓ —ôé® {†¯Ï„~«·üyÆ|áÿ 99ç_2†ˆ]ýBÝ¿ÝvƒÓÛþ3U®?ä®rÉ¦–æC$¬ÒJæ¤±%‰>ýNtï ÿ Î7y»Îf[ccfÔýýÕPã_ßIþOÁÃü¼ô÷å·üâ×–| RîùJ_­©:MOüUmñ'Ó/ªßËÇ;  
+€Í›6lÙ³fÍœûó³óbÛòãDkæ£êÖ;Hí=?¼aþú‡íÉþÆ?ÛÏžúŽ£u«ÝÉ{xí=ÕÃ—wmÙ™Xý'=Ïÿ 8×ù=þÑ¾½¨¥5@š½bN±Û|ÿ noø³áÿ u.v,Ù³fÍ›6xŸþs7Xúß› ²SðÚY #ü§gÿ Âzxwÿ 8C¤zº®©©‘´6ñÂües'ý‹ç¯sfÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›?ÿÒõNlÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍž"ÿ œÊÔÍ×œ£¶¯ÃmgSÝšIOàë’oùÁý/ö¯¨‘ýÜ0Âúìò7ü™\õ¾lÙ³fÍ…¾dòõŸ˜ôëRORÖê3¯±ý¥ðt?7ì¿ÅŸ9¿2ü{ä=n}øWÓ<¢’”Dº•Ökù$æŸ³žÿ œGüçžFÖ$ñkÿ ²{Jÿ ÃÁþÎ?÷Úçª³fÍ›6l,ó'–tï2ÙI¥ë%Í¤£âGs)ûHëû.ŸçŽ?8ÿ çõO*™5O-Ô4±V(fˆ”«ýôkþüâþxÿ o8Ž“«Þh×I}§M%µÔF©$lUÿ YsÓ_•ÿ ó™K;D\
+yïóžÜ}¯õàÿ ‘9é¯.y§Kó-¨¾Ñnb»·?µCü®>Ò7ùÅ°Ó6lÙ°‹Í~DÑ<ÛÕµÛ8®Ðl¯Ä¿ñŽU¤‘ÿ °uÎ	çOùÂ­>è´ÞX¾{V;ˆnG¨Ÿ%•)*õ–lâkÿ œoó·—94¶u
+ÿ »-ª?à÷Ãý”YÎ.­&´Ãr‹Õ\#æ­ˆæÍ–:efÍ›6lÙÙÿ *ç5ÿ :¾ÔÓ4¶¡õ$_Þ8ÿ Š!;ïþü“Š/©žÄòå–‡ä;O©hVâ2Gï%oŠYŒ²õoõ?»_ØEÉNy³Íºo”ôùu}fe‚Ö»¤þÊF¿iäÙEÏ~tÎDjß˜R5©k-†?žtËö¿ã÷Iþ[|yÈó¢~XþEyó	Äº|^……h×SUcÛ¯§ûS?ù1ÿ ³dÏZþ\Î2ù[É¡.'‹ô– »ú× þ*·Þ4ÿ eêIÿ g[ A°³™þcÿ Î<ù[Ï%®n`ú¥ûÇÍ½‰ñ•?»—ýg_Sþ,Ï8ùÏþpóÍAitG‹T€t
+DRÓÞ9O§ÿ 3«œ{_òn³åç1ëW„¿ceýVaÅ¿Øá6lÙ³`­?K»Ô¤XÃ%Ä§¢D…Ûþ9Ô<¥ÿ 8½ç_0•i-Ÿë%Ûp?ò$sŸþIç ?/ÿ ç|» ²ÝkÎÚ­ÊïÁ‡ÿ Œ@–“þzIÃþ+Îíkk¤Kº,q 
+¨€*¨²ª»(Å3ce‰&CªP«
+‚b3þkÎ%èþbjXã¦ê§ÒýCþ ÿ yÏùQ|ñVyÍžOÕ<¥|ú^·nö×)Ùº0þxÜ|2!þtÀZF¯w£]Å¨iÒ¼P0häCFR?Ïý–{Ÿòóòßó×ô~£ÆrÝjè6Y”»áòv/ØûKð}žÃ›6ù£ÈZš£ôµË.Ç@Ò ä?Ô”~ñ?Ø>q5ÿ ÎywPå&‡u>Ÿ!è­I£ûŸ„ßòY³‘y—þpÿ Î:_'Óþ¯¨Æ:zRpù?¦¿ð2>rýòëÌ^_$jºuÕ¸´ñ7ùOLÿ Ádw4¿8ëZM?G_\ÛS§¥3§üA†Jì?ç ü÷c´ZÅÃSýùÆOù<²aý¯üå—Ÿa§;¸e§óÛÇÿ 2Õ0Æ/ùÌ:§Ú['ùÂßñ¬«ŠÐåùÓý÷cÿ "_þ«`yÿ ç0¼ï%x›Hëü°tÿ ƒwÂ›ßùÊ_?Ý
+@D?â¸"‰ŽFµ?Î9j@­Î±xTõ	+ ÿ ‹€Èî¡s|þ¥Ü¯3ÿ 4ŒXýíšÇN¹¿AgÏ)è±©cÿ µ9Ñ|µÿ 8ßç|†‹N{híÝì$ý÷üYØ<¥ÿ 8H ¬¾eÔ‰éX­Ÿò^aÿ 23¹y/ògÊ¾MâúE„K:ÿ »¤¤µñõeäÉÿ <ø.MsfÍ›6lÙ³fÂo8y¿OòŽ™6µ«È#¶j|XþÄq¯íI#|(¹óËóCó&ÿ óY—YÔ?ƒUŠ0~×ßö¤Û|ìßóŠ?’U¸O:kqÿ ¡ÀÕ³‡÷’)ÿ zÿ }ÂßÝÿ <ßñ‹âölÙ³fÍ›6|ìüÿ Öÿ LùãV¹’¥Á„|¡oÿ 2óÑÿ ó…š/Õ|±w¨°£]Ý•ÅcEQÿ òg¡3fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›?ÿÓõNlÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍžÿ œ©•¤üÀÔý•·åèÄs²ÿ ÎB£HÕei®cSòHÿ ‰ç¥sfÍ›6lÙÊÿ ç ÿ 'cüÅÑ¹Z(Å˜g¶nœ¿žÙÏòËûÉ/ÙçžçL¹ý¸.­ä÷WGCÿ ŽŽ¿ì[=çÿ 8ùùÓæ&•è^2®µf \'Ncì­Ôcù_ýÙþû—ü–:ÆlÙ³fÍ›9æ¯üãO—¼óÎöØ~ŽÕ§×‰G?òñÂ¯þºp“ù™³É˜ß‘Þfò³êvÆ[ vº‚¯ÿ Y©Ê/õfTÈ§—¼Ñ©ùnä_h×2Ú\Ú‰ŠÔ+vuÿ %þïþEÿ œÐÕ,BÛù¦Õoc ¤rüÚ?îd?êúß|ÿ 9äß5…K=B8'o÷MÏîž¿Ê=OÝ¹ÿ ŒR>t5`À2šƒ¸#/6lÙ°»YòÞ™­§¥ªÚAv)4jãþ6sÝkþqÈz­XéÂÝÏíA#Çÿ Òÿ „Èf§ÿ 8Så™‰6W·°{1ŽAÿ &ãoølŽÞÎ¯[]hg¶þ+>Éÿ 8=¨û½^}àaÿ 3-?ço9ë@Çþf®/sÿ 8m¥èð›­sÌ+«4+ÿ ÁË=2®h?”~Yª-î£®\¯ì[”Ž*ÿ •3F¿übisŸk¾qÓæ¬:“m§CüÌ^âcþ´×%‘çŒdT’MO\ê?—óŽ>kó¯Ò¨Ø6ÿ X¹1Eýì¿äü>ŸüYžªü²ÿ œkòÏ’8]<¤5%ß×œøÁñÅþ·Ç'üYc6y§ÌöWÓ§Öui6–ëÉØõ?Êˆ?iÝ¾_Úlùÿ ùÅùÁ©~dêfêä˜¬!$[[²/ó¿óÌÿ îÇÿ b¿A ‚K‰T¼ŽBª¨©$ìªª:±ÏVþIÿ Î&GÇ­yá9ÈhÑØ×eð7d}¦ÿ Šáÿ ~òþï=?oo´k±Ä€*ª€ÑUFÀb™³fÍ’%•JH)Ø‚*EuÊ_)jäµî“g#¬!Uoø4
+ù¼ÿ œ_òÑ¯èßLÿ ÅsL¿‡«Lÿ B™ä/ùd›þ’$ÿ š±{oùÅ_ By“ý{‰¿ãY$:gäW’tÒßGµ$t2'«ÿ 'ýL˜Øivšt~”1Áý˜Ð ÿ @0NlÙ³fÍ‘_ÌoËMÏúsišÌU¥LS-‘7óÄÿ ñ$ûûyàoÍ/ÊýOòëUm/Rãj´¨¢JŸÌ¿ÊëþìöüžÑÝ]¼Ðo¡ÕtÙ7vî7^Ä~µo²ËûKð¶}ü£üÊ¶üÃÐaÖ`¢OýÝÄ@ÿ w*Ôoï#ÿ ŠÙk&y³fÍ˜Šìr=­~]ùs[¯é=6Òáí<([þ?øl„ê¿ó‹žBÔ*ÃO01ïÒ/ü)vOøLŠêó…žT˜ÖÖîúáÎ7ðÑrÿ †Â+¯ùÁÛ¯Õõ‰WÃœ
+ßñ#ÂÙçç¯îµ¤#ü«b?æ~3þ„rïþ¯1ÿ Ò1ÿ ªØ"ùÁ¶Û×Ö‡¿_ë>ZÎi	þõj·2©'üHË’-7þpçÉv´7òä÷õ&
+?äŒqÄ²c£ÿ Î?yI¡·Ò-Ý‡y¹Mÿ Q&N4í&ÏMOJÂ­ãþX‘PÀ \›6lÙ³fÍ›6lØYÖlôK9u-JU‚Ö/$Žh çð¯í7Â¹àoÏ_Î«¯ÌJ‘r‡H¶b-¡=Oo^oøµÿ ä’|ûlâ $n?1µ/^ð4z%«<ƒng¨¶‰¿ÿ Ýþêü¶=ícc„ÚZ"Å*EUGU
+1lÙ³fÍ›6lù¡ù—¤O£ù›S±º¯«ÜÕ'¸.]ýš2¾z×þpûÎvzŸ•Î€œR÷M‘Ë¯wIY¥I¿à™¢oåà¿Î¹Þ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›?ÿÔõNlÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍžÿ œµ²ú·Ÿ.d¥=x “îAüÊÎÿ 8;~ÛX²'u’Þ@?Ö¡ÿ “kž¡Í›6lÙ³fÏ0ÿ ÎUþEÕ“ÎÚuo¡Aö”ÇÒ/ó þÿ ù“÷¿³'/1ù?ÍÚ‡”u8u­"ONæ¨ðaûqÈ¿µ‹ðºçÐŸÊ¿Ìý;óHMWO!&Z-ÄÕ¢’›©ñFûQIûkþW5YŽlÙ³fÍ›$k"”pXP‚*=Žqï?ÿ Î,yOÍE®lã:]ãoÎØLŸòíîÿ äW£žuó·üâ‡›ü»Ê[ÓT¶µnyOò­ß÷•ÿ Œ^¶rí>çO•­¯"x&_´’)V5z6ùgó+Ì~W#ô6£qlƒöÉOùü¢ÿ „Î«åÿ ùÌŸ7iôMJ+[ôK!ÿ à¡+ü’Î‡£Îoir€5].âÜÃ"È>é>¯“=7þrÛÈ—”õn'¶'´°?üÉõ†H­?ç ¼‹t+±n?×äŸòqS£üâòtŸgZ°ÿ ¤ˆÇümŠËù±å©ÏY°ÿ —˜¿æ¼qùßä¨>Þ³dÕ•[þ!Ë	oÿ ç&üƒf7ÔÄ‡Â8¥oÕÇ"º¯üæo”-ApÞ]7jF¨¿|’ÿ „È>·ÿ 9¿võ]IŽ?¸”¿ü“‰bÿ “™Í¼Åÿ 9Cç­h¢Î3û6¨þJsÉ\æz¦³{«Jn5‰nf?·+³·ü–Ã-y#[ó<žŽ‰e=ÛV„Æ„¨ÿ ^OîÓý›goòWüáŽ¹¨q›Ì—1éñÌqþö_–Ô…?äd¿êç¡<‡ùå/%ñ–ÊÐOv¿ññsI$¯Šrœ_óÊ4Î‹›6lðßüåçùÃXmN’ºFœå~´³†I¿ÊH÷Žör»3‰EÊâ8Ágb¨$ž€ö×üã¯üãÔ>M‚=^ŒI­ÊµD`¶Sû+ÿ /ýÙ'ìvŸ¶ÏÝófÍ›6lÙ³fÍ›6lÙ³fÍ›6C?6-,ÿ 0ô9t‹ pÛÌFñÊÀßê7Ø•i?ÊãŸ:µ}&çG¼›M¾CÍ´ˆz†SÅ†vùÄÿ Ìò×šWIée«ÐJ7¶™nPÿ Ï_òsÜù³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ€µ­jÏC³—RÔå[{H´’9 üþÊý¦o…sÂ¿Ÿ?Ÿw˜×_R²åo¡ÀÕŠ#³HÃýß?ù_ï¸ÿ Ýëç"ÏgÎJíå‹äf%Vù‚‚vŽ#¶z6lÙ³fÍ›6y‡þrÿ ò‰¯"wÒÒ²B¢;ÕQ¹A´W?óËû¹â¿M¾Ìmžmü½óÝÿ ‘uˆ5Í0þò#GB~ÿ yŸä¿ü+q´¹ôGÈžwÓ¼í¤Ã­é/Ê‡Ä§í#·ƒö]?æõøpÿ 6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙÿÕõNlÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍž4ÿ œØÓ½/2XÞ´Ö\	÷I$þ®)ÿ 8K¨ú^`ÔlIþúÐIOxäUÿ ™Ùì|Ù³fÍ›6lÄ;ƒž-ÿ œ–ÿ œo*ÎþgòüuÒ&jÍ÷ØõþY¤o³þúÝýŸO9Oå§æN§ù}«&¯¥5GÙš~	c¯Åÿ Æþëo‹>€þ]þbi~~ÒÓWÒª~#o·þÔR¯ò·Ùuø—$ù³fÍ›6lÙ°«_ò¦“æ(½bÒ¸û	£V§ú¥…WýŽr_3Î!y7V-%€ŸNïû™9%ãþ§ü#¦rýþp“W„³hÚ•½ÂöYÑ¢?z}aâ9ÏõùÆ>i„ŸÑÿ XAûPKÿ ÂrY?á2!¨þYy£M$^iW±S¹·’Ÿð\xáÅ…Å±¤ñ<gÁ”×óc•Í}°ÊËÊÚµñ¥¥•ÄÄÿ ¾âvÿ ˆ®IôÏÈ¯;jtú¾tèdOH}óúy6Ñç|ë~A»¶Jzú²ò?ð6ë7üK:'—ÿ çm#£ëš¤’ø¥´a?ä¤¦_ù5OËóŽHòñœ—2¯íÝ1ÿ €“÷?ð1gH¶¶ŠÖ1º,q¨ U  =•qLÙ³fÎQÿ 9ù­oä/Ïmo8]bö3²ñ€ß—}rôÙ¿Ý¿ì³ÀYéùÄÊDÔî[Îš¢r‚ÕÌvŠÃf”}¹ÿ çÙþ-ø¾ÔYëÜÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6xÃþs3É©¥ù†Û^x¦§Sýûfÿ eÃÿ œÆö[ˆîíÏau‘ƒ)ä§þ>ŒþX~lhß˜vïK”„QëÛ¶ÒFÇù—ö£¯Ø‘~ÿ [áÉ¦lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lØGç/:i^NÓßVÖæX-Ó¥wgnÑÄd‘¿—þ5Ï
+~t~yê™7|¶ÚLMXmÿ ’³Ÿ÷dßð‘ý”ý§p“ÿ “z§æV¡õ{PaÓá#ë$|(?‘?ß“·ìGþÉø¦#ùáå;/)y¶÷DÒÑ’ÒØB1©Þ™›¹wflôgüá$µòö£òÞ÷ÆŸóNz76lÙ³fÍ›62x#¸¡™CÆà«+
+‚£+)ê§<!ÿ 9ù/åö¢u9Khwn}&ëè¹ø´‡þL·í§ÃöÑ°“òKó’÷ò×Tõ‡)tË‚ê zŽÒÇá4³üÿ Ý·ó/¿´vË_±‡TÓ%Yí.<n½?ñ_²Ê~%o…°~lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙÿÖõNlÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍž]ÿ œâÓy[èú€eçˆŸõ„n¿òmó˜ÿ Î%êBÏÏvÑAsñÂzßó'=á›6lÙ³fÍ›»´Šò¶¹E’T££
+«)ee=U†xþrþqö"Ü6µ£#I¡LÝI·cþê“þ*cýÔ¿óÎO‹IÏ-?35_ËÝQu]%ê¦‹4,O	Sù$ònOµ²V÷×å¯æv“ù…¦®§¤?Ä(&…ï"ä‘|?’O±'üKsfÍ›6lÙ³fÍ›65ãYâ¸ôKûvðšøÆ§øbqùoL‹xí ZøDƒþ5ÁPéöðÿ u'úªêÅófÍ›6lÙ³güïÿ œˆÓ/¢m>À­Þ¸Ãá„¬Ué%É_øX¼òãÏy“Ìº‡™oåÕµyšâîsVvüGEEû(‹ð®µ¶’êT·„r’F w,x¨ûóé—‘|«•4K=Üª?i©Ydÿ ž’söX{›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÏ:ÿ ÎmZ£ysO¸?m/x“G!où6¹ã\0Ð|ÁåûÈõ-&w¶ºˆÕdŒÐoò”þÒ7Âßµž´ü¥ÿ œ¼±ÕBi¾sgw²‹¥¹øÊ¿ñîßåsÿ ³Ñ–÷1\Æ³Àë$N+)H=Yv#Í›6lÙ³fÍ›6lÙ³fÍ›6lÙ³g7üÜüõÑ?. 1Ü0¹Õk¤gâßì¼Íþé‹ü¦ø›ýÖžüÄüËÖ|ÿ ¨KZ—•*"‰vŽ%þH“þ$ÿ mÿ m²cù#ÿ 8û©~bÌ/n¹Zhˆßä|RS¬VÁ¾Ó4¿ÝÇþ[üî_,y_Nò½„ZN
+ÛÚB(¨¿ðÎíöÛöÝ¾&ÏÎW[ú^~½o÷ävíÿ $‘ã\ëóƒ÷´Ý^
+ý™áj¬®?ãLôÖlÙ³fÍ›6lØ]æ/.ØùŽÂm'TˆMip¥‡ˆþWSñ#þË|Yó÷ó£òŠóò×Wú”¤Ëc=^Öoæ@wGÿ ‹¢ø}Oö/ûyÓç3¤Ó5Wò}ëÖÒû”–õ?be™Wü™ã_ù;g±³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÏÿ×õNlÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍœ#þs+Lú×“£º{kÈš¾Ì²Dá3Ë_‘úŸèß:è÷Ð}n8ÉöúþNgÑÌÙ³fÍ›6lÙ±Ë8oa{[¤Ya•Jº8YNÌ¬§¨9âÏùÈùÆéüœòkþ]F›EcÊHÅYíëüÝÞßùdÿ uý™ßÈü“çWÉzŠjÚ$ÆÓb:«¯íG*~Ümÿ 7/ø³Ý“ŸžúGæE¸‰µÕÑk-«Í>Ô7û¶/øxÿ où›¦æÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³b×öú|wy"C@³ÈìTÚfm—<¯ùÏÿ 9nehþF%Wu{â(OüÂ#}ŸøÎÿ ûíûÌóqÜêw!=ÅÔï°wwcô»»6óG•ïü¯~úN­¥y£:T¼ÑeUb»ràëËÿ %tô¿óžo ªýr&#ýFõ?ãLú?›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍžiÿ œÞÔÄzN—§×â–âIiípÿ ™ùäõ´ÿ óŠzwš|§¥ßél,5£cÈMLR³"¹õ—íG'Åýììã|óW<­y.ìØkÖÏo&üXŠ£ûQJ¿‹þ¯û,:ü¸üêó'$I¸/iZµ¬Õxµ¿Ë‰‘³Õ—ó–Zó8K]`þ‰¾4”Ö?ä\lþ{,ë6v¸fIÑe‰ƒÆÂªÊj=ÁüÙ³fÍ›6lÙ³fÍ›6lÙ³`M[W³ÑížûQš;{h…^I*þ³g—?7¿ç/ÚQ&—äpUwV¾‘w?ó}ŸøË/Åü±/ÛÏ1\\\êw&iÙî.§j–b]Ý˜øîÎÌsÒ¿’ó‰²Þõ¯;¡Šš;ŽÞèîÓþ)_Þ¿=?°Þ±´´†Î$¶¶EŠÔ*" ª tUUÙTb¹áïùÌkOGÎ«%?¾³…þæ’?øÓ&?óƒ—”ŸYµ'í%³ò3)ÿ ‰ç¬3fÍ›6lÙ³fÍœ›þr{É+æo&ÝJ‹[­;ý.#MèŸß¯û(9ÿ ²DÏ
+yZ›CÔmµ[SI­fI“æŒøgÓ½/Q‹S´†þÜÖ+ˆÒT?ä¸¿ƒ`œÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙÿÐõNlÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍœ×þrCKý#ä=V:TÇL?çœ‰)ÿ …VÏhšÓ¯­ï—¬G ÿ `Áÿ †}EŠE•D5V ƒìqÙ³fÍ›6lÙ³eIÈ¥V î=ŽyOóßþqT©“_òDU]ÚkíâöŸöOÿ "ßYæ+;Û½&énm]íîàz«©*èÃßí+õ—ä¿üå¥¾ #ÑüìËÎÊ— R7ðúÊî_þ-_Üÿ 7¥ž–ŠT™HØ20X‚B;6lÙ³fÍ›6lÙ³fÍ›6lÙ³g+üÑÿ œŒòßÃÚúŸ^ÔÖ [@AââùwHÕø¥ÿ ŠóÇ™ß>`üÃšº¤ÞššÇkV%ð,?Ý²Å’rÿ '†þ^~Wëž~¼Z$ÕHõ&m¢ŒxË'üh¼¤oÙLöÇä÷ä‹ùs¹P.õfZ=Ó³_´–éþéOù(ÿ ´ÿ ³žXÿ œ«³6þ~¾b6• qÿ "‘?âI‘_ÉEtï8è÷2 ¼…IðÂ?øß>æÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³gˆç0¼Øº¿›K…¹G¦@±µ?ß’~úOøOEÖ\ã‘.³¨[i–â²ÝM+óv?âYôþÊÑ,àŽÖ!HâEEÊ8®×ü¹§y†Ñ´ý^Þ;«gê’(aþ°þVþW_‹<Ïù•ÿ 8gR÷¾Jžþ©pß„7ñ¬ÿ ò;<×æo(êÞW¹6ZÝ¬¶“Ù‘hº?Ø‘ÊFeÃ#þmy—É.‰{$PÖ¦øâ?8_’²N/þVzÉóš¶³ƒÍvMô3ÚüKóh$<Óý„’ÿ «ãÊ_™Þ[órƒ¢_ÃpäWÓÆAþ´q”ÀdŸ6lÙ³fÍ›6lÙ³fÍˆ__ÛØB×W’¤0 «<Œ@ÿ )ÛáÁ2?ç/ô=•§–Sô¥ØÛÔ5Xÿ ­ýäßóÏŠÅÙåo>~gëþ{¸úÎ»tÒªš¤KðÄŸñŽøÙÿ yüÏ‚.(üÁùqèèÖçÐSI.$ªÄŸëIûMÿ ÇÎOòsÙŸ”óåê­Û}«Ó{™ìŸhþ/KýŠ_òøü9ÕsfÏÿ ÎnØðÖôËÊ{jñ×ýGåÿ 3°üáV !óEå¡ÿ wY14’/øÕ›=¡›6lÙ³fÍ›6lFöÎ;Ø$µœrŠTdaâ¬8°û³åö·¦>•}q§Éöí¦’&ù£?ñ÷ïüãŽ¸u"ir±«Ã[·üòf‰?äš¦t¬Ù³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙÿÑõNlÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ„žyÒÿ Kh:ŽŸJýbÒxÀ÷deó>—þYê¿¥¼±¥ßV¦k8ÿ ­Áyÿ Ãd—6lÙ³fÍ›6lÙ³Ž~sÿ Î7i>~©iülu£¿ªÁ)ð¹Eý¯ø¹?yüÞ§ÙÏy@ºòö£q¤jVêÖFŽ@¬r^´eÉ÷åGüä˜?/Ym£o®iuø­e&€Ë¼›´ÿ óGžÆü´üîòçæatÉý+ÚUíf¢Ê<x³2—/ò¸äû6lÙ³fÍ›6lÙ³fÍ›6læ?˜?ó‘^Sò_8&¹úåòíõ{j;á$•ô¢ÿ düÿ ÈÏ.~eÎQy›Îí,›ô^žÕœy°ÿ ‹n>?êÇé'ó+g&Óôë­Rá-,b{‹™M8Ô³1ÿ %Wâ9é?ÊŸùÃË‹²šœÁÌ,âoÞ7üg™~¿Ô‹”ŸåÆÙê@°Ð-NÒ ŽÚÖ!EŽ5 ÿ å1ý¦o‰°~yþsgË«§ëè¿»¸…­Üÿ •z‰_õ’où'žm·íäY¢%dF¤v ÔúWùoçK:hzí±éQGìÈ>£ÿ a'/ö?IsfÍ›6lÙ³fÍ›6lÙ³fÍ›6l†þkþeÙ~^è’ê÷„4ä·†»Ë)¨¿jVý„ÿ +Ž|èÕµKZîmFõÌ—74²1îÌy1ûóµÎ"yµï3ne­¦”¾¥OC3‚/ûÞKÿ <Ó=¿›6ëž_Óõëf²Õ­âº·n©*?‹£•œÏó†z.¤ZãË7§LwIYa¯‚’}hÿ à¥ÿ S<ûçOùÇ¿8ùK”—V-ql¿îë_Þ¥<X'ïcÿ ž‘¦s¥g…ê¤«©ê6 Œè~Tÿ œƒó§–x¥®£$Ð®Þ•Ïï–ž½å"õ3®ùkþsvá(šþ–¯ã%¬…äŒÜÿ äöu//ÿ ÎVùW¢Ëu%”‡ön"aÿ %"õbÿ ‡Î‹¢ùßC× :]ýµÕ{E21ÿ Vå‡Y³fÍ›6lØÙ%H”¼„*É&€g>ó_üä’ü±Énõ¦™ÝVß¾jø~ë’!ÿ ŒŽ™Ãüéÿ 9¯q(h<«`"÷G“|ÖÏÿ e,Ÿêçó‡æ&¿ç½}zö[ê¨Æˆ¿êBœbOö)•äïËíwÎWUÐlä¹`hÌ¢ˆ¿ñ’fãì›==ùeÿ 8qc§ð¾óŒÂòqCõhIÿ ÉðÉ7ú«é'üdÏFiÚm¶›YØÄ[Ä8¤q¨UQàª»›6ló7üæþ—êišV¢÷SË?ñ‘UÇü˜Î=ÿ 8³ª?Ï¶
+Æ‹p³BÙFì¿ðè¹ï¬Ù³fÍ›6lÙ³fÏŸÚ`Ó|ó¬@\™ähYÿ æfzWþp»S7S¹´n¶÷¯O“¤Mÿ çÿ 6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6ÿÒõNlÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ˜ŠŠ™óÍÚYÒu‹í8Š}Zæh©þ£²÷Güâî­úGÈZx&­ne„ÿ ±‘øÿ É6LêÙ³fÍ›6lÙ³fÍ€õR-"ÊãQ¹4†Ú'•Ïù(¥Ûð\ù‡¬ê“j×³ê7&³\Êò¹ÿ )Ø»~-Vÿ þq‹Ì£ËÖ~eÒÔ^­Ì<–è)4aÇ5àŸîñéñoƒ÷ŸñWíg%{	ê9Ãq{«+øeeÎåùqÿ 9sæ.ð´××ô­˜ äÇŒê?ã7Iç²óÿ ‹sÓ~Bü÷ò§‚Ç§^,Wmÿ ÷ŽJø*±á/üñy3 fÍ›6lÙ³fÍ›6l ó?Ÿô+!“[¾‚×¿qÌÿ «¬¯þÅ3ˆyÓþsGF±–­$¾—´³~ê/˜_Šgÿ d°çŸ|õùûæï9òŠþñ¡´oø÷¶ýÜtðn?¼—þzÈùÓt»­Ru´°†K‹‡4XãRÌ~JŸwÏËŸùÃÍkXáwæ‰F›jwô–;ù5û.oÿ g¨ü‡ù[åÿ "ÁèhV«‘G™¾)_ýy›âÿ `¼cþTÉ^lÙüïüº~òÍÎ•\JMlOiR¼V¿ñjó‡þzrÏ—ò[HðN¥%Š²°¡Xve9Ô?"¿<îÿ -/•®4{–hAø•ºzðWáõ8ý¥û2¯Ãû(Ëî/'yëFó ¿Ð®’æ" §ãBfXÇ®¸}›6l¦` ³¹'9ßœ?ç ¼™åRÑÞj	5Âÿ º­¿zÕð>ŸîÐÿ ÆI8ÿ ˜ÿ ç7¢RSAÒÙ‡i.d§ü‘‡—üžÎw¬Î^yâüŸ«Iof§´0ƒO¦àÏ‘ÿ ÏŸ<_eÖ.…ßoéÿ É‘Ü~by’äÖmRõÿ Ö¹”ÿ ÆøO5êò½íËyœÿ ÆØ´x×­èaÔo8ÜH?Sáå‡ço,ièë7”žVq÷KÏ%:_üåŸ,h$»ŠäÓ@Ÿñ(–&ÿ †Éž‘ÿ 9¹¬ÅA©é–ÓŽæ'xü?Ö2s£Îkyrâ‹©XÝÛÝ8J£éåÿ ÂdëFÿ œ•ò«@šš@ÇögGŽŸì=?ø|šé^tÑ5`kpOJdoø‹aÈ5é›êzÍ–—›P¸ŠÞ1¹i]PÁ9\ãŸ˜ó–~WòìoŒÇV½¡
+"Ú Ë¸añ/üaY?Øç01u>ê'TÖåæÿ f8×hã_÷ÜIû#þÿ m›	ô-ó^¾‡KÓci®î$h½I?©GÚfý•ø›>ˆþQ~[[þ^hèÐóÿ yq(nV¨¿ÝÇÿ ¢þÖM3fÍ›6D¼ÛùOå6‚u:	¥o÷h^Èè¸Kÿ œkÍ?ó…E×)4ù­ôŽu§È2úR/û/S9/™?ç|í¤U­"‡PŒw·§ücŸÑoøyÌµß$kš+«X\ÚÓ¼±2¡Øq8J	£c’#óÌz=?GjwpÙ'p?à9qÉŽ™ÿ 95çí>u6•Gibÿ áš>ðÙ&°ÿ œËó•½ñYN?Ê‰”ÿ É9Sþ#‡¶¿ó›ÚÂÿ ½:]³ÿ ©#¯üKÕÃH?ç9û»Eìn¿¬+þ‡Ž×þ¬²ÒHÿ ª8çþsÿ Ç¾‹ÿ uÿ 4Á„Z‡üæ×˜%Yiöpû¹’OÔðä;Zÿ œ¨óæ¦
+¥êZ¡íH¿ðî$“þ9î½çMkÌËW¾¸»ö–Vaô+#ltû›ùE½œO<ÍÑ#RÌ~J•lêþNÿ œYó§˜ŠÉ=ºéÖçöî§´Îoø4LïžEÿ œ?òÎ†Vã\wÕnýÜ ÿ Æ$<ßþzJËþFw7KµÒà[Kc··AEŽ5
+£ýUO‡æÍ›6lãŸó–Z)Ô¼‹s2ŠµœÐÎ?à½ÿ „™³Åÿ —ºçè0éÚ¡4[k¨dcþHuçÿ 	Ë>™ƒ]ÆlÙ³fÍ›6lÙ³g„?ç-¬Å¿Ÿ.dž´?ü þeçNÿ œ¼åm¬Ú“öd·p?Ö©ÿ ˆg¨sfÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³gÿÓõNlÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›>zÎFé?¢ü÷ªÅJ,’¬ÃßÕD˜ÿ Ã;g ç	õo_Ë·úq56÷|Àð¢ÿ ÆÐ¾z+6lÙ³fÍ›6lÙ³‘ÎTyŸô’.¢F¤·î–«òcêKÿ $c‘Ùg‡ü¡ ?˜u‹=/µw<píØ;fÿ b¿}9¶¶ŽÖ$·„qŽ5
+ v qQoÌÉ-yùj–â;ÊQn¡¢J<958Ê¿äÊ¯ž\üÃÿ œIó/—KÜè”Õ¬ÆãÓfü¨Ûÿ ž.ÿ ê.q«I¬åh.Q¢™`ÊVø—'þKÿ œó”BÅe|óÛ/û¦ç÷©Oå^¼ŒÆ);•?ç6íd¤~cÓ^&ï%«ò&n¿ò9ó¬ù{þr'ÈúèN($?±sXHÿ e0Xÿ à_'Ö¥¦¢ž­”ÑÎŸÍ†z‚sfÍ›º½‚ÑyÜÈ‘/‹°Qÿ ‘M_ó‹ÉúE~¹«Ù©UeWoø¹¿á=sþrûÉ:uE£Üß0éèÄTÁ\â9Í¼Åÿ 9»{%SCÒã‹Áîd.ä\^üœlå>hÿ œ‡ó·˜ù%Æ¥$·û®ÚŠxr‹Œ­þÎFÎw4ÒNæYX»±©f5$û““o'~Hy»ÍÅ[LÓå7ûºaéGO$¼yÿ Ï>yÞüÿ 8Uk5Þ™›©‚×á_“O õ©_ëç |§ä=Ê0}[B³ŠÑ£_‰¿ã$­Ydÿ fø}›6lÙ³Íßó’?óŽRy†I<ÕåhùjVæÙÝÔÿ wCÿ ÿ :»¾Òþ÷ûßÍÂíªRD%YXP‚:«Ðà+X¼Ò'[½:y-§^’Då²Buþr§ÏZJˆÞñ.Ðt+¦DôåoöO’»oùÍ3 ¤Ö6.|@•ækcn¿ç5üÐàˆ,¬c=‰Y[þg.FµoùË=ß‚±ÝEjûæÿ ‰J%oÇ9ÿ ˜0¼Ãæ:_Q¹ºSûJÅ?ä]}?ø\fÉ‰ù{æ-r‡KÓnîôhár¿ð|xÃdÏMÿ œbóõð¨ÓLJ{Ë,Iÿ 
+dçÿ …˜ß’úÿ åí½½Ö¼±"Ý3"äæj 3r §íd;V—ÿ 8—æíSO·Õ,ä³xn¡I‘L¬+¨‘9r‹.-üØ_¨ÿ Î,yúÈ[œ÷ÔÑøVtoø\‰jß”žmÒjot›ÄQÕ„.Ëÿ dÈ´öÒÛ±ŽddqÔ0 ýÇÍ›-<Å©YŠZÝOÿ "F_ø‹`¹<ñ¯H8¾£xËàgÿ ÆøSqu-Ëz“»Hþ,I?yÄ²GäËÝoÎ×bÇB¶yÞ£›ôý©e?øfý…löïää&ùm¹‹­be¤·ÙGûæÜÖ?æ·/íqûÕ3fÍ›6lÙ³e2‡XT ä_Zü«ò¶·S¨éV’±êÞŠ†ÿ ‘ˆÿ á²«Î'yü“¬¶¤ÿ ¾gøŒÆeÈ†£ÿ 8G¡ÉSc©]Cáê*Iÿ dfûþpzõkõ=b'½Hâ2K„wó…~kû‹»	>o"ÿ Ì“…“ÎùÞ?²-ýYÿ æ´\ÿ Bç¿ùgƒþG¦/üá÷ž$ûkiúÓÿ Íøwaÿ 8OæIho/ì¡øzŽäÜ_ñ,–éóƒöICªjÒÉâ°B©ÿ #Íÿ Îƒ Î*ùH!ä´{×µs+7ü“Ò‹þ:f‰å½3B‹ÐÒma´§cTO 0Ç6lÙ³fÍ›¼ùåñæ-ÿ G¥MÕ´±¯úÅO¦Ø¿ù”èQŠ°£BŽ}%ü¤ó0ó7•tÍV¼ž[tø±¥7ü•GÉnlÙ³fÍ›6lÙ³Ä¿ó™Ððó”/üöºI—$Ÿóƒ³RûX‹ù¢·o¹¥ñ¶zÛ6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6ÿÔõNlÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›<Uÿ 9Ÿ£ýWÍv÷Ê>»4©ÿ *6toøOOçõGXÔô²¿¶I€÷‰øØÆ{6lÙ³fÍ›6lÙ³É?ó›žfõotÍ6ÚÞæAîçÒŠ¿ê¬Rÿ Áä;þqË?¥¼æ·Î+“ûroÜGÿ 'Yÿ Øg¹ófÈç›ÿ .|¿çý-vÊ£Je¤‹þ¤ÉÆTÿ bùÂ|áÿ 8Q§Ü›ËWïlÇqÈõä%N ÿ Y%Î1æùÆ_<h·ÔMäCöíI_ùåðÏÿ $³šêUÞ›!‚ú-åVT(ßð.âv×sZ·©o#Fþ(ÅOÞ¹%Óÿ 5üÙ§ŠZê÷È¾XøjaÌ?ó¾{„QuyÏúÁþ&ŠùÈ¿>Ÿú[Íÿ ýSÀ—ŸxŸíë7b¿Êüâpšûó'Ì×ÕúÖ«{ =šâB>îxCsy5ÓsžF‘¼Y‰?ðØš#9
+ –= ÉF‰ùWærŸ£´»¹TôoI•äc…þ:7—¿ç<é©Ñ¯…½‚¾¬¼›þßÕÿ ‰®u/,ÎèöÜd×u	îØuHTD¿.MëHßòO:ÿ •?&ü§å^-¥i°$«ÒW_ROù7¨ëþÇ&y³fÍ›6lÙ³œ~f~AùkÏõ¸¾„ÛêmuÏüeboùè¼ÿ •×<ßæÿ ùÃ4ilÒh’Ã©À+@ŠZ{Ç)ô¿àgÎ_«þRù³H$^é7ˆíY—þFF?á²-<@æ)”¤ŠhU…>àåÚÚMw ‚ÙY[¢ ,Çä«¾J4ÏÊ_6êf–šEë¨ÿ ƒuUÉÎƒÿ 8—çPƒq6({Ï*×þ]ó«ùKþp£M¶+/˜ïäº#sºúkò2?©#õV,í>Wü¤ò¯•Àý¦ÛÄëþì)ÎOù/9á²\3g™¿ç8þŒÒ[°ža÷¢ç‘3éwå„‚O*é»ƒakÿ &“$Ù°&¡£ÙjKéßAÂxJŠãîpr¬þ@yW©¸Ò-Ñ›¼ ÂéÝ£È.±ÿ 8iåº›)o-°Y×î•ÿ ä¦rÿ ÌßùÄså-ï_²ÔÍÄv‰êž,E@oÞ,Œ>ø¾Æy×:Oåä½ùg&££IlÃ)…½i[U²‘Éðñ|éZ_üáµ!¤u;XW¿¤!ÿ ‡ô3¥yOþpïÊšK,Ú«Ï©È7ã#zqÿ È¸~?ø)›;V¢Xè¶Ëe¦Aµ²}˜âPŠ?Ø®Í›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍŸ;ÿ ?üž|«ç-BÍWŒIõ˜|8MûÏ‡Ù$çûîÿ ó…~w[‹Ï*Îß½¶¬ÀxÞ‰2¯üc—‹ÏlôÎlÙ³fÍ›6lÙ³Åßóš¿ò•Ùÿ ÌÉÙðÓþpƒþ:Ú¯üÃÅÿ 9ëÜÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙÿÕõNlÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›<Çÿ 9¿£z–Nª÷SKøÈ«"É‡ÎEÿ 8³¬þŒóåŠ±¢],°öHÎŸòR4Ï|æÍ›6lÙ³fÍ›6|ôÿ œŠóéÿ <js©¬pH-“å7ü•Y;×üá?–þ­£jãŠ5Üë
+òa^FŸ7Ÿþ=#›6lÙ°=ö›k¨GèÞÃñŸÙ‘Cø®BµoÈo$j¤µÎ‘l	êbSýC˜²)}ÿ 8‹ä[’LPÜAÿ çcÿ '½\'›þp³ÊNkÝúR#ÿ 21?ú*ÿ Ëmÿ ü_õC[ÿ Îù6?ï%¾“ç*øŒ+†öó‰¾B·¡{If§óÏ'üËhòG§þByÂ†ÔÓýø¦Où>dÉn™å½3JÓí ¶ýõ'üAWsfÍ›6lÙ³fÍ›6lÙ³ççTþ·5—ÿ —é×þŠÆ¹+ÿ œO‡Ôóõ“$Wÿ $?ãl÷¦lÙ³fÏ5Îoÿ Ç#Jÿ ˜™?â<ŸJ)åÑ¿æÛþM¦JófÍ›#¿˜úhÕ<µªYS5œê¹¸ÿ ÃgÌÜõ—üàî¥ÊÛX°'ì<þ°‘þM®z‹6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³Îÿ ó˜¿—-¬hðù¢Í9\iµI¨709û_óÂ_‹ýI%oÙÏ,~]yâëÉå®½g»[¿Æž6øeˆÿ ®Ÿð-Åÿ g>èZÕ®¹c©`þ¥µÌk,mâ¬9ö_Ì0vlÙ³fÍ›6lÙâÏùÍGÍ–Š:‹üeŸÿ çWVnÂÞ!÷»g¯3fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³gÿÖõNlÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›9üån‰úOÈ—r¨«YÉÀúÒù'3ç‰ü‰­þ‚×ôýR´×PÈ~Jê_þ>›ƒ]ÇLÙ³fÍ›6lÙ³`-sUH°¹Ô¦þîÚ&o’)sÿ Ï—÷×’^ÜIu9¬³;;Ç“~9ô;òË¿ <“¥ZÅÞ;øò˜›þ^§ŸæÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³æwæDþ¿™µišúäÿ ÉWÎ›ÿ 8{©çpßï»I›þ Ÿñ¶{“6lÙ³gš¿ç7ÿ ã‘¥ÌLŸñž@Ï¥?”¿òˆèßómÿ &Ó%y³fÍŒžž6‰þË‚§äE3å¶¡jm.%¶n±;!ÿ bxç¡ç	oý?0j6dÿ {fžé"/üÍÏcæÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6%yiä2ZÜ ’T££
+†VYXx2çÎ/Íï!?‘<Éw¢n`FçÚ‰þ(¾eGîßþ,FÏIÎyðêU×•®Z²X7­ßRÞ(ÿ Œsü_óß=!›6lÙ³fÍ›6xþs"ãÕóª¥»²…~ö•ÿ ãl—ÿ Î[ÖãYž›¶ZüÌÇþ5ÏXæÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÏÿ×õNlÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›¼û¡@Ô4šTÝZËÿ ¬ÈÜ?áøçÌ’4;ŸJÿ +õÿ ñ–4ÍRµi­b.ËÂ_ù(­’ŒÙ³fÍ›6lÙ³—ÿ ÎKë¿¡ü‰©2š=Â¥ºûú¬¨ÿ òKÔÏùI}cQµÓ"ûwSGù»ÿ ãlúkl–±%¼CŒq¨U +ŠfÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³åÿ š'õõkÉºó¸•¾÷c³þp²ßŸ›n¥þK	?`ÏjfÍ›6lóWüæÿ ür4¯ù‰“þ 3Èô§ò—þQþ`-¿äÚd¯6lÙ³gÌÿ Ì«/¨ùŸV¶¥=;ë…!#Ó:Oüáýß¡ç„ýýk:}Üeÿ ™yî|Ù³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍžbÿ œØòxšÊÃÌñ/Ç›YHþW¬°×Ù$ÿ ‘¹Å¿çüÔ|¹çm>BÜa»si'¸—àOºI¿ØçÐlÙ³fÍ›6lÙ³Àÿ ó•WÂëÏ×ÊD)tHçñ|ëÿ óƒö|4ÍZë´“ÂŸð
+Íÿ 3sÓ9³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³ÿÐõNlÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6|ÛüÞòÙòß›5M.œR;—däH}h¿äœ‹ž¬ÿ œ8ó!Ô¼¢úcš¾Ÿrèù~ý?ä£Mã6lÙ³fÍ›6ló‡üæÖ²`Ð´í0}bé¥#ÄDœâWœþq³Eý-ç½22*»NÞÞ’4‰ÿ %3è>lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›#„Rç ýÙòÎîOVi$þfc÷œôWüá5×u)–ÑWï‘OüižÄÍ›6lÙæ¯ùÍÿ øäi_ó'ü@g3éOå/ü¢:7üÀ[É´É^lÙ³fÏ?Ÿ6ßWóÆ°+tíÿ I?ãl8ÿ œ]¹ô?04ßòýtûá—=ý›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³Ÿþ~ù|k¾IÕmiWŽ:üá"ãoùÇ>yY]Ée<wPšI«©ð*y.}AÑµ$Ôì­ïãû$«òu?âX36lÙ³fÍ›6|àüéÕF«ç-béMTÞJ€ûF}ü#ÏUÿ ÎiŸTòc\‘½Õä®ˆQ?ñ(Û;¦lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÿÑõNlÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6x‹þs'KžrŽåE>µgŸš´ÿ ÄcL“ÿ Îj·Ú½~Š)îŒéÿ 3sÖÙ³fÍ›6lÙ³g¿ç7u&µ¥Ø×h­^JÆGáÿ 20»þp³Lj»¼aµ½“ówâ*ùí,Ù³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6Öæôln%þHdo¹IÏ—éÿ ùÁØky¬Ëü±[¯ÞÒŸø×=k›6lÙ³Í_ó›ÿ ñÈÒ¿æ&Oø€Ï gÒŸÊ_ùDtoù€¶ÿ “i’¼Ù³fÍŸ>?ç%"ùÿ V¼‘¾›ÿ œu~}Òÿ 0ûãgÐÜÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍõ$¾¶–ÒMÒhÚ3òaÄçË‹»v¶™àµ?0xçÑ/ÈmHê>GÑç&¤Z¬ò(˜?æ^OsfÍ›6lÙ°·ÌºÜZ™u«O´vI3WÁ¿ðÏ˜ww/w3ÜJk$Œ]‰cÉ³è§äg—Îä½&ÅÇúºÊÃü©‰¸jü½Zdë6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6ÿÒõNlÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6xßþslñœ;ýKþfIŽÿ œ$ó°j'·ÔÇüœLö6lÙ³fÍ›6lÙâ_ùÌçcç(ôSþFO’?ùÁÔS}¬9ûB ù–¿«=o›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÂO<Íèè”¿Égpßtnsæ6z¿þpnÜëSxµ²þœõ.lÙ³fÏ4Îo¸V’½ÍÄ§îEþ¹ä,úWùW‹Êz:7Qamÿ &“%9³fÍ›>}ÿ ÎLÿ äÀÕÖ‡þLÃ?çå<Ò?ã9ÿ ˆ>}Í›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³æoæ-§ÔüËªÛAíÂ‘óÚŸóŠ7F Ù)5ô¤¸Où*ïÿ ç^Í›6lÙ³fÎÿ 9yçÐžRýR}RUŠý4ýìÍøGÆ\ñÿ åß•ŸÍ~`°ÑT]NŠôì€ò™¿ØÄ®Ùô¾8Ö% T  ì;6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6ÿÓõNlÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6x“þs2ÿ ëqŠ ¸²‰OÍžY?S®Iç¬‹_ktÙ"‚:ÿ ¬Ò7üËÏ[fÍ›6lÙ³fÍž2ÿ œ×³ôüÏcsÚ[¿JÉ/üÖ¸+þpŽô&¹©ÚWy-ÿ à$ÿ 3sØy³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lŠþkÏõ)køX\ÿ É§Ïš¹ëïùÂi¤ê²ÿ 5ÄK÷!?ñ¾z[6lÙ³g˜¿ç8¤¥†Žž3N~åþjÏ$gÓ/Ë„áå%zÒÂØÉ$ÉlÙ³fÏž?ó‘"çÏš»ƒZNþ?ø×ÿ œl·3ùûIQû2Hßð1JÙô#6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÏ›¿œÈÎzÒ®Ãë÷ñ6Ï[Î 9o# =êp?áNvÌÙ³fÍ›6lðŸüåž?Ä~n’Âåk¥§ÕÖ=O·rß>¹?ñ‡%Ÿó…žJ7š­ç™æ_ÝÙ§¡	?ïÉ7øÇÃÿ =óØ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³gÿÔõNlÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6|öÿ œÖ?JùóT”¬R,þy"DßðêÙßç	´“—õE…>±v#ÄDŠâS6z36lÙ³fÍ›6lòÏüç“Xô}MGFž?1‰ÿ “9·üâV®,<õo	4pMü/®?3Ýù³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6l„~wÊcòN²Ã½”£ï^9ó‹=•ÿ 8K<·¨Iü×Ôû¢‹þjÏEfÍ›6lò·üç%ÆÚ,óßò`g•3éï“¡0h–ŠZÀ¿tj0ß6lÙ³gÌ¿Ì`k^bÔµ%5[‹¹äSþK;ÿ …Î›ÿ 8¦¿<%ÀZÚÍ)?0°Ìì÷>lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍŸ67gõüß¬ÉãsøHÃ={ÿ 8‰§äX[ùîgoønñ®vœÙ³fÍ›6F?3<é’ü½{®ËNVñMOíHß	þÊV^_äçÍ‹›™o&{‰˜¼Ò±fc¹fcÉÍ›>‰~GyüåK-.EãtÉëÜxú²|n§þ1¯çžO3fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÏÿÕõNlÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›½»ŽÊ	.¦<b‰Øø›ðÏ—úîªú¾¡s©KýåÔÒLß7bçþ%žøÿ œlÐCyM…áá½ýViþIzyÓ³fÍ›6lÙ³fÎ%ÿ 9}¢~òKÝV²¹†jø&Ý¿äþyò¯\ýæ/Q&‹Ü\ù,Á$ÿ ’lÙô«6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ/Ï¨ÞO#k>¿Ucô¿ásçF{7þpžîòÕõ²‘ëGz]Ç~/b6ÿ eé¿üz6lÙ±ëè, ’îîEŠ”»»TnÌÌzðOüäWæÜ?˜ºâ>ž´ÓlU¢ˆ£ISY&#öUø¯¦¿È¿ÄÜs”gÐ¿ÉÎ-/óJmÊÁ¨Û"¬öÄî´}H»¼û-ûaÿ Êé9³fÍœûóãÏñù'Ê·wÁ‚ÝÎ¦ÞØw2H
+†ñ‰9MþÃ>vg¬ÿ ç	<¬ÑÛê^b•h%dµˆû/ïfü^øõlÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÌHQS°òûÌú€Ôu[Ëá¸žâY?àÝŸøç¼?çtóeä1NÆE–Oø9deÿ …ãG6lÙ³fÍžIÿ œÐüÁúÅÕ¯“í[à·ææ‡öØRÏú‘“þz¦s_ùÆÏËÿ ñ›mÄëÊÊÃý*zô<îcÿ ž“pøß~¦} Í›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6ÿÖõNlÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›9Ÿüä™ÿ ÃÞHÔeSInPZ§¹˜úoÿ $}Vÿ cžÑôÉu[Ø4ëqY®eH”ìÏ§ÚN™g„‘[Æ‘ ÿ %"þ‚³fÍ›6lÙ³fÈŸæÆ‡úsÊš®œZ[IJòÕ}Hÿ ä¢.|ØV*C.Än3éß“u¡®h¶:¨5úÕ´RŸ›¢¹üpã6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÀZÞ“³aq¦\ïÔOÿ ªêQ¿Ï™žhòí×–õ;ýxÜZJÑ·½Î¿äºüiþKdÇò7ób_Ë}p_02i÷ EuêRµYþ-„üIüß·Ë=ÿ  y‚ÃÌQêzTÉqi0ä’!¨?óK/í#|KûXa›6E<ÿ ù¡ ù×ëZåÊÆÄU!_ŠY?ã_ký›qióÅœ¿óZ¿æ4†Ñkg££U-Ôîôû/rÿ îÆþTþí?Öøó•`ÝSD¾ÒY#Ô ’ÝåeA"•,Ž*’/.¨ßÍ›FÖ¯t[¨õ2g·º„òI#%XóûKûYêËOùÌ´(–^u€‡}nÝjùS[öÿ Zùž‹òÇžtO4Åëèw°Ý­*Dnõãþñ?Ùªáæl óŸŸ4&Y6£®\¥¼@*M]Èýˆcûr?ú¿ì¾ðoçOçïæ^«õ¹A‡O·ªÛAZñSö¤“±š]¹ÿ ±Eû9	Ñ´{­jö2Á·W.±Æƒ©f4ôòãÉPy+A´Ð-è~­ÃöäoŽi?ÙÈÍÇüŸ‡$™³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›!¿œ~hXò–§ªÆD·dŒÿ Å’~æ/ù)"¶|àŠ&™Ö8Ágb ©' Ï¦þJÐ—´KÇ¥´Qrªû&Ã¬Ù³fÍ›<Ïæ_.i—:ÍùãoiJþ$(û+þSŸ?ÊÏš~ióÏ™uK­føÖâîV•¼#²/ù(¿ÿ “žØÿ œTü¼ÿ yY5”ã{ª‘põê"§ú2À7üöÎÏ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÿ×õNlÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›<£ÿ 9·æÞRi¾Z‰¾Èk¹G¹¬0Ìüç?óŠÞT:÷­§u¬:z=ÓøUwü–‘ý†{Ó6lÙ³fÍ›6lÙNÔ£
+©#ØçËï2iŸ¢µ;½<ÿ Ç´òÅÿ  ìŸñ®{Ëþq›T:´ÆcV‰d„ÿ °‘Ñá8çPÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³gŸç(?"dódâ}>Z­²Rh”o<kÐ§óOìÿ ¿#ø>ÒF¹âæR„«4 öÉg?5<Áä)ÌúÉÖH[â‰ÿ ×‰¶åþZñ“ü¼ô—¿ç7£à]Ò˜H:½´€ƒÿ <¦û?ò9°â÷þso@D­¦y#Ó£˜ÐÁ+Íÿ Îgç?ùÌ?4k*ÐhñÅ¥ÂÛrOÞKOøË à¿ì!åþVpýOT»ÕnóPšK‹‰ZI³þS7Å°Óî5ÒÒÊ7šâV
+‘Æ¥™‰ý•UÜç­?"ÿ çSJxµÿ 9¢Ët´x¬¶dCÙîfYûëûµý¾±Ú¿2?+´_Ì¨k1|k_Ft ’"j7ðþhÛàåÏþiÎ:ùÈn÷>™¾ÒÁ$\Â¤ñòñïúß_ñfr¼VÚê[YÖîÑÈ»†BT“.O´ùÈ/<hŠ×UÐ~Ìüfÿ ¨…‘¿á°ÏQÿ œ¡óõì~‘Ô} z˜¡‰Oüÿ cœßX×/õ»ƒyª\KupÝ^W.ßðNN¶¶–êU··F’YUE³ÑUWvcžÔÿ œmÿ œ~>KŒy‹_Pu™’‘Å×êèßkþŽ$oýöŸ»ý§Î÷›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³g›?ç5üÕõ]&ÃËñ·Åw3O Éâ€û4’òÿ žYÁ?ç¼«þ%ó®lëÊ$úÌžaýè¯úÒ,iþË>‡fÍ›6lÙ³Ìó™ß˜¾…µ·“mãž—T?°§ý&ÿ ^@eÿ žqÿ 6p?ÉoËöóß™í4†Ú†õ®Hí
+|RÈÏ†ÿ *Lú3kˆãU@ €°ÇfÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›?ÿÐõNlÙüÉüñò×åë-¾±3=ÛŽBÞç'çaUHÔþÏ¨ëËöp·ÈŸó’PóÂØÛ\5­Ûš$WJ#,•3ÄÍþG©Í¿es¨fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÌM79ó‹ó£Î_ã6j²7(S>œºˆõÕ=OöyéOùÂÿ '?AºóËI5	}8ÏüWV£ýižQÿ <óÑ9³fÍ›6lÙ³fÍŸ5?4î"¹ó^¯5¹ßÜ•#¡£î3Ø¿óˆèËäHtk‰Èùs§ëÎÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍœSó“þq‹JóË¾«¥2éú»nÌî¥?ñz/Ù“þ.ýšIžJó·äçš<–ì5{+þïŒz‘ãêÇU_õdàÿ ää/6Ó4‹ÍVam§Á%ÌÍÑ"BìØ ';W?ç|Í¯²Ï®qÒ­äIñÌGù0)ø?ç«§ú™êËÉ¿/~_CÇG‚·L(÷2Ñ¥oöîµÿ "%DÉ¾lÄWcÓ9wž¿ç|ŸæòÓÉkõ+¶©3Z‘'Åâ£Bÿ ò/ŸùYÃ|Ñÿ 8S¬Ú–}ú¸û$ÀÄÿ *¯«ÁGœÛVÿ œuóÞ˜ÅeÒ¦ð•”ùÎp¯ä_î[‚h×€ÿ —Aÿ 'Éÿ ”ÿ çü×ª:¶°ðé¼˜K%?ÉŽéÿ ÁL™é_ËÈ_.~^=ŒFãP¥Ôôg÷ô‡Ø…Ôøÿ ß:6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›<ÿ 9UæŸÓ¾v¹°éè–«áU¤ßòZGOöÒ?çü«VÔüÇ èÒ#óýôÿ ö/ž¬Í›6lÙ°³«ÛèÖSêW­ÂÚÚ6–FðT›>kyóÍ÷pÖîõë¿ï.¤,ùP|1Gÿ <ãULõ×üâå×è/·˜n’—z©•ê°/÷_ò5¹KþRzYÞófÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›?ÿÑõNlÌBŠžƒ>dyçÌ“ù›[½Ön˜´—3»ïÙkHÐ“|QÉ\&’!#ÔR„€Â¢•uaìsÕ_óó‘’\I”<Õ)gj%ÓÉý›iØõ'ýÓ#Æ&ýŒõ6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6s¯ùÈ:ÿ „|Ÿ}yq¹~­9~KþTqz’ÿ °ÏŸu„ÚÌVV«ÎyÝcEÙ_¥Ž}3ò_–aò¾g¢[ÿ wi
+GQûDÿ ç£òöXs›6lÙ³fÍ›6lç?ŸŸ˜ãÈžW¸½…¸ß\«ÚŽþ£ƒûÏùâœ¥ÿ YQk>|YÚMq­º™'™ÕFå™QîÍŸJ?-|žžMòõŽ‚„µˆaÐÈß¼™‡úÒ»ä—6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6b=23«~Xù_Wc%þ•g3ž¬Ð'/ø><°¾ÛòKÉVíÎ=Ê£ù¡Vÿ ‰òÉ^¤Yé‘ú6EoòÄŠƒþà¼Ù³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lØVÔ¢Òìç¿¸4†Þ7•Ïù(¥Ûð\ù…­j²ê÷×•Á¬×2¼®Êv.ß‹g¾¿çü¯þòFŸŽ2Ý!ºs1æŸòGÒ\é¹³fÍ›6yÇþs+óôn•”í“ßŸVzu¡øþ{L¿òE¿›<ÍùUäY|óæ+=
+:ˆå~S0ý˜—ã™¾|>ÿ ‹3é¥¤Vp¥µº„†%Š:QÅTª¸®lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³gÿÒõNlçÿ ÿ ™VžCòíÅÜ®>»:<V±×âiqÇý÷}IýÚtÏÑFÒ¸Ž0YØ€ êIè3ÜÞsÿ œv´ó?“l4‚oM³Š8gñeAÎ	OíA$œ¿ã~ñm_ÄZž›u£ÝËczÝ»”tm™YMÏrÿ Î4~p>h¦ÇQ~ZÆž%'¬±ôŠãýoØ›þ,øÿ Ý¹ØófÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙãÏùÍ;}wV´òÄXì£õ¦ýù/ØSÿ áø¿ç¾F¿çü•þ órê3-m´¤3ŸPþîÝ~|¹J¿ñ‡=Ñ›6lÙ³fÍ›6lÄÓ<ÿ 9'ù¥þ:óEfü´½?”6ô;9¯ï®?ç«¯ÿ Š£%Ÿóˆ–gZÖ_ÍW‰[=4ñ†£f‡ý‹Æyÿ ÆG‹=›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍœ«þrwÌŸ ü}ÄÒKÎ©ÿ =ï?ä‚ËžòÎ‹&»ªZi0ý»¹ã„Sü¶	_ølúygiœ1ÛB8Åª(ð
+8¨û±\Ù³fÍ•#¬j]È
+¢¤ž€ù»ù¹ç‡ó·™¯u¢I†I
+@h“à‡þ	6ÿ -Û=)ÿ 8iù}ú;J¸óeÒÒ{òa€ž¢ÏÆÃþ2Î?ä‚ç£ófÍ›6lÙ³fÍ›6lÙ³fÍ›6l‰y×ó_Ë^JSúrú8e¥D ó”ü¡”Ÿì™xÿ •œ;Íó›v‘1ËÚkÌ;IráüŠ‹Ôoù*™Ï5ùÌ_:Ü±6âÒÙ{„·ã3É€í¿ç.|÷	«Ïo(ðxù'éäóÊŸó›w
+ë™4Ôtï%£#þxÌ\7üŽLôOÿ 34=[­åfâ>8ÏÃ"ÆH›â_õ¾Ã~Ëd£?ÿÓôÞµ®Xèv¯¨j“Çmk«I#Q÷÷þUý¬ó‡æ7üæm­¿;?'[úòn>µp
+ ÿ *(?¼ùècÿ Œmž`óO›µO5Þ¶§­Ü=ÕËíÉÎÀ" ø#OòUs¼Î.þCÜêw°ùÇ]ˆÇ§Û‘%¬n(f}‰¸Ÿ÷DGãCþì“[=‰ž]ÿ œÅüªI!O;ééI¬7GU?Ý÷/þKEü™Àÿ &ü÷'’<Ïg««1ÀìÐ¹ã-ÔþõËsèð ŠÁÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ°6©©A¦ZÍvÜ ·¥‘eAÍÏüÏ™Þsó4ÞiÖo5ËŸï.æy)ü Ÿ?çšqOö9íùÄß$‡|¢š„ËÆçU¬5zúcà·_—S/üfÎÓ›6lÙ³fÍ›6lá_ó•›ãÊzAòö›%5]Eb§x ?’’óuüôØ\ñ—–ü½yæ=FßGÓSÔººF‹îi¼Æíû)ñgÒËß$Úy'DµÐlwKt£=(]ÏÅ,­þ»ÿ ÀýŸÙÉlÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6yoþs_ã•¢!ûM-Ëõ@Š/øœÙËç|¾5<ÚHÂ±ÙG-Ë±_N?ù+,yïlÙ³fÍ›9ÿ çï˜[@òN«yã#Aè©k3-¾ßê‰9gÏ=>ÆKû˜¬à–wXÐx³+øœúså/i–ºE ¤6¤KïÄqåóo´Øg›6lÙ³fÍ›6lÙ³fÍ›6lÙó×æ.‰äk?¯ë·
+ðA¼’û1D>'ÿ ˆ/í²ç’?3ç-5ï23Ùùt.ÀíÉMgqþT¿îŸõaø¿âÖÈß”¿ç|Ïæ”:¾¨WKÓÛã{»÷áPl#þõëüÏÁýù’tÑ?'ü™ðê7w^c¼^©n
+C_fV‰Hÿ £™rI¤yífZy;òù*m4Ð—¯û?CþgàëÝ{Î³!7þB°šÕE¸-O¡¤oøLê£Èüÿ £õÝ.ïÉÚ«l$PÏâëyV9?ã'ùRd7_òÇ™?(µx5i¸rýå¥í³r†dÿ !þË«/÷¿ü2qfõ‘??ÍÞKÔµè#Ö´«I¥šR¼Ò7–)T}¯Bfù¹'ÇùmÿÔäŸ?›7ž×fýáU¬¬@ü<TñõÙ{Ë7Úåû)û¼'ü¼ü óŸåã¢[n¦q'Áüäý¦ÿ "0ïþNz§òÃþq/BòÃ¥þ¼ÃU¾Z0VZ@‡Ú/÷wüöø?â¬îÊ¡@U`^G¿1ta­ùsRÓHäg´™”Q½?¹øçÌÌúiùy¬gËºn¢Lö¹ù”^ðÙ Í›6lÙ³fÍ›6lÙ³fÍ›6lÙÂç/|÷úË¢ÀÔ¹Õ_¨…(óöMéEþ«¾yòÿ ÊRù¿^²Ð ­n¦Tb?eÅ4ŸóÎ%wÏ¥¶VqXÁ¥²„†XÑG@ª8ªý‹fÍ›6lÙ³fÍ‘OÌßÌm?òÿ G—YÔMHøaˆ4²ðDŸ­Ûö“gÎï7y®ûÍš¤úÖªþ¥ÕËòo :$h?f8×àEþ\õ—üâoäÙÐl¿Åú¼|o¯–ÈÃxá?îßi.?äÏüe|ôVlÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lðÏüåö²oüîö Õl­¡ŠžìÁÿ “ù6ÿ œÑ9O«k>ÂCn§ýbÒÉÿ &âÏXfÍ›6lÙÈ?ç+í¤›È7i3SÃÔEýmž(òü:w˜tÛÛ’0^[Èäô
+²#1û³é°5ÜfÍ›6lÙ³fÍ›6lÙ³fÍ›6pïÏ/ùÉ‹?"»èš*­æ³Çâ$Ö(	éêÓûÉâ•û?îÆýœò¥õŽ¹çû-KÎ7×FòâÁâúÂ9<ÄrU–5ûN¼=8þÇ._g&ß—w––m¯åÖ&³æŠÒ_^ 1ÀÄ|_W·¯£Cðýbâ^_ìs­éßóç›æ]Kó3XšéëQknßÿ “ÌI?ÊX ÿ ž™×|¥ùKåo)¨ý§A‹þíeç'üŽ—œŸðÙ.Í„^rò6‘ç+ÓuËt¸…¡#ãBn)>Ôoþ¯û,ó.‰å4Í^÷òSÌÒôÛÔk&áÆñHÉ‘ÿ  n2¬Ñ¯ÃêÆè¿ÏœWÉ:Ž¡å½^ïGŒZú­.Xë³4ÈöÑ¯û¯I¿ØçÿÕó?™ôItRïIœ%¤òBkþC¯Óžâÿ œVóLß’m­câ³éìöò¨ è}HÞŸåÇ"ü_´üó¯æÍ˜€ECŸ1¼ï¢\¿ÒÈ§Õnfˆ|•ÙWþ=¹ÿ 8«®~”ò%œljö’KnßC™þIÊ™×sfÍ›6lÙ³fÍ›6lÙ³fÍ›6|üÿ œó÷øÇÍ×2@Ü¬ì¿Ñ`§B#'ÔÆI½Füœ3©ÿ ÎùÔ–óÍ×+ðÆ>«nOó=ÃõWÓŽ¿åÉž°Í›6lÙ³fÍ›#Þyóæ•ä9õmjQ+²¨ÝänÑBŸ¶íÿ 7?Ï~m~kj?˜ú©Ôo¿wmVÞÜ¬Iÿ Hýe“ö¿ÔTUžÿ Î4~E7œïWÌÔgô-«ü*Ãk‰ý×ïgûïæþçýùÃÛà›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6|èüøÔÿ ž5‰‰­.ž?ùHæ^zsþpËLÞPžêŸÍì†¾Ê‘Æ?á¹ç{Í›6lÙ°›Î^Y‡Í=æ‰s´w¼UþRGÀÿ ì‹çÍO0hWz¡>“¨!ŽêÖFŽE÷SÛÅ[í#~ÒüYíùÅÏÎ5ó~’4Iÿ Ü¶œA'ya
+Kîñ|1ÍþÂOÛlîy³fÍ›6lÙ³fÍ›6lÙ³gŸ?ç#?ç#Ê©'–¼µ m]‡¦]Å¸?²¿òóÿ &×ÏË+Ìí$ŒYØ’ÌMI'©'Ç:üãv¿oaæ”Òµ
+6Ÿ¬Å%„êz(ýßß(Hÿ Ùçuÿ œg½—Êæµùi¨ŽÖV¸¶c±tøQÏû8¼È¿åIÏŸóÞQòg(n®ÅÕÚíèZÒG¯ƒµ}(ÿ ç¤Šßäç9_ÍÏÌÏ?šy/Fu‹}›«­Í?™^~7üó†|ç?™zŸœ<¤èš‡›dº×™Ô-‹;$ÿ »Jz1GþL^ƒ<ŸÉÇâÏ\y]V]
+ÆO0:£[Æn øéñrUøUÿ ŸÃÏY‚‚ÌhSž\¼ó…—œÿ 3Oš!p<¿å[Wi®GÙb¢_°ßµêÏ/WýÚ‘rOµž~Ðµ­cÍkÐ%eŠiõF^ÀAÏPp}¿uÃ?ÿÖÎc~_'\‹ÌöËKmIxJGA4cŽÿ ñ–,¿åG.Gÿ ç¿2G”|Ì¶oÇOÕ8Àõ;,•ÿ F”ÿ ³fˆÿ “//ÙÏwfÍ›<ÿ 9S¡~ŠóÝã¨¢^$WþÉ}7ÿ ’±I[þpƒ^çkªè¬wI"¸Aþ¸1Iÿ &¢ÏPæÍ›6lÙ³fÍ›6lÙ³fÍ›6sÏÿ Ì1ä*ÜÞBÜonGÕí¼y¸5ÆùËþ²¯ógÏ«)µˆí-”É<Î±¢Ž¬Ìxªÿ ²lúOùoäÈ|™åû=«D°ý©ãšOör³d—6lÙ³fÍ›6sÿ ÍïÎm'òÖÇÖ¼>µü ý^ÕOÄçùßý÷
+þÔŸìS›g„|ÿ ù‰«ùóQmS[˜ÈûˆãGÿ ¾áOÙ_øwý¶lèÿ ó7¾~5MUZßAª_£OO÷Tä¿&ýŸ²ŸØ÷&—¥ÚéV±XXF°Û@¡#TtP0VlÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙóSóN¿âÍb½H]É×Ïcÿ Î$ÓümO÷üõÿ ƒ9Ù3fÍ›6lÙçùÊŸÉ'ó%·ø¯Cˆ¾¥l´¸òÄ::¯íMüÅðÿ ºã\òƒ¯ßy~ö-SK™­îànI"ãeo²Êß/ÂÙíŸÉùÉ=;Ï)•¬³Öé@¤Ò9Ïó@[ìÈßñ¾ùþÏkÍ›6lÙ³fÍ›6lÙ³fÏ>ÿ ÎGÎE/•O-yn@Ú»ŠM2î-Áý•ÿ —–ÿ ’?kíñÏYÙÝëimlqwpôUgwcÿ ÌÍž–¼ÿ œUMÈW÷×ß¾óÄ.GU‰cýä¶ñÓûÇh¹úüüV?‡â“Ì–wrÙÍÌRX™]u§’·ÐsÒ6¿•þlüß½_=kóÛèVÀ K£<4û\yôtn,÷'Áþëá†Vþbü¦üª"-¯ë+°/ÅþLÌ>­ýG#á³?æÇæÀàª<³¢ÉÔžK+)ÿ §—ÿ §XŸ:?å‡üãß—|„Âö$7º§Su=zú)ö!ÿ [â—þ-É¯šüã¤ùNÍµræ;[uè\îÇùcAñÈÿ ä¢³g›¼áù¡¯þp$ö>]ÿ pÞR†¿\ÔnO ÉûJÍþWü²ÂÍ$Ÿî×Tn9ÆüùçËÑéäß'#Å¡Äáå•Å%¼˜ÇÄÿ Ëÿ tAû?i¾.*»ò£ò*ëË^HÖµF:Þ§¦]EjñÆÑ?¸ý¯^áørO´¿»O·Ísÿ×ïŸš¾AƒÏž^ºÐ¦ ’EåŸØ•~(_åËáø­Ÿ>pê}Æ—u-•Ú®mÝ£u;e<YØ¶{ãþqÓóHy÷ËˆnŸ–©cÆNíAû«ùìƒâÿ ‹V\êy³g“ÿ ç7ü¿Æ}+[Aö’[g?ê‘4_ñ9²ÿ 8æÑ~vŠÑþ	`>ë	ÿ &xÿ ²ÏufÍ›6lÙ³fÍ›6lÙ³fÍ›6xGþr“ó0yÃÌ­afü´í/”1ÐìÒWý"_ø%/ù1rý¼:ÿ œ@ü¸:æºþe»JÚiÝÔlÓ°ø?äJr“ü—ôsÚ™³fÍ›6lÙ³’þyþX~\Û›+^7:ä«Xá¯Ã=&¹§Ù_äíËþJ|yá1ù“Pó%ôº®­3\]ÌjîÇîUöQ~Îýÿ 8ñÿ 8Ð¾aŠ4ù¤WNŽÞØå ÿ y=>Ì?ËÛ—ö¸Çýç°-íã·aV8UP  lTlª1ù³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÏŸ?ó’>Y“@óÆ¢¬)Û‹¨ÏŠËñ¿üÞª±ÎÅÿ 8]ù	‚ëÉ÷,`æêÞ¿´<kîœRN?åIü™êLÙ³fÍ›6ló·ç·üâäc2kÞRUƒS5im¶Xæ=Ú?Ù†vÿ ‘R~×äíãýCN»Ò.žÎö7·º¸º8*ÊÃÄÆzògþrÎëFér/ud(©v>)cñpÿ ˆÿ Êþûþ2ç­ô]nË\´PÒæK›YERHØ2Ÿíþeýœ›6lÙ³fÍ›6lÙ³ƒÿ ÎGÎA§’áo/è.[™~7‹uaö¿æ!¿ÝiûÞ¿ì+ø²nµ[¡Aî.î€
+³»±ÿ ‚wvÏpÎ>Î>Áä(XÕÕe×f_šÀ¤o_ñiÿ vËÿ <ãø94¦X–U1È#==F|ÔüÌò›yKÌwú-´ì#¯xÛ÷7û(™2iù}ä½KóËš’¾©1¿©oa»#
+<¿ÅÁwG_îùráñg¢çtO/\yVÛX±²…55g†ân<¤æ‡ýøü™9ÄÑ¿âŸt¯8þeù{É±™5Ûè­Ú•“ÊFÿ Rå+Àg¿ÿ œ‹ó'æm7òÇI’A^&òáGÿ +}ÿ ç´¯ÿ s˜y–ßËúÑÔÿ 0õ7óG˜Ki¡þK‹¿ÙEÿ |À‰ÇýöËo0yÓÌ¿šphÖpÿ £¡ãk§Y§cäÄ¿ËûSKöÈLô¯ä_üâý·”Þ=sÌü.ue£Eø£€ÿ 7ü]:ÿ ?÷qÿ ºù73ÐÿÐõNy#þsò¤ÚÜ'ôäýÌåb¼
+:?Ù†”«û§ÿ ‹?Ú“8÷ä·ælß—ž`‡Uk9?uuý¨˜üDçˆþò?õx}—lú%c{üÝÚ¸’	‘^7SPÊÃ’²û2âÙ³ŽÎXywô¿‘î'AY,%Šä|ôdÿ ’s3±ÏùÌËºí†°­ÌR·úªÃ˜ÿ dœ—>›#¬ŠU…AÁËÍ›6lÙ³fÍ›6lÙ³fÍ›8§üä—çtKÒäÑ´¹×/¢…50#}©ßùŽÐ•ûÏ²™â-'J¹Ö/!ÓìPËuq"Ç¬Ìx¨Ï£Ÿ•¾A·ò—ít+z3Ä¼¦qûr·Å,Ÿð_
+Åj‹’ÌÙ³fÍ›6làÿ ŸŸó’–ÞLY4//2ÜkDqwÙ’ßý~Ïqü±~Çû·ýöþ,Ôu+NâKÛék™˜¼’9%™Vf8>‡ÿ Î;ÍëyHo
+ÿ À»§ük6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³ˆÿ ÎR~Q¿œôeÕôÄçªi¡˜(É	ø¥ˆ3§÷±ÏD_ŠLñF…®^h7Ðêšl†»gŽ Ö§ì²þÒü-žÿ ü–üæÓÿ 2tÑ*‡T@¹·®àÿ ¿bþhö“ì?ù]6lÙ³fÍ›9ÿ æ¯äž…ùoMA=ôŠî0=EðWÿ Eÿ ¿ûLñ7æäÖ½ùwséê‘z–ŽiÔ`˜ŸÚ¿î©?â¹>/åæ¿ü¹ü××/®þ³¢ÎDLA–ÝêÑIþ¼Íÿ '?ÊÏfþRÿ ÎEèT³v:± i[g?òí/Â²ÿ ©ðËþGígVÍ›6lÙ³fÍ›6r/ùÈ?Ï(.¬>¥`VMréO¢‡qýŸ¬Ê¿òi?ÝþB>xJââëUºi¦g¸»¸z±5gwcÿ ÎížÓÿ œqÿ œ}O%À¾`×6·2üwèÃìùxo÷kþÇ÷Iû|û¾lòüæ·”>«ªXù’¢]Æ`”ç‹âŒ·»ÄüçŽA?ç<Þ<»ç;hf4¶ÔCYÈJ¿÷?ò]c_öM‡Úæ_×<¥kqh:]´òO,’¿§ûº¬q´rSŸ&…âøX¹`{­GòËÉ²4À\ù·V­L“·/_Ž_ö_XFþlù›ó«Ížvã£Xÿ ¢Y?Á†E#ù8ÅûÙÕûäd×òßþq\×
+]ù™ÿ EÙý1F‡úŸÝÁÿ =>?ø§=WäOËMÈ¶ßTÐm–CãüR?üe”üMþ¯Ø_Ù\”fÏÿÑõN ×ô+M~Â}+QA-­ÌmŠ{‚;x2ý¥oÙo‹>r~g~_Ýù]¸Ð¯*Â3Ê))A$MýÔ£æ>þYÓösÐ¿óˆ_œ¢µY>%äö,Ç¨ûrÚÿ ±þö/ò}Eý”ÏRæÂÏ4èqëÚUÞ‘7Ø»‚HO·5)_¢¹óîÖK9¤¶œq–&d`{2ž,>üú%ùæñ/“tËönR¬<yÃû†åþ·§Ïý–O3fÍ›6lÙ³fÍ›6S0QV4øUæíN©½¾¶‚ŸïÉ‘âM‘_þrÈºP&mZ	í)OüY3Ÿù‡þsGËV`®“iuzã¡`±!ÿ dÆI?äŽqÏ:ÿ Î[y·_VƒN1éví·î2Sþb$ÝÖ‰"Î4ïq¨ÜrbóÜÌÝMYÝ˜ý,îÇ=‡ÿ 8Çù7•¿çió\59–ð·XU‡Å$ŸË<‹ðñÿ uGË—Æì©èœÙ³fÍ›66YRie`¨ ³3 RO†y[ó×þr¬0“AòDj³_/â–ŸöQÿ "ß¹æ?O»Ö.ÒÒÎ7¸»¸~(Š3±üIÎÙçŸùÇoð‘_]ÕÛÔÖ¤šQ[à…žQíýì­ðúöý×üïÂ3èüãÆ_Ëý.¿²&_ºis©fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lòüä§üãƒ#Íæï*EÉ²]Ú Ü¯sÙý©¢ýŸïáåÃÍž\ó&¡å»èµ]"f·»„Õ]OÞ¬:27í#|-žØü“ÿ œ”Ó<ô‘éz±K-o§iÇù­Ù¿lÿ ¾ãþOS;NlÙ³fÍ›6ÔôË]RÞK+ø’{iW‹Ç"†V­žZüÝÿ œ@xýMSÈç’îÍc#n?æVû_ñŠ_ö2·ØÏ1^ØÝiw-mwÛÜÂÔdpUÕ‡Š·Ä­Ëò£þrËXòÏ?Ìµ=<P		ýücÚFþü“/Çÿ ç­¼“ù‰¡ùÚ×ëšÒ\(šV’'´±7ÆŸñåÉlÙ³fÍ›6Eÿ 2üýiä=ã]½ø½!Æ(ëC$ýÔKþ±û_Ë7ýœùÓæŸ3ßy£RŸYÕd2ÝÜ¹f=‡ò¢ÙD_öW=Qÿ 8¹ù4¸¢ó—˜bÿ Lr³…Ç÷jz\ºŸ÷tƒû¯÷Ò|Þ7îý-›	<ßç]'Éö-©ë—	mn½9}¦?Écã‘ÿ ÉLñ—çÏüäQüÆ„hÖ‹—¢Uyw™™C*·ÃðB¼]¾çÿ 3ŒZ]Ii2\ÀÅ%‰ƒ£¡”òVûó¨_yKÎßœÚÄž`‹L!îx‘PÃDjÞ¤íñ|
+¼¸»çYòGüáJ/üÙ}Ë¡0Z
+“\J+ÿ û<ô“¿.t&Åèè6Q[mFp+#¯3ò•ÿ Ù>I3fÍŸÿÒõNläŸó‘ß”#Ïú¸±Jë¤‚d_÷e·û?µü[þ»ç„,o®t«¨îí]¡º·pèÃfWSU?ë+gÐ¯É?Í[Ìm	5D¿†‘ÝÄ?fJ}µï©¾Üì£ûQ¶tÙóûþrcÊ'Ë~v½¼`½"î?ùëýïý<,¹Öÿ ç	üèwþU¾%"î {ƒH® ù~å¿Ù>z›6lÙ°£Ì^oÒ<·Ö5«È,ãìep¤ÿ ¨§âö9Ç|Óÿ 9å=,˜ô¨çÔ¤
+/¥üŒ›÷ŸòG9O˜ç4|ËxJé6–¶Hz+öLR?ù#œÿ Uÿ œ†óÖ¦I›Vž0{CÆ ?äBÇ‘Éÿ 1|Ë;s—U¾fñ72Ÿøß4?˜¾e€Ö-VùOµÌ£þ7ÁcóoÍãoÓ7ÿ ô“'ü×Í78£k7ôÿ ˜™æ¼?æ˜î+ëj—¯^¼®$?ñ¾Ýj÷—ïDòËþ»³ÄŽÁ6ZuÍóúv‘I3ŸÙK¹rm þBùÛ\#êºMÂ+~ÔÊ!}Á:¯”ÿ ç
+uk’²yŠú+XûÇn¯òæÞœiÿ %sÐ_—Ÿ‘¾Wò&Ò­CÞCs9ç/ûû1Ï'Ù³fÍ›6lˆ~`þkùÈVæ}nåRR*'Å+ÿ ©ünü#ÿ /<iùÃÿ 9­~`–±†¶:=v·FÞAÙ®dÿ vÆ?î—ü¶øòä!jþw¿]/C€Í1¡fè‘¯ûòi:"Ä¾Êrl÷/ä×ä>“ùon&Z]jò-%¹aÒ¿j+uÿ uÅÿ 'íþÊ)güå”^§où%·où(‹ÿ gƒ3Þó‰Òóòšÿ $·þJ»ÆÙØsfÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lóŸçŸüâÄù—]ò‚¬‰«Ëk²Ç)ý¦‹öa˜ÿ È©?â¶ø›ÈZŽ›w¤]=ìoouqtpU•‡ˆ;Œï_”ó–z—„z_›ßØ
+*Î7ž1þW/÷¡ù_½ÿ -þÆzãÊÞnÒ¼Õfº–‰sÕ³~ÒÁþYíÆÿ ä:«a¾lÙ³fÍ›6B?2'<¿ù…^7J)ÌTYSýŸû±?â¹9¦xûóOþq«Ì^G/wn‡QÒÖ§×…O%ñ|Çþºó‹ü¼æ>µ{¢Ü¥ö™<–×1š¬‘1Vì—=Où/ÿ 9l/=Ïc‘¨±ß(
+¤ø] øcÿ ŒÉû¿çDûyéôu‘C¡¬*ÜrófÍ›6lð÷üå‡æø£_ýdü´ý(”4;<ý'ùåýÊÿ «/óà?ùÆÊuó¶½úCQž•¦ñ’@FÒH¹ƒü¥ø}IÈNýæ{·6sÏÎ?Î}3òÖÃÕ¸¤úŒÀý^Øÿ ‹$ÿ }Â¿´ÿ µöS<#ç¯Ì_ÏƒjšäÆYMB Ù#_÷Ü1þÂÃ7ÚvfÉ‡å7üãÎ¿ù„VíWêZUw¹”‹ÇêñlÓ­ðÅÿ rÏ\~^ÿ Î>ySÉ(¯ml.ïG[‹ëÿ ©œ_óÍ9–ÙÒ@¦Ã6lÙ³fÏÿÓõNlÙã¿ùË/ÉÐ÷gÎzDt²ºz]¢£•¿ÝßñŽàý¿åŸþ2ç&ü üÏ»üº×#Õ­êöÍû»˜Aþò2~/ùèŸn&þòóèvƒ®YëÖ0êºl‚kK”Žàþ¦e—ö[áÁùÁ?ç.,æó.‰½§Fd¼ÒËEY oï?ÖôYVOõ=\ñß–<Ñ¨ù_P‹WÑæ6÷£Š£‹++|,Œ¿+g£|­ÿ 9·q,^aÓVVymŸ…çŒ¼Çü•\œÙÿ Îfy:eho¡nàÄ‡ñI[Mÿ 9‰ä˜ÇÃõÇÿ Vÿ È¹Ö?ç7tx”/L¹™»zÎ‘øO¬g)ó—üå§œ5ða°xô¸kqY÷žNL?ç—¥œzÿ Q¹Ôfk›Ù^yßí<ŒYÍÞ­’?*~TùŸÍt:6<ñ·û³ÿ ät¼"ÿ ‡Î¹åÏùÂÏ1^ úÅåµ’žªœ¦qó§¥ü•lèÚ?üáW–­€:íÝÓwâR5ÿ á#ÿ ÉL”[ÿ Î(y!F²’Câ××þÐf›þqGÈ2}›)ý[‰ãglÿ BäO÷ÅÇülµÿ œGò 56÷ç;à¨?ç<	°w§ó\Mÿ È¸kkÿ 8éä+ZpÒ!4þv‘ÿ ää‡úåg•4íí4‹Èî-ã'þ¯,‘ÛYÃj¾¼kx"€>åÅsfÍ› êúí†	¹Ôî"µ„~ÜÎ¨¿ðNW9Î³ÿ 9=ä=,”:‡Öv‚7ø~>Ÿü>Eï?ç3ü¡D6÷Òü£Œøi°¦ëþswE_÷›LºõÝþ#êäwTÿ œá¼z7HŽ3ØÍ;?ü,iüO9ÿ ™ç*üñ­«EÌv1·kXÂŸù'«*ÿ °uÎOwyq¨L×R<óÈjÎìY˜ÿ ”ÍVc£ò›þqc\ók%ö¸LÒÎõqI¤ñT-ýØo÷ä¿ìLö7’ü‹¤y.ÅtÍÝ`€nÄnÎßïÉdûR?úßì~>ÎYÿ 9?«ù©ÿ ’ oºh³çö{Ÿþpþ^~GEþK©×þ"ßñ¶vÜÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6A?4?&4Ì[~¤^â
+Eu‹à	ÿ vÇÿ ÉþÃƒ|YãÍ?È?0þ^»MsÖ´Úü7p‚WÛÖOµ¯ð$‘)yÓWòàÔt+—µœu*vaü²Æ~	ü—\õOå‡üæ©ð±ó„bÊäÐ˜Á0±ÿ ‹â’ù)ücÏDXjÚŒ	we*O‚©$lXx«/ÂpFlÙ³fÍ›6qïÍ_ùÆo/yÑ$»°EÓuSR&‰hŽßñ|+ðž_ïÄã'í|g<SçO$êžLÔdÒ5¸L7	¸î®¿³$Oûq·ó±o‹áÎÏÿ 8éÿ 9'•ž?-ù–BúC°ÌÛ›re¼mäÏìüìè¥I‘e‰ƒ# ÊÊj=>ìÙ³fÎiùÿ ù¤Ÿ—Þ]’âS»¬6‹Ü1ÿ êÀ¿üdôÓöóçí½¼ú…ÂA
+´·¸UQ»3±¢vf9ôcò{òî/ yrÛFPÅ=[—µ3ÿ yþÅ?ºOòrkœóó›ó—NüµÓLóRmJ`Eµµwcþü“ù OÛoÚû	ñg<ÓæGÍZŒºÆ±)žîsVcÐÙD_Ø>Ê"ýœôüã×üã Õ’/3y¾"-ohÛUšãþ)?±û·í?îþ=s)
+,Q(HÐUQ@ èª@1Ù³fÍ›6lÿÔõNlØVÒmu{ItëøÖkk„1ÈÑ•…gÏoÎŸÊk¿Ë}i¬^²XOWµ˜þÒWì7ü]Ù“ýŒŸe×&¿óŒÿ ž¿à«ÏÐ:Ô‡ô-Ûü.zA!ÿ vÆ?ÝßËýïûóŸ·‘ÕÔ:TŠ‚7²+±Îù•ÿ 8“ ùži5C¥ÞHK2ªò‰ïèü&*ÿ ÅMÃþ*Î¯Î#yßMfú¤P_F:ePHÿ RãÑÈ×äGž-‰h×fŸÈœÿ äß<F/É?:Êhº5ïÓø{¥Î1ù÷P4i…šicAÿ ÏŸü&t*ÿ Îj32Éæ-B(©ŽÙLòõ$ô‘?à$Îéä¿ùÇß'yKŒ––)qr¿îëŸÞ½|WŸî£ÿ žQ¦t`Š€Í›6lÙ³fÍ›6lÙó÷æß—<‰-ríRb*°'Ç+«î£ü¹8Gþ^yóþs[ÕK[ybÓmÎÂW¤“ôþæ/ø?ã&pmg^Ô5ÉÍæ«q-ÔíÕårí÷¹Åt+êºÑã¥ÙÜ]Ÿ¹‰ßþ ­’»OÈ?<ÝŠÇ£ÜŠÿ :„ÿ “¬˜oiÿ 8»ùqÿ JßL—<#þfáþ›ÿ 8qç;¢>²ÖvËßœ¥ˆú!ŽOø–N4ùÂ6µ«;¥´Tÿ ’²³ÉœìþDüˆòŸ’YgÓ,Ä—kÒâsêHŠø"ÿ žItÙ³œÎEÅêyWSÚ?t‘¶|òÏmÿ ÎMÏÉ³'ò_Ê>ô…³¼æÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³ce‰%CŠTŠ‚PFxãþrÛò·Bò“YjºU{é%YcCû¿„#Ž?÷_Úû)ð‘žtÉgÿ 4üÁäYý}
+é¢Bjð·Åÿ ¯|?ì×ŒŸÊùêË?ùËÝ^)eædeãmê‚ZÝúÿ nùéÉ?âìïÐ\GqÍ+Æàe ‚B¬:Œ~lÙ³fÍ›!Ÿš_•zWæ.˜tíMxL•h.|q9î¿Ìþì‹ì¿úü|ùùªyT“GÖ#ã"îŽ>Ä‰û2Äß´­ÿ ð?ÅSþqÿ þrFo%”Ð|ÂÍ6ŠM#}Ùíëü½Þßù¢ûIö¢ÿ }·´´ÍR×U¶ŽúÂTžÚeˆC+ÝX`œÙ°›ÎpÓ|¡¦Ë¬k2ˆm¡ì˜þÌq/íÈÿ ²¿ñ®|øüÙüÎ½üÅÖ¤Õï*‚ÞÔG?
+û»}©_öŸüž+—þqò¯®¿ÆÚ¤èöä¥š°ûr}—¸ÿ R±ü[ÿ s×yüãüÒµü¸ÐßU˜	.¤>´$ý¹ý¯ø®?·'üÚuÏŸ^ióN£æB]_X™®.æ5fnÃöQ¢F¿°‹ösÑó¿óízÑy¯ÍÒØQímdoºÜNŸï¯÷ÔMýçÛÝÿ yëlÙ³fÍ›6lÙÿÕõNlÙ²'ù›ùq§þ`èòhÚâOÅ U¢}‰þ"ëûiðçÏ_;ù+Qò^©6‹«ÇéÜBv#ìºŸ±,MûQ¿oøøÕ—;§üãüäˆÐV?+yªCú?e¶¹c_GÂü³ÿ #ÿ º>Ï÷_Ý{9UFC# A ƒÐƒŽÍ›6lÙ³d#Í¿~Qò›˜u]JzÅeqþ´p	?ÙñÈTÿ ó—þGˆÑêOuƒþkdÀÍÿ 9“ä°h#¾>þŠÕlÃþs+ÉdÓÓ¾óÅ?ê¶?þ‡É>Ÿò$ÕL]ç/¼ŒM—Cþxù«þrßÈnhng_œÿ †Å—þrÃÈTÞÈ>vòÿ Í%?ç)?/Úƒô‘ñ‚ú¥‹'üäßåû~•Q_fÿ ªX¯ýŸ?êíü‹›þ©a&»ÿ 9käm6"ö³Í}%6Haa÷µÀ…3„þ`ÿ Î]ùÌ­t%]&Õ¶ä‡œÄÆr þy"¿üYœ:yç¾˜Ë3<ÓÊÕ,Ä³3~&cƒòëþq_Ík	u¨(Ò¬Z‡œàúŒ?â»mŸþFúYé_"ÿ Î2y?Ê¡e’ÛôØ¥e»£Šÿ ‘÷ÿ  Ïþ^uX ŽB¡E¨  1ù³fÍ›6l‚~{Gêy#Yòé!û¾,ùÍžÎÿ œ'——–/£þ[ö?|Pÿ Lô6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lóGüæÿ ür´¯ùˆ—þ ¹ä,õÏüâE¯˜ü¹§ë^[¸6×÷PK$3’Ñ;´jîROï!æçþ-Oõ3Ï~qò&µäÛ³a¯Z½´»ñ,*®íE*þîEÿ Q²Iùaùçæ/ËÙXKëéõ«ÚLIŒ×©ö¡ò£ÿ f¯žÊü¬üøòÿ æb+9>­¨V´˜€ûu17Ù?Ôø¿:>lÙ³fÍ›"_™–:Oæ˜Úf¬”aV†eÔ‰ÿ ž3áüñý™?àY|ùŸùI­~]^ýSU•»“èÜ >œƒü“û<Mñ¯ùIñâ¿–Ÿœþaü¼šºLÜíÖKijÑ7¿±¿ùq27órÏKùSþs7Ëwñªë–óØOOˆ¨õ£ú8Ëÿ $r['üååú'©úH·°‚jÿ É¬ƒy»þsOE´FË¶s^OÙç¤Qƒã@^Wÿ WŒ_ëg™03õÏ?]ýw]œÈ¾œKðÅ=¢þ7nR7í>L?"!o¿1nÖòì4-ûÙ©C!`·ñoç“ìÅþ¿Ïxize¶•k…Œk´8ÔP*¨¢¨Á9á/ùÊÏ>7™|Û.ŸVÏJW@:zŸjåÿ Öõ?uÿ <Wÿ ç¿) óV§/˜uh„º~œÀFŒ*²N~!È~Ò@Ÿ/ó¼_³Ë=­›6lÙ³fÍ›6ÿÖõNlÙ³dóƒòMüÊÓ~©wû›èjm®@«#Ùoç…ÿ Ý‘ÿ ²_<ç"jÞIÔ_IÖá1L»«uG^ÒÂÿ ¶ÿ 6¿ørùAÿ 9'­ùSN¹_Òaµ1ÿ .òïÄÅMÊ?åôþÖzÃÉó>PózªÚ^¥½Ëº.H‰ëü«ÌúrÏ):"°`MAÜ—›6Ö5Ûuª\EkõyQàœŒâ~yÿ œÁòÎ‹Ê$Õn@e¬pƒÿ dÛþyÅÇü¼óŸŸ¿ç"¼Ýç.PÏtlìÛoBÖ±©õõdÿ g'ò3›ÛZÍw*Ãn,®hª€³ì«¹ÉU·äïœn@h´kâà›wñ%-"üîÂ£F»úc#1üŠó¸ýwÿ "Î'ÿ *GÎ¿õf½ÿ ‘-ˆ·äçœ”Tè·ôÿ ˜y?æœ/åW›"¡}üWþ]¥ÿ š1ü¸ó2š6“|üÃKÿ 4bäyE[N» xÁ'üÑ‰?”µ„šÆäÜÂÿ óN%þÔÿ å’ùßóNi¿—>dÔäYi—’¹þXŸKqâ¹Öüÿ 8wæMa–m~Hô»cBT‘,Ä{GôÓýœ¿ì3Òß—_‘~XòYtÛa-èÜÏG–¿äp‡þx¢g@Í›6lÙ³fÍ›"œ1|¬ ©­…ÇOhÛ>mg°ÿ ç¥®‰©Åü·Hß|cþiÏHæÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÏ5ÿ Îo%t}-ü.dzfxÿ >”~RËêùCFr)[où6˜sæ?,i¾e´m;Y·ŽêÕú¤‚»ÿ 2Ÿ´ü®ŸyCókþq
+÷Kç©y1šòÔnmþùGüRßîõÿ #ûïøËžuÿ HÓ®?n˜[ÝOÐÈêsÑŸ”Ÿó——šg3Î®í†Ëv‚²¯üfO÷zÿ —ý÷üeÏWèbÓüÃhšŽ‘<wV²}™#5#ü¬?iâ\1Í›6lÙ°¹ ØkÖ§j°%Í¬¢‚ ÿ F²Ëñ.y›óþpÀ35ß“nBƒ¿ÕnI öŠàWýŠÊ¿óÛ8f¿ùç=	ŠÞi7$Ú…=eÿ ƒ·õW#éä½qÛ‚é÷e¼Wþ#’Ÿ/~@yÛ^`-´©âCûwÑP<é·ü
+¶w¯ËoùÃ[KKß8N.Ýh~«DUÿ ‹f<d—ýTX¿Ö|ôŒ%¥¤k(TDU@èª«²Œ_
+üÓ¯Eåý*ïWŸû»H$˜ûðRüÙ}œù}{-õÄ—wÊi¤vñf<˜ÿ ÁgÐÏÈ?(+y7N²eã<±‰|yÍûß‹Ý’/öÐsfÍ›6lÙ³fÏÿ×õNlÙ³fÈïž¿/´o<X7]€Målñ·óÃ'ÚFÿ …oÛV\ò7æGüâ?˜|¾Ïuåï÷+cÔ*ÐN£ü¨ºKÿ <~&ÿ }.pëë‹	ZÚò'†dÙ’E*Ãýeoˆa¾çíËÔý¨\Ú¨ý˜å`¿ò.¼?ás ió•ž|Ó€Y/#ºQÚxPÿ ÃF"øl:ùÌß92Ø+0‰ëøÍLkó“ž{Õ”¡ÔºÖñ¤gþFõä¦sWY½Õå7:•Ä·3¯+³·ü–8qåË0ù¾A…c5È­…¤cýyŸŒKô¾zÈ_ó…nÜn|ßyÄu6ö»Ÿ“Ü8ûý8ÿ ç¦z'Éß—:“bôt(­¶¡p+#¯3ò•ÿ Ù>I3fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙüÉ‹ÕòÆ­^V#þI>|ÎÏ\ÎK[b?åšOšÉÿ 4ç§3fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³g›ç7ã‹¥ÿ ÌSÿ Ä3Ç¹ô—ò{þPíþ`-ÿ äÚä¿6sÍOÈ/þbFe»êÚK¸@·A2ý™Óýù3Æ_š’^`ü»˜J/VÄšGu&6ðÞ?È“ý‡<%ò'æ>¹äk¿®èW-	4çÞ9òËø_ýo¶¿°Ëž¾ü©ÿ œ¨ÐüÝÂÃ[ã¥êm@·îd?ñTÍýÛ÷Üßìd“;€ ŠŽ™³fÍ›6lÙ³fÍ›8güåÿ œå1¤ÆÔŸT•c§N2&™¿à½(ÿ ç¦yòÛÊÍæ¯1éú([›„Wÿ Œ`ó™¿ØÄ®Ùô¹ 
+¢€
+ 2ófÍ›6lÙ³fÏÿÐõNlÙ³fÍ›
+uÿ )iaÑÖ,à»N€M½?Õ,*¿ìs™kßó‰¾FÕ	hmæ²sÞÞV§üÞ²}Ë=WþpzÍÉ:f¯$c°šøhÞø†'üàíñj6±_nÄýÞ¯üm’#þp‡Jˆƒ©ê—ŽâÖ/øg7Ò¼¯ÿ 8ãä.‘$:z\Ì¿·tLÇþOÜÿ ÀÅ&#P¨HÔP*Š =€ÇæÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÂo:Eêèz„`W•¤âŸ8Û>bg«çæø5¨«ÞÕ©ÿ #ÆzŸ6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6yËþsmòþœÝÅá|ož8Ï¤?“[Éš)?òÃoÿ \™æÍ‰]ÚCy[]"Ë€«£€ÊÀþË+|,3ÍŸ›ó‡ö·üõ/%0¶œîlä?»cÿ Hw„ÿ ü¢ÿ *%Ï+y‡ËZ——.ÛNÖ-äµºN©"Ðÿ ¬¿²éü®ŸgBü°ÿ œó'‘8ZúŸ_Óo«NIâ?â‰¾Ü?êüqÅyë?ËùÈ_+ùä$OõKöëmpB±?ñSÿ w7ûçÿ ®tÌÙ³fÍ›6lÙ±ËÈl¡’êéÖ("Rîìhªª933vUóëóïóPþby…ïmê4ëaèÚ©Ø”­3æ™¾/õ=4ýŒêó…þ@yïn¼ßr”Š6ÖäŽ®ÛÎëÿ ããüöoåÏ\fÍ›6lÙ³fÍ›?ÿÑõNlÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6 ó~¦tyA ÛÝ[>]g¨¿ç%"çZ±Kc÷¿®zË6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6yÏþsoþQí;þcOü›“<oŸH%¿åÑæø‚äÏ6lÙ°ƒÎ^CÑ|åhluëT¹‹~%…	ý¨¥_ÞFßê¶y[ó7þpóTÒ‹ÞùFCj*~¯!:o†9ÿ ä›ÿ ùçËý>çM­obx.#4d‘J²Ÿò•¾!'È?ó’nòpX#¹úíšíè]UÀË_Z?õ}Nägòüæo—5±ëÖóiÓmVQëEÿ œfÿ ’9ÔôÎ/'êêÏW³jöy•þcÿ Âáí·št›­­ïmä¯N£Ä[•ÃŽJA¸ËÍ›6lNââ;hÚyÝcŠ5,ÌÄP7ff;*ŒñgüäoüäCyÅßËž^rº,mûÉEA¸e?…²·Ø_÷g÷ûœÃòÃòÛQüÁÖ#ÑôàU>ÔóUŠ:üR7¿ìÆŸ¶ÿ }òŸ•¬|«¦[èºZzv¶ÈGsÝÏí<ÉÝ¿›³fÍ›6lÙ³fÍŸÿÒõNlÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6!~¼­å_aøgË64ÏLÿ ÎÉMOVÆM~Lÿ óVzë6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6yÓþsiOøwOnÂöŸòJLñ¶}ü“?’´R?åŠ÷(\šæÍ›6lÙó§å¶çX}zÎ;‚Jq‘ãÉÆEÿ W—ó·ž?ç
+eRÓùNø2îD{’ÜD(ßìâ_õóˆy£ò_ÍÞY'ô–™p#_÷dkêÇÿ #`õ²È[¡BUuƒôýQÓO+© #¼R2ÄÉ¶‡ÿ 9çCUžU³=&þG‰þ:•ÿ ç65kr±ëú|7IÐ¼bŸõ‘¿äžv¿&ÎMy3ÌåbúßÔ.ZƒÓ»žçÂj´òW:œR¤È$ƒ#
+‚AÇ	|ßçm#ÉöM©k—	mÖœÄÄ~ÄQŽGÿ %3Å_ßó‘šæ¶›§†³ÑÚ*ürÓ£Ü²öþXWà_Úõ‹dòïòçVóö¦ºN&ë$­P‘'ûòVíþJý§û)žýü¯ü°Ó?.ô¥ÒôÁÊF£O;ŽW§ÛoåQþëýÖ¿årf—æÍ›6lÙ³fÍ›6ÿÓõNlÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›66PÁ>XÜ
+Jàt^z?þp‰¿ÜÖ¦?åÕ?âyìÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙçoùÍŸùF¬?æ8É©sÆ™ôoò3þPþ`ãýY9Í›6lÙ³fÍ…÷þ]Óu[ÛX''ýù¿üMN^~UyNðR}Á«ÿ .Ñƒ÷„ÈÖ©ÿ 8Õä-DzZDÇ¼/$túøÂä_ÿ œ*òõÐ-¤_]Z9è$ã*¢Éÿ %3“ù³þqÍÚ8itÓ§Þ‘7	?äTÜWþWÎ9­yPÐ§6š­´¶³Ø™
+¹ÆySó;ÌžRt=B{hÏû¬7$ùú2s‹—ù\0¯Ì>gÔüÇrou›™nîÜåbÄåZý…ÿ %~è”?óçæ‰w"›-"£•Ì‹»hÏ÷§ü¿î—ù¿c=·ä_ iGÓ×JÐáD7v;¼þü™ÿ mÿ áWì¢ªä‹6lÙ³fÍ›6lÙ³gÿÔõNlÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lùg¨ÿ ½2ÿ ®ß¯=ÿ 8Iÿ )£ÿ 0_ó2<ö>lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6ló·üæÏü£Vó?äÔ¹ãLú7ùÿ (Fÿ 0qþ¬œæÍ›6lÙ³fÍ›6lØ_®ywN×­Íž­mÜö%@ãèåöOùC8ç˜ç<©ÍëÙ5Í…MJC dúë+¯üù/þqsÉ¾X•nšÔ.p×lAñªÇü>u´EE€€€eæÍ›6lÙ³fÍ›6lÙÿÕõNlÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6cž	Öç¼ý¯*éë*³û¹â=OƒHÿ Sþq;ò×Ì>S×/ç×le´íB+H>oQZŠëUè¹ê,Ù³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙç_ùÍ¦á½={›êýÑKž5Ï£¿‘èSÉ:0?òÅûÖ¹7Í›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍŸÿÖõNlÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÏ8ÿ Îm¸œ½Íá?tož9Ï¤?“
+WÉš(?òÃoÿ \™æÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÏÿ×õNlÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÎ3ÿ 97þýgþ4úç£ë?¡õ><¹ñø¹z¿ÙñÏù’ÛÊB¯ \ê'Â;«hGß4Gþ¡óèå?§þÑý±õjWþ1¦J³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³fÍ›6lÙ³gÿÙ                                                                                                                                                                                                                                                                                                                      root/go1.4/doc/gopher/appenginegophercolor.jpg                                                      0100644 0000000 0000000 00000474347 12600426226 020050  0                                                                                                    ustar 00                                                                0000000 0000000                                                                                                                                                                        ÿØÿà JFIF „„  ÿáÎExif  MM *                  b       j(       1       r2       ‡i       ¤   Ð ‰T,  ' ‰T,  'Adobe Photoshop CS2 Macintosh 2011:06:14 15:06:23                 —       …                          &(             .      ˜       H      H   ÿØÿà JFIF   H H  ÿí Adobe_CM ÿî Adobe d€   ÿÛ „ 			
+ÿÀ  e  " ÿÝ  
+ÿÄ?          	
+         	
+ 3 !1AQa"q2‘¡±B#$RÁb34r‚ÑC%’Sðáñcs5¢²ƒ&D“TdEÂ£t6ÒUâeò³„ÃÓuãóF'”¤…´•ÄÔäô¥µÅÕåõVfv†–¦¶ÆÖæö7GWgw‡—§·Ç×ç÷ 5 !1AQaq"2‘¡±B#ÁRÑð3$bár‚’CScs4ñ%¢²ƒ&5ÂÒD“T£dEU6teâò³„ÃÓuãóF”¤…´•ÄÔäô¥µÅÕåõVfv†–¦¶ÆÖæö'7GWgw‡—§·ÇÿÚ   ? õT’I%)$’IJI%W¨õ<—Œr³ïn= Às¹s –×S6]köû)©¾­‰)=×UEOº÷¶ªji}–<†µ­hÜ÷½îöµjå³¾ºÙ³¡c‹k?÷¡—¹”£îÅÇnÜ¼ïi¿õl_û¶²ºŸRÈë¶²üÚMuû±zu°H=²º~êÝ“þ‡ôŒÄÿ 	úÏó$¸—8’O$êU|œÅ‡øßÁ±‹Ÿø«ß“Ör„eõ|Çë;qÍxþ¨û-iÛýl·¬þ¡‡g£vC”æäP×;*Ë2Ikßöw4ý²Ëý¿¥WÕn£¦Èä>’>"êKTäÉ#ö³p@Qcô€d`ÐÃâÆ
+ÏùÔúnGª«q¶œ<ÌÌCY–zy6½“ü¬l×åâØßä:”W}#ñ)ÚGíI„Nñc¥‡õ³¯bífeõJ†Ðm ý›"#Þ÷cd9øw?ú™¸¿ñKs¥ýkèýNöb1ïÅÎ{w,¦:›Œns½!gèòv5Ž{þÉmì\Šµ×u~•ÍW!Á¦D8}+{aôÜÏÌº¯Ò±KbCæ_›¹xŸ—OÉô„—#õwëøÏoMëWzµ8íÁêv@.Ÿ¡‡ÔHÚÆfÜ|¯æz‡üoè®ë•¨ÈHX6Ò‰‰¢)I$’(RI$’ŸÿÐõT’I%)$–&gÖ¼sƒ‡“ÕrªvÌŠðkõ$Ï·'"ÇÓ‰KýŸÍ¾ÿ Wù	)'Ö.½û"šk¢¡‘Ÿ˜âÌjí†÷äÞÿ s™ŒÏç=6Yfÿ Jšÿ \SïÌÌêÖäõþ×•EUœg†
+ë¥·:ÿ Y˜tKý-þ‹+~E–[—mlôì»Óý±×zù?Yh9xY˜"ìCFY¬´¹¯9=FÙÆ¿!Œýz¿ù
+…÷º¾£·³•hÙupo§ïbÛ•{ÿ GŽÇ¶ÌŸû°ÿ g¥EŠ¶yÈÈÃaMœ0žæÛ©ö?ní§oïvûÖn[­Ç«Öê½M˜¸µâY03'!·çd;ÿ 
+ÑŽ¡öœ÷‹Fê9»†™aåd´ÞœÍÿ ô)PˆµŸî‹e3zÞ4Ü³¨ôÚŽÛsq«pü×]X?æïÜ©uµÑˆö·:‡»uNk÷²Ú¬?F5ŠÞÝ.Ç>®ž)e”È¶†T)µ‘ô½Lg×Mìþ¿¦®­=ÃàHC@uO¢u#B5ú¹îëÝqŒêˆ“¯º?ê·®tGý¡ó°7ÿ >mZ­ÄÀ{‰>e¹yYwÙ‹Ó±ïê¹5Hµ”–Š«pÿ ‘›æbÕoüëmÿ ƒH#B$ýôZ™ôÿ Ð–£'#Lké¼øUc,?øœŠæ¹¦>D<Ÿ«zÚý[¾®ad¼æÎE&ßûrÌFWÿ ƒ,}ØØYnÀ¶Ž£Ð2«c­5û®ÇØÙõ.¿í¸Öã×·ßutWK?Ó'œ2ý/ú+Xž£þý'JÖ³'/Ð±­³»î­à9¯²ÐæQUŒtµìªV÷1ßŸv*Øú¹ÕnéY¸5ö¹ý/(ý›»NçcÜûqëªû«f%õÕe5Õw«ez×g£gèðjºÜoÍs.ÆÉ°ÛûN+› 1ùtî³ìômk(§+Ûñ?™õ}>­fEXõ×SìÍ·"–amØršöäa_{ë­•¾ê}?ú	c”£8±ÓÍY"%{|ŸRIsßó«'­³®ôŒ®—ŽãµÙ[ªÉ¢½>–Kð¬¶Üz÷{=WÑé~ý‹}cØ×±ÁÌp®A‡4«­6I$’JÿÑõT’I%8ÿ [º­½#êÞ~}2+¯f9h‹msq±ß–û.º·û–g\êø_âûêÆ/¡ŒìÆµíÇcwl/±Í}¶ää]²ÏÒ[éÙkýŸ¤µmõþ‘W[èÙ}.×l5íeœìx"Ê-ÚwzW2»>’ãþµýdÂÊú¯ŸÒ:î=tuêëcF§kmŽmõ›sÎÛqÚ÷ºïç=Z™UÕäÿ „INKú¶oTxë–VÚzXÇéÔ8‡·›­/$¶·ZÆí»¨ä¦ýR”öF-¸},ƒÂÒçØCí~NQÙˆ×ïþ“Õ:•¿¤ý/è±±+³*ÊþÏV>5³Äû-UíÇ±¶bôìj±jun`6>ò×Ö\ÝíÇÄÅbÑèÕ=™?TÛgª¿7«äC®u°þœÿ EÄÊô«ÿ Âê¬#îL™l=DyüŸó[3—· #ä—ÌîýTú›‹Ñ+™ŽýràN}ž÷¦œGYî¦†îÙíÙë…ÿ U]"I+Mg3­}^éj¶Œ¶äU'2£²ú]ûô^ßsâÿ šøJ×Á•Mù?:>Ý‚ðËžÖím¬xß›SGµ­É¬~’¶ÿ 3{-­qÍúÑõçëOÖ™›u?}”aÕ£SY^ë}=®}4Úæ³é>ßçÂ.ªŽ¥X¯¡u¼¢nNÊ£(·@ï²dÔÊn,o±®±ï»óÂ¨³ÀÖ,¸$DÀé&Ãq²:—PÆèØ¶:‡å‡Û•‘\o§½­¹õnúäÛex´[²ÏKô¶/AÀÀÃé¸u`àÒÜ|Z¶ª™Àÿ YÎs½ö=Þûïzä~¨çF`|zç§ÐiñôÅÙ>¿þé.Ù, ÷Ô£4‰™´
+Y}_¤ušÝÒ²m`Êd[O§`nM7ÝNf1iõ¨¶§{™gþŠRúÇvu¨ÝÓÁ9•ãZê6‰pxc‹\ÆëºÆþcWÏ>º­¯3¨ÛÔþÇŸ†~+Hy¶ûKýÞ•õÿ 5mÎúŸOÿ ¶©XßO~=˜¸–uZ*³'ö_ÇkZÚ=Wl®žµS½6×Vk/Æ~uUÕèßNO­éz¸Ûí§ö6í¿¡Xç2‹ª6`XI.­­swcïúäÌ¯³Ýùÿ d³Óÿ  ¶p*ÊÏÿ •ç4×‘“Óp›˜†·)ØV}§`ú«kñÖ&NLàtÎ«oÒ­øÖÜàŽÌªÆ6VÖ°9îþ’ÇícÁªÙãR~—ý(ü­Œ2¸Gþ‰ù?¨ÿ _úß^ë—ô³‡QÛSÃßK6šÏ§hÊm–ZÏNÏ¡íÿ ÿ ºo©Ì³?¥8Í=+:Ü\IsžF9mY˜µ¹ö?ôeýŸú•.? ýiÄè£ª}§Ý“•Ôsšê³N§mƒŠ¾Ù™kuuW•nO·Ñ³éÿ Ã.óêÿ HJÁs/°_›•kò³¯l†¾ûLØX×}
+«he·ýLV"lÁ!D‡M$’EÿÒõT’I%)p_Y°Ù‰õ‡&üÆ³ìÝQ”{nôýZ[eáï·èÚêÝUôÖïçÿ Oé4»ÕÇ}yknê}'àÛ(ô³.4¼1ÏhÇÆfúß¹¯ÙVfBfP%kñ&)ç°+®®¥ÔªØÚ™êc;k hØìv2ZÖC~•v­¬/´ä}Qé9Ø5ú½Sê½‚»qk‡½ÿ fkº~~#>“›f^¾ÑíÞÿ Õ–ññzSþÝKiÅÙ³>ªYÀKêÎmUý'a¹Ö}£c¡Úÿ ûŽ´ðó³zvAÎé¦»{YëP÷E9hýÈ¬Yèäz^Ê2šÛi¶¯N»ÙìªÚ«âÈ#-~Y /Æ,ùq™GMâI¯	=ßOê]K
+œü[‘‹ÝõZÞã¿¹¯k½–Vÿ }oýŠÂóûz×LÅÈ·¨àdäý\ÌÈ°Ù—‰•ŠüŒìÛï¹ßcõ1ë¶è¯ÔÌÃÍªË=?ÓÕeŠmÿ }Oì±N6SËŽ0Ÿ™´Ÿ…½3Ò¯þ»š­q
+»æÖá7Tm³Õÿ ÅWÕ<üûzÎ¿Ô&ÛëªÆ¶¢d¾Ûê×cëßùû,gö=•Ôú9G¨1ìÀéTÐÞŸÑëqvçãÔãfFc)iºÛ“•üÝûwÛU¥ß¤±?¨ýeë_g£¬úgívlÄèGh½íÝfî¡–]c‹_é2™SþÍü×øDºïø¥ëU¬Î=Gö‘küq[«ÆcZÖ±µcØßZí•GçÓú_øÃúÁ@úzËöExýY²=]#ûd‹ë/OO©tœ‘—•‰¹—a°[‘fÓ“F;2O¯‘K«f^5,é,¯Óÿ ½7§u©‡^wO¹¹×Ì±‡Oê¸}&=¿Ÿ[ÿ I_ç¯,èßâW©71¶un¡UTVC‡Ø‹i þm—ÕK(ÿ ŒÙwõ‡Pé]O¡u†4æ¿+¨^­ˆÑ[r,`/û7WéÎÝvWél~=Ÿ£ûWür@{c©ˆÿ *'Ü=Ù'Ó1ÕúoÔî‡:Ãúmê–»õ:k`6Ýx!Õý—{=Sgë«ô_ÎØõÌþÕúüËClêµäÐß¥éWN=îþ·¯‡—_öp2ú†Ÿj£½JÁ²î¥Ÿ“oPÈ5ËŸéÕ[)À¦–{ÿ š¢ìjàÒ÷±ïÄídý×W9·ôOªÙ8ÙV6Ï¬XŸis]hÈnË}9fIÄk?Iüß£‹þ’åÏuS‹ÓêfñMÈÃ©yk.¥ÍsÜ~ŽÊhVâÇ]nveîÊË}a·æ_µ‘SâÊØÝ˜øXVÆWÿ “mßMTÅ¸gå}­’1pœYŠsM–Ù[ü×1Á¿ û&Cþ‘—Ý•þ‰WÉ“Œ‚¦›c> Aù¤ÊÌ¬>±}+*¼œœÜŠCYSÛfÖWmy™6½ÁÛécc\ÿ §¾ÏðkÔ—ž`Ýéuîe®ôñkÈ·{ÿ 4[e6bá±ÿ »ë?"Ö6Ïô¾_á—¡©¹p84êXs“Ç¯@¤’ILÄÿ ÿÓõT’I%)rŸ^ikoèÙ„ÁnE¸¿,Š.pÿ Á±h]Zç>¼ØÁÓ1),ßeùø¢£D×gÛ-³û8¸¹	³ù%äWCæ˜yÀKHp0F „>ÐzžUÙÿ ±ÝEXx–W[pïÜ*uÖ5¹y‡ê·Ù€ÖW‘OèMøÞ·«ú
+‘ÿ Ô8n/U¬ˆ{z•®qîE•ãäRïûbÚêÿ ­ª¸"%"¢¶mg‘ŒAÝÆoNúÊÉž×ôY®iþ­ÈÇ³üêGÕÿ ­Y z•QÓdäXrí{\Ì\oKé~þuŸñk¹IN0cëñ`9òVï'oÔûzvNWé9S	Öúÿ l³oÚj¹¥®Çõj©ÌÄô=Ÿb®Š+Æ«ü'ó¶ØŸ§uÿ ­ý{¹}/§a`Tç¹‚ÜÌ‡ß»Ós¨¿f>Uý«{}ù>õÕ®#êwÖÑ~ªÑ‡Õ2ë§¨âÙ{20ƒ²E¯ÈµÞ‹1»"×¹Öû=:Ô VÌDÞéú?[úñ™Ò)ëNÇé™8—Po1÷ãÝ s½6¹ìÎ©Îöÿ !§å}nwOêÝs¾”Ü_§5ç Øü–?šûiÇ­¾†;ÿ W¦ªÿ ž³Öõÿ GZ«õwë7FéTééÝBãÔº}«úmÍ5äºÂ%•QfÛ2=mìô_Nö{×Iõkü?«½3%¥—Ñ‰Ev°ò×¶¶5ìÒ~ƒ½©)ÇÈúŽæ8—Ô­Ç®£å°fV Ue£=ŸÚÎ±S?Tþ´í4²œ5äñ_hwþ~]²I‡ñÆI¤^gêF>ñgYÈ=Oi%¸»8ƒV–9øu¯É{6ÿ ÚÜŒ–Á¬~µU¸ÿ Yz•vˆnX§7ë«uôü?Gu6âÓ¿ÿ Ò»åÇ}v×­tpÞ[Ni³É„b·Ýÿ _ôSrÀ{dUªìR>à$Ýèóý]¡Ý¨5ÂGÙo0|[[ìoý65zf-Ž·›_£¬c\ï‰ •æùXïÍm]*£uK#H‚[[~uÛ\[»ÐÁeïÿ Œô—¦   @o,=$÷+¹ƒêÁt’INÀÿ ÿÔ½‰Ôº‹zæ/YËy=AÙŒéF–{jª§=øŸce[ìk«§3#6¬‹êÝëz¿£ªïEz:å~¶}W¿6Ççtê›s²+êÂ—Ü+÷båãdý
+º†ÚßM×~ŽÚ¿Fû+ô)YOÁúçÔÞ)´u5»9yø4	áÐZìÌ¿Ýÿ B˜¢H ÊÍÆ»~êò# ":Qþ/~¸O¬Yõõ.¾E.ctv;9¦AË»oÚÄ‡mÝ‡ŠÚèþE™—Ôª¨=mãm¸˜³÷,ÏÏ{í»ª¶¿ú+[ê>a¤779¸,hŠñ:]u¶¶{œïé”Þû·îÿ ‡ïÿ ›>9ë"?îx—C‚$HËŠºDßp¸y9LÇôXoÊÊx«¤5÷XL1ÏöUSÃäÙú*?ã?D»«}ý'§zym™¹/9¶3vÃsÃ[¶ŸSÜÚ(©•cQÿ OúEÏõß«Ø]#£»Ùmïë8ÈË½æË¬æ¦¶Ë4ý=OÑÑS+¢¿ðu.ÕX„y¨Ë”ÌöˆRI$¤cR	ÄÅ9#,ÓYÉkvöP7÷=Xßµ$”Ä±…Íqh.lí$j'ªI$’”’I$¥.ë‹þ¶e‡·kêÂÆm ]Q³%ù1Ÿ¹ëú[ýJ¿»µõ«¦afôŒ‹ï¯õŒ*n»!„²Úžã¾›™ïgÑnö5oøfX›’<Q1ºµÐ—„ªéæ:N~'Kë•çõ F#ñþÊÌ©%˜ö>ÏRÛ2™þŒ¶·¿¶ÿ 7öNÿ J»}Eß1ì±²·±à9®iAÕ®k‚óœlN¹OHÁê™9ØÙxÔä?'¸º§\Ö=ÌÈÀ«w¯K}_é>ýŸÎá…MÑ:«°.}_ÈÆ¿À}^™êÅ.'Þ/ÄôEötüwéªf/Ùïüú)»ôª(Lã¨LPé!ò²Î%ÊÏXõ{n·Ö™Òê­•×öœì¢[‰Ši{„o}?ÍcÓ¹¾½ßú:Ê«Ó¾°un­]]Bûú½ÍkÙƒSjû5NÜ}ZzŽ-u]fÍý£/©~Ò»þÑÖ–>WÖ/¬/§=ðûªuO³oh¯²ƒÒ*ÈpõjfuÖ_“’ÿ Õò2«ªÿ I”Óé®û–ãâRÌzô*©¡ŒÕcZ¥Œ¸¬þèÿ )G†‡é~“ÿÕõT—Ê©$§ê¤—Ê©$§é/¬¿³ý·ú»hâzŽÙõýV}›Õõ?í?©üþÏÒzÍ­…òªI)ú©%òªI)ú©%òªI)ú©%òªI)ú©%òªI)ú©Rëa§£g‡Öœk¥Àn lv»w3wùëæ$’Sô¯ÕHÿ šýi%¿aÆ‚Dôkíª©Öÿ æ'©oíÏÙ¾¾ßÒ}§Ñõ¢;oýc~Ï¡³ôŸ¸¾uI%?IýWÿ ›¿²ÿ ìwgØýGú›woõ´õ~ÕöÖ¾Óô?¥~›Óô¿Áúk]|ª’JÿÙÿí6FPhotoshop 3.0 8BIM         8BIM%     Fò‰&¸VÚ°œ¡°§w8BIMê     <?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>com.apple.print.PageFormat.PMHorizontalRes</key>
+	<dict>
+		<key>com.apple.print.ticket.creator</key>
+		<string>com.apple.jobticket</string>
+		<key>com.apple.print.ticket.itemArray</key>
+		<array>
+			<dict>
+				<key>com.apple.print.PageFormat.PMHorizontalRes</key>
+				<real>72</real>
+				<key>com.apple.print.ticket.stateFlag</key>
+				<integer>0</integer>
+			</dict>
+		</array>
+	</dict>
+	<key>com.apple.print.PageFormat.PMOrientation</key>
+	<dict>
+		<key>com.apple.print.ticket.creator</key>
+		<string>com.apple.jobticket</string>
+		<key>com.apple.print.ticket.itemArray</key>
+		<array>
+			<dict>
+				<key>com.apple.print.PageFormat.PMOrientation</key>
+				<integer>1</integer>
+				<key>com.apple.print.ticket.stateFlag</key>
+				<integer>0</integer>
+			</dict>
+		</array>
+	</dict>
+	<key>com.apple.print.PageFormat.PMScaling</key>
+	<dict>
+		<key>com.apple.print.ticket.creator</key>
+		<string>com.apple.jobticket</string>
+		<key>com.apple.print.ticket.itemArray</key>
+		<array>
+			<dict>
+				<key>com.apple.print.PageFormat.PMScaling</key>
+				<real>1</real>
+				<key>com.apple.print.ticket.stateFlag</key>
+				<integer>0</integer>
+			</dict>
+		</array>
+	</dict>
+	<key>com.apple.print.PageFormat.PMVerticalRes</key>
+	<dict>
+		<key>com.apple.print.ticket.creator</key>
+		<string>com.apple.jobticket</string>
+		<key>com.apple.print.ticket.itemArray</key>
+		<array>
+			<dict>
+				<key>com.apple.print.PageFormat.PMVerticalRes</key>
+				<real>72</real>
+				<key>com.apple.print.ticket.stateFlag</key>
+				<integer>0</integer>
+			</dict>
+		</array>
+	</dict>
+	<key>com.apple.print.PageFormat.PMVerticalScaling</key>
+	<dict>
+		<key>com.apple.print.ticket.creator</key>
+		<string>com.apple.jobticket</string>
+		<key>com.apple.print.ticket.itemArray</key>
+		<array>
+			<dict>
+				<key>com.apple.print.PageFormat.PMVerticalScaling</key>
+				<real>1</real>
+				<key>com.apple.print.ticket.stateFlag</key>
+				<integer>0</integer>
+			</dict>
+		</array>
+	</dict>
+	<key>com.apple.print.subTicket.paper_info_ticket</key>
+	<dict>
+		<key>PMPPDPaperCodeName</key>
+		<dict>
+			<key>com.apple.print.ticket.creator</key>
+			<string>com.apple.jobticket</string>
+			<key>com.apple.print.ticket.itemArray</key>
+			<array>
+				<dict>
+					<key>PMPPDPaperCodeName</key>
+					<string>Letter</string>
+					<key>com.apple.print.ticket.stateFlag</key>
+					<integer>0</integer>
+				</dict>
+			</array>
+		</dict>
+		<key>PMTiogaPaperName</key>
+		<dict>
+			<key>com.apple.print.ticket.creator</key>
+			<string>com.apple.jobticket</string>
+			<key>com.apple.print.ticket.itemArray</key>
+			<array>
+				<dict>
+					<key>PMTiogaPaperName</key>
+					<string>na-letter</string>
+					<key>com.apple.print.ticket.stateFlag</key>
+					<integer>0</integer>
+				</dict>
+			</array>
+		</dict>
+		<key>com.apple.print.PageFormat.PMAdjustedPageRect</key>
+		<dict>
+			<key>com.apple.print.ticket.creator</key>
+			<string>com.apple.jobticket</string>
+			<key>com.apple.print.ticket.itemArray</key>
+			<array>
+				<dict>
+					<key>com.apple.print.PageFormat.PMAdjustedPageRect</key>
+					<array>
+						<integer>0</integer>
+						<integer>0</integer>
+						<real>734</real>
+						<real>576</real>
+					</array>
+					<key>com.apple.print.ticket.stateFlag</key>
+					<integer>0</integer>
+				</dict>
+			</array>
+		</dict>
+		<key>com.apple.print.PageFormat.PMAdjustedPaperRect</key>
+		<dict>
+			<key>com.apple.print.ticket.creator</key>
+			<string>com.apple.jobticket</string>
+			<key>com.apple.print.ticket.itemArray</key>
+			<array>
+				<dict>
+					<key>com.apple.print.PageFormat.PMAdjustedPaperRect</key>
+					<array>
+						<real>-18</real>
+						<real>-18</real>
+						<real>774</real>
+						<real>594</real>
+					</array>
+					<key>com.apple.print.ticket.stateFlag</key>
+					<integer>0</integer>
+				</dict>
+			</array>
+		</dict>
+		<key>com.apple.print.PaperInfo.PMPaperName</key>
+		<dict>
+			<key>com.apple.print.ticket.creator</key>
+			<string>com.apple.jobticket</string>
+			<key>com.apple.print.ticket.itemArray</key>
+			<array>
+				<dict>
+					<key>com.apple.print.PaperInfo.PMPaperName</key>
+					<string>na-letter</string>
+					<key>com.apple.print.ticket.stateFlag</key>
+					<integer>0</integer>
+				</dict>
+			</array>
+		</dict>
+		<key>com.apple.print.PaperInfo.PMUnadjustedPageRect</key>
+		<dict>
+			<key>com.apple.print.ticket.creator</key>
+			<string>com.apple.jobticket</string>
+			<key>com.apple.print.ticket.itemArray</key>
+			<array>
+				<dict>
+					<key>com.apple.print.PaperInfo.PMUnadjustedPageRect</key>
+					<array>
+						<integer>0</integer>
+						<integer>0</integer>
+						<real>734</real>
+						<real>576</real>
+					</array>
+					<key>com.apple.print.ticket.stateFlag</key>
+					<integer>0</integer>
+				</dict>
+			</array>
+		</dict>
+		<key>com.apple.print.PaperInfo.PMUnadjustedPaperRect</key>
+		<dict>
+			<key>com.apple.print.ticket.creator</key>
+			<string>com.apple.jobticket</string>
+			<key>com.apple.print.ticket.itemArray</key>
+			<array>
+				<dict>
+					<key>com.apple.print.PaperInfo.PMUnadjustedPaperRect</key>
+					<array>
+						<real>-18</real>
+						<real>-18</real>
+						<real>774</real>
+						<real>594</real>
+					</array>
+					<key>com.apple.print.ticket.stateFlag</key>
+					<integer>0</integer>
+				</dict>
+			</array>
+		</dict>
+		<key>com.apple.print.PaperInfo.ppd.PMPaperName</key>
+		<dict>
+			<key>com.apple.print.ticket.creator</key>
+			<string>com.apple.jobticket</string>
+			<key>com.apple.print.ticket.itemArray</key>
+			<array>
+				<dict>
+					<key>com.apple.print.PaperInfo.ppd.PMPaperName</key>
+					<string>US Letter</string>
+					<key>com.apple.print.ticket.stateFlag</key>
+					<integer>0</integer>
+				</dict>
+			</array>
+		</dict>
+		<key>com.apple.print.ticket.APIVersion</key>
+		<string>00.20</string>
+		<key>com.apple.print.ticket.type</key>
+		<string>com.apple.print.PaperInfoTicket</string>
+	</dict>
+	<key>com.apple.print.ticket.APIVersion</key>
+	<string>00.20</string>
+	<key>com.apple.print.ticket.type</key>
+	<string>com.apple.print.PageFormatTicket</string>
+</dict>
+</plist>
+8BIMé     x    H H    Þ@ÿîÿîRg(ü    H H    Ø(    d       ÿ              h                                 8BIMí     ƒÿ}  ƒÿ}  8BIM&               ?€  8BIM        8BIM        8BIMó     	         8BIM
+       8BIM'     
+        8BIMõ     H /ff  lff       /ff  ¡™š       2    Z         5    -        8BIMø     p  ÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿè    ÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿè    ÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿè    ÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿè  8BIM          @  @    8BIM         8BIM    _             …  —    a p p e n g i n e g o p h e r c o l o r 1                                —  …                                            null      boundsObjc         Rct1       Top long        Leftlong        Btomlong  …    Rghtlong  —   slicesVlLs   Objc        slice      sliceIDlong       groupIDlong       originenum   ESliceOrigin   autoGenerated    Typeenum   
+ESliceType    Img    boundsObjc         Rct1       Top long        Leftlong        Btomlong  …    Rghtlong  —   urlTEXT         nullTEXT         MsgeTEXT        altTagTEXT        cellTextIsHTMLbool   cellTextTEXT        	horzAlignenum   ESliceHorzAlign   default   	vertAlignenum   ESliceVertAlign   default   bgColorTypeenum   ESliceBGColorType    None   	topOutsetlong       
+leftOutsetlong       bottomOutsetlong       rightOutsetlong     8BIM(        ?ð      8BIM        8BIM    ´          e  à  ½`  ˜  ÿØÿà JFIF   H H  ÿí Adobe_CM ÿî Adobe d€   ÿÛ „ 			
+ÿÀ  e  " ÿÝ  
+ÿÄ?          	
+         	
+ 3 !1AQa"q2‘¡±B#$RÁb34r‚ÑC%’Sðáñcs5¢²ƒ&D“TdEÂ£t6ÒUâeò³„ÃÓuãóF'”¤…´•ÄÔäô¥µÅÕåõVfv†–¦¶ÆÖæö7GWgw‡—§·Ç×ç÷ 5 !1AQaq"2‘¡±B#ÁRÑð3$bár‚’CScs4ñ%¢²ƒ&5ÂÒD“T£dEU6teâò³„ÃÓuãóF”¤…´•ÄÔäô¥µÅÕåõVfv†–¦¶ÆÖæö'7GWgw‡—§·ÇÿÚ   ? õT’I%)$’IJI%W¨õ<—Œr³ïn= Às¹s –×S6]köû)©¾­‰)=×UEOº÷¶ªji}–<†µ­hÜ÷½îöµjå³¾ºÙ³¡c‹k?÷¡—¹”£îÅÇnÜ¼ïi¿õl_û¶²ºŸRÈë¶²üÚMuû±zu°H=²º~êÝ“þ‡ôŒÄÿ 	úÏó$¸—8’O$êU|œÅ‡øßÁ±‹Ÿø«ß“Ör„eõ|Çë;qÍxþ¨û-iÛýl·¬þ¡‡g£vC”æäP×;*Ë2Ikßöw4ý²Ëý¿¥WÕn£¦Èä>’>"êKTäÉ#ö³p@Qcô€d`ÐÃâÆ
+ÏùÔúnGª«q¶œ<ÌÌCY–zy6½“ü¬l×åâØßä:”W}#ñ)ÚGíI„Nñc¥‡õ³¯bífeõJ†Ðm ý›"#Þ÷cd9øw?ú™¸¿ñKs¥ýkèýNöb1ïÅÎ{w,¦:›Œns½!gèòv5Ž{þÉmì\Šµ×u~•ÍW!Á¦D8}+{aôÜÏÌº¯Ò±KbCæ_›¹xŸ—OÉô„—#õwëøÏoMëWzµ8íÁêv@.Ÿ¡‡ÔHÚÆfÜ|¯æz‡üoè®ë•¨ÈHX6Ò‰‰¢)I$’(RI$’ŸÿÐõT’I%)$–&gÖ¼sƒ‡“ÕrªvÌŠðkõ$Ï·'"ÇÓ‰KýŸÍ¾ÿ Wù	)'Ö.½û"šk¢¡‘Ÿ˜âÌjí†÷äÞÿ s™ŒÏç=6Yfÿ Jšÿ \SïÌÌêÖäõþ×•EUœg†
+ë¥·:ÿ Y˜tKý-þ‹+~E–[—mlôì»Óý±×zù?Yh9xY˜"ìCFY¬´¹¯9=FÙÆ¿!Œýz¿ù
+…÷º¾£·³•hÙupo§ïbÛ•{ÿ GŽÇ¶ÌŸû°ÿ g¥EŠ¶yÈÈÃaMœ0žæÛ©ö?ní§oïvûÖn[­Ç«Öê½M˜¸µâY03'!·çd;ÿ 
+ÑŽ¡öœ÷‹Fê9»†™aåd´ÞœÍÿ ô)PˆµŸî‹e3zÞ4Ü³¨ôÚŽÛsq«pü×]X?æïÜ©uµÑˆö·:‡»uNk÷²Ú¬?F5ŠÞÝ.Ç>®ž)e”È¶†T)µ‘ô½Lg×Mìþ¿¦®­=ÃàHC@uO¢u#B5ú¹îëÝqŒêˆ“¯º?ê·®tGý¡ó°7ÿ >mZ­ÄÀ{‰>e¹yYwÙ‹Ó±ïê¹5Hµ”–Š«pÿ ‘›æbÕoüëmÿ ƒH#B$ýôZ™ôÿ Ð–£'#Lké¼øUc,?øœŠæ¹¦>D<Ÿ«zÚý[¾®ad¼æÎE&ßûrÌFWÿ ƒ,}ØØYnÀ¶Ž£Ð2«c­5û®ÇØÙõ.¿í¸Öã×·ßutWK?Ó'œ2ý/ú+Xž£þý'JÖ³'/Ð±­³»î­à9¯²ÐæQUŒtµìªV÷1ßŸv*Øú¹ÕnéY¸5ö¹ý/(ý›»NçcÜûqëªû«f%õÕe5Õw«ez×g£gèðjºÜoÍs.ÆÉ°ÛûN+› 1ùtî³ìômk(§+Ûñ?™õ}>­fEXõ×SìÍ·"–amØršöäa_{ë­•¾ê}?ú	c”£8±ÓÍY"%{|ŸRIsßó«'­³®ôŒ®—ŽãµÙ[ªÉ¢½>–Kð¬¶Üz÷{=WÑé~ý‹}cØ×±ÁÌp®A‡4«­6I$’JÿÑõT’I%8ÿ [º­½#êÞ~}2+¯f9h‹msq±ß–û.º·û–g\êø_âûêÆ/¡ŒìÆµíÇcwl/±Í}¶ää]²ÏÒ[éÙkýŸ¤µmõþ‘W[èÙ}.×l5íeœìx"Ê-ÚwzW2»>’ãþµýdÂÊú¯ŸÒ:î=tuêëcF§kmŽmõ›sÎÛqÚ÷ºïç=Z™UÕäÿ „INKú¶oTxë–VÚzXÇéÔ8‡·›­/$¶·ZÆí»¨ä¦ýR”öF-¸},ƒÂÒçØCí~NQÙˆ×ïþ“Õ:•¿¤ý/è±±+³*ÊþÏV>5³Äû-UíÇ±¶bôìj±jun`6>ò×Ö\ÝíÇÄÅbÑèÕ=™?TÛgª¿7«äC®u°þœÿ EÄÊô«ÿ Âê¬#îL™l=DyüŸó[3—· #ä—ÌîýTú›‹Ñ+™ŽýràN}ž÷¦œGYî¦†îÙíÙë…ÿ U]"I+Mg3­}^éj¶Œ¶äU'2£²ú]ûô^ßsâÿ šøJ×Á•Mù?:>Ý‚ðËžÖím¬xß›SGµ­É¬~’¶ÿ 3{-­qÍúÑõçëOÖ™›u?}”aÕ£SY^ë}=®}4Úæ³é>ßçÂ.ªŽ¥X¯¡u¼¢nNÊ£(·@ï²dÔÊn,o±®±ï»óÂ¨³ÀÖ,¸$DÀé&Ãq²:—PÆèØ¶:‡å‡Û•‘\o§½­¹õnúäÛex´[²ÏKô¶/AÀÀÃé¸u`àÒÜ|Z¶ª™Àÿ YÎs½ö=Þûïzä~¨çF`|zç§ÐiñôÅÙ>¿þé.Ù, ÷Ô£4‰™´
+Y}_¤ušÝÒ²m`Êd[O§`nM7ÝNf1iõ¨¶§{™gþŠRúÇvu¨ÝÓÁ9•ãZê6‰pxc‹\ÆëºÆþcWÏ>º­¯3¨ÛÔþÇŸ†~+Hy¶ûKýÞ•õÿ 5mÎúŸOÿ ¶©XßO~=˜¸–uZ*³'ö_ÇkZÚ=Wl®žµS½6×Vk/Æ~uUÕèßNO­éz¸Ûí§ö6í¿¡Xç2‹ª6`XI.­­swcïúäÌ¯³Ýùÿ d³Óÿ  ¶p*ÊÏÿ •ç4×‘“Óp›˜†·)ØV}§`ú«kñÖ&NLàtÎ«oÒ­øÖÜàŽÌªÆ6VÖ°9îþ’ÇícÁªÙãR~—ý(ü­Œ2¸Gþ‰ù?¨ÿ _úß^ë—ô³‡QÛSÃßK6šÏ§hÊm–ZÏNÏ¡íÿ ÿ ºo©Ì³?¥8Í=+:Ü\IsžF9mY˜µ¹ö?ôeýŸú•.? ýiÄè£ª}§Ý“•Ôsšê³N§mƒŠ¾Ù™kuuW•nO·Ñ³éÿ Ã.óêÿ HJÁs/°_›•kò³¯l†¾ûLØX×}
+«he·ýLV"lÁ!D‡M$’EÿÒõT’I%)p_Y°Ù‰õ‡&üÆ³ìÝQ”{nôýZ[eáï·èÚêÝUôÖïçÿ Oé4»ÕÇ}yknê}'àÛ(ô³.4¼1ÏhÇÆfúß¹¯ÙVfBfP%kñ&)ç°+®®¥ÔªØÚ™êc;k hØìv2ZÖC~•v­¬/´ä}Qé9Ø5ú½Sê½‚»qk‡½ÿ fkº~~#>“›f^¾ÑíÞÿ Õ–ññzSþÝKiÅÙ³>ªYÀKêÎmUý'a¹Ö}£c¡Úÿ ûŽ´ðó³zvAÎé¦»{YëP÷E9hýÈ¬Yèäz^Ê2šÛi¶¯N»ÙìªÚ«âÈ#-~Y /Æ,ùq™GMâI¯	=ßOê]K
+œü[‘‹ÝõZÞã¿¹¯k½–Vÿ }oýŠÂóûz×LÅÈ·¨àdäý\ÌÈ°Ù—‰•ŠüŒìÛï¹ßcõ1ë¶è¯ÔÌÃÍªË=?ÓÕeŠmÿ }Oì±N6SËŽ0Ÿ™´Ÿ…½3Ò¯þ»š­q
+»æÖá7Tm³Õÿ ÅWÕ<üûzÎ¿Ô&ÛëªÆ¶¢d¾Ûê×cëßùû,gö=•Ôú9G¨1ìÀéTÐÞŸÑëqvçãÔãfFc)iºÛ“•üÝûwÛU¥ß¤±?¨ýeë_g£¬úgívlÄèGh½íÝfî¡–]c‹_é2™SþÍü×øDºïø¥ëU¬Î=Gö‘küq[«ÆcZÖ±µcØßZí•GçÓú_øÃúÁ@úzËöExýY²=]#ûd‹ë/OO©tœ‘—•‰¹—a°[‘fÓ“F;2O¯‘K«f^5,é,¯Óÿ ½7§u©‡^wO¹¹×Ì±‡Oê¸}&=¿Ÿ[ÿ I_ç¯,èßâW©71¶un¡UTVC‡Ø‹i þm—ÕK(ÿ ŒÙwõ‡Pé]O¡u†4æ¿+¨^­ˆÑ[r,`/û7WéÎÝvWél~=Ÿ£ûWür@{c©ˆÿ *'Ü=Ù'Ó1ÕúoÔî‡:Ãúmê–»õ:k`6Ýx!Õý—{=Sgë«ô_ÎØõÌþÕúüËClêµäÐß¥éWN=îþ·¯‡—_öp2ú†Ÿj£½JÁ²î¥Ÿ“oPÈ5ËŸéÕ[)À¦–{ÿ š¢ìjàÒ÷±ïÄídý×W9·ôOªÙ8ÙV6Ï¬XŸis]hÈnË}9fIÄk?Iüß£‹þ’åÏuS‹ÓêfñMÈÃ©yk.¥ÍsÜ~ŽÊhVâÇ]nveîÊË}a·æ_µ‘SâÊØÝ˜øXVÆWÿ “mßMTÅ¸gå}­’1pœYŠsM–Ù[ü×1Á¿ û&Cþ‘—Ý•þ‰WÉ“Œ‚¦›c> Aù¤ÊÌ¬>±}+*¼œœÜŠCYSÛfÖWmy™6½ÁÛécc\ÿ §¾ÏðkÔ—ž`Ýéuîe®ôñkÈ·{ÿ 4[e6bá±ÿ »ë?"Ö6Ïô¾_á—¡©¹p84êXs“Ç¯@¤’ILÄÿ ÿÓõT’I%)rŸ^ikoèÙ„ÁnE¸¿,Š.pÿ Á±h]Zç>¼ØÁÓ1),ßeùø¢£D×gÛ-³û8¸¹	³ù%äWCæ˜yÀKHp0F „>ÐzžUÙÿ ±ÝEXx–W[pïÜ*uÖ5¹y‡ê·Ù€ÖW‘OèMøÞ·«ú
+‘ÿ Ô8n/U¬ˆ{z•®qîE•ãäRïûbÚêÿ ­ª¸"%"¢¶mg‘ŒAÝÆoNúÊÉž×ôY®iþ­ÈÇ³üêGÕÿ ­Y z•QÓdäXrí{\Ì\oKé~þuŸñk¹IN0cëñ`9òVï'oÔûzvNWé9S	Öúÿ l³oÚj¹¥®Çõj©ÌÄô=Ÿb®Š+Æ«ü'ó¶ØŸ§uÿ ­ý{¹}/§a`Tç¹‚ÜÌ‡ß»Ós¨¿f>Uý«{}ù>õÕ®#êwÖÑ~ªÑ‡Õ2ë§¨âÙ{20ƒ²E¯ÈµÞ‹1»"×¹Öû=:Ô VÌDÞéú?[úñ™Ò)ëNÇé™8—Po1÷ãÝ s½6¹ìÎ©Îöÿ !§å}nwOêÝs¾”Ü_§5ç Øü–?šûiÇ­¾†;ÿ W¦ªÿ ž³Öõÿ GZ«õwë7FéTééÝBãÔº}«úmÍ5äºÂ%•QfÛ2=mìô_Nö{×Iõkü?«½3%¥—Ñ‰Ev°ò×¶¶5ìÒ~ƒ½©)ÇÈúŽæ8—Ô­Ç®£å°fV Ue£=ŸÚÎ±S?Tþ´í4²œ5äñ_hwþ~]²I‡ñÆI¤^gêF>ñgYÈ=Oi%¸»8ƒV–9øu¯É{6ÿ ÚÜŒ–Á¬~µU¸ÿ Yz•vˆnX§7ë«uôü?Gu6âÓ¿ÿ Ò»åÇ}v×­tpÞ[Ni³É„b·Ýÿ _ôSrÀ{dUªìR>à$Ýèóý]¡Ý¨5ÂGÙo0|[[ìoý65zf-Ž·›_£¬c\ï‰ •æùXïÍm]*£uK#H‚[[~uÛ\[»ÐÁeïÿ Œô—¦   @o,=$÷+¹ƒêÁt’INÀÿ ÿÔ½‰Ôº‹zæ/YËy=AÙŒéF–{jª§=øŸce[ìk«§3#6¬‹êÝëz¿£ªïEz:å~¶}W¿6Ççtê›s²+êÂ—Ü+÷båãdý
+º†ÚßM×~ŽÚ¿Fû+ô)YOÁúçÔÞ)´u5»9yø4	áÐZìÌ¿Ýÿ B˜¢H ÊÍÆ»~êò# ":Qþ/~¸O¬Yõõ.¾E.ctv;9¦AË»oÚÄ‡mÝ‡ŠÚèþE™—Ôª¨=mãm¸˜³÷,ÏÏ{í»ª¶¿ú+[ê>a¤779¸,hŠñ:]u¶¶{œïé”Þû·îÿ ‡ïÿ ›>9ë"?îx—C‚$HËŠºDßp¸y9LÇôXoÊÊx«¤5÷XL1ÏöUSÃäÙú*?ã?D»«}ý'§zym™¹/9¶3vÃsÃ[¶ŸSÜÚ(©•cQÿ OúEÏõß«Ø]#£»Ùmïë8ÈË½æË¬æ¦¶Ë4ý=OÑÑS+¢¿ðu.ÕX„y¨Ë”ÌöˆRI$¤cR	ÄÅ9#,ÓYÉkvöP7÷=Xßµ$”Ä±…Íqh.lí$j'ªI$’”’I$¥.ë‹þ¶e‡·kêÂÆm ]Q³%ù1Ÿ¹ëú[ýJ¿»µõ«¦afôŒ‹ï¯õŒ*n»!„²Úžã¾›™ïgÑnö5oøfX›’<Q1ºµÐ—„ªéæ:N~'Kë•çõ F#ñþÊÌ©%˜ö>ÏRÛ2™þŒ¶·¿¶ÿ 7öNÿ J»}Eß1ì±²·±à9®iAÕ®k‚óœlN¹OHÁê™9ØÙxÔä?'¸º§\Ö=ÌÈÀ«w¯K}_é>ýŸÎá…MÑ:«°.}_ÈÆ¿À}^™êÅ.'Þ/ÄôEötüwéªf/Ùïüú)»ôª(Lã¨LPé!ò²Î%ÊÏXõ{n·Ö™Òê­•×öœì¢[‰Ši{„o}?ÍcÓ¹¾½ßú:Ê«Ó¾°un­]]Bûú½ÍkÙƒSjû5NÜ}ZzŽ-u]fÍý£/©~Ò»þÑÖ–>WÖ/¬/§=ðûªuO³oh¯²ƒÒ*ÈpõjfuÖ_“’ÿ Õò2«ªÿ I”Óé®û–ãâRÌzô*©¡ŒÕcZ¥Œ¸¬þèÿ )G†‡é~“ÿÕõT—Ê©$§ê¤—Ê©$§é/¬¿³ý·ú»hâzŽÙõýV}›Õõ?í?©üþÏÒzÍ­…òªI)ú©%òªI)ú©%òªI)ú©%òªI)ú©%òªI)ú©Rëa§£g‡Öœk¥Àn lv»w3wùëæ$’Sô¯ÕHÿ šýi%¿aÆ‚Dôkíª©Öÿ æ'©oíÏÙ¾¾ßÒ}§Ñõ¢;oýc~Ï¡³ôŸ¸¾uI%?IýWÿ ›¿²ÿ ìwgØýGú›woõ´õ~ÕöÖ¾Óô?¥~›Óô¿Áúk]|ª’JÿÙ8BIM!     U       A d o b e   P h o t o s h o p    A d o b e   P h o t o s h o p   C S 2    8BIM          ÿá:¶http://ns.adobe.com/xap/1.0/ <?xpacket begin="ï»¿" id="W5M0MpCehiHzreSzNTczkc9d"?>
+<x:xmpmeta xmlns:x="adobe:ns:meta/" x:xmptk="3.1.1-112">
+   <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
+      <rdf:Description rdf:about=""
+            xmlns:xapMM="http://ns.adobe.com/xap/1.0/mm/"
+            xmlns:stRef="http://ns.adobe.com/xap/1.0/sType/ResourceRef#">
+         <xapMM:DocumentID>uuid:0CDE46B9982A11E091A193CDBD092F25</xapMM:DocumentID>
+         <xapMM:InstanceID>uuid:0CDE46BD982A11E091A193CDBD092F25</xapMM:InstanceID>
+         <xapMM:DerivedFrom rdf:parseType="Resource">
+            <stRef:instanceID>uuid:0CDE46B6982A11E091A193CDBD092F25</stRef:instanceID>
+            <stRef:documentID>uuid:AFB0EA80982311E091A193CDBD092F25</stRef:documentID>
+         </xapMM:DerivedFrom>
+      </rdf:Description>
+      <rdf:Description rdf:about=""
+            xmlns:xap="http://ns.adobe.com/xap/1.0/">
+         <xap:CreateDate>2011-06-14T15:05:53+10:00</xap:CreateDate>
+         <xap:ModifyDate>2011-06-14T15:06:23+10:00</xap:ModifyDate>
+         <xap:MetadataDate>2011-06-14T15:06:23+10:00</xap:MetadataDate>
+         <xap:CreatorTool>Adobe Photoshop CS2 Macintosh</xap:CreatorTool>
+      </rdf:Description>
+      <rdf:Description rdf:about=""
+            xmlns:dc="http://purl.org/dc/elements/1.1/">
+         <dc:format>image/jpeg</dc:format>
+      </rdf:Description>
+      <rdf:Description rdf:about=""
+            xmlns:photoshop="http://ns.adobe.com/photoshop/1.0/">
+         <photoshop:ColorMode>3</photoshop:ColorMode>
+         <photoshop:ICCProfile>sRGB IEC61966-2.1</photoshop:ICCProfile>
+         <photoshop:History/>
+      </rdf:Description>
+      <rdf:Description rdf:about=""
+            xmlns:tiff="http://ns.adobe.com/tiff/1.0/">
+         <tiff:Orientation>1</tiff:Orientation>
+         <tiff:XResolution>8999980/10000</tiff:XResolution>
+         <tiff:YResolution>8999980/10000</tiff:YResolution>
+         <tiff:ResolutionUnit>2</tiff:ResolutionUnit>
+         <tiff:NativeDigest>256,257,258,259,262,274,277,284,530,531,282,283,296,301,318,319,529,532,306,270,271,272,305,315,33432;22C38A4F29010CEA3C3F26298C0C806C</tiff:NativeDigest>
+      </rdf:Description>
+      <rdf:Description rdf:about=""
+            xmlns:exif="http://ns.adobe.com/exif/1.0/">
+         <exif:PixelXDimension>1431</exif:PixelXDimension>
+         <exif:PixelYDimension>901</exif:PixelYDimension>
+         <exif:ColorSpace>1</exif:ColorSpace>
+         <exif:NativeDigest>36864,40960,40961,37121,37122,40962,40963,37510,40964,36867,36868,33434,33437,34850,34852,34855,34856,37377,37378,37379,37380,37381,37382,37383,37384,37385,37386,37396,41483,41484,41486,41487,41488,41492,41493,41495,41728,41729,41730,41985,41986,41987,41988,41989,41990,41991,41992,41993,41994,41995,41996,42016,0,2,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,20,22,23,24,25,26,27,28,30;70422B8F548BFB2D26B722FCE28738F1</exif:NativeDigest>
+      </rdf:Description>
+   </rdf:RDF>
+</x:xmpmeta>
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                            
+<?xpacket end="w"?>ÿâXICC_PROFILE   HLino  mntrRGB XYZ Î  	  1  acspMSFT    IEC sRGB             öÖ     Ó-HP                                                 cprt  P   3desc  „   lwtpt  ð   bkpt     rXYZ     gXYZ  ,   bXYZ  @   dmnd  T   pdmdd  Ä   ˆvued  L   †view  Ô   $lumi  ø   meas     $tech  0   rTRC  <  gTRC  <  bTRC  <  text    Copyright (c) 1998 Hewlett-Packard Company  desc       sRGB IEC61966-2.1           sRGB IEC61966-2.1                                                  XYZ       óQ    ÌXYZ                 XYZ       o¢  8õ  XYZ       b™  ·…  ÚXYZ       $   „  ¶Ïdesc       IEC http://www.iec.ch           IEC http://www.iec.ch                                              desc       .IEC 61966-2.1 Default RGB colour space - sRGB           .IEC 61966-2.1 Default RGB colour space - sRGB                      desc       ,Reference Viewing Condition in IEC61966-2.1           ,Reference Viewing Condition in IEC61966-2.1                          view     ¤þ _. Ï íÌ  \ž   XYZ      L	V P   Wçmeas                            sig     CRT curv           
+     # ( - 2 7 ; @ E J O T Y ^ c h m r w |  † ‹  • š Ÿ ¤ © ® ² · ¼ Á Æ Ë Ð Õ Û à å ë ð ö û%+28>ELRY`gnu|ƒ‹’š¡©±¹ÁÉÑÙáéòú&/8AKT]gqz„Ž˜¢¬¶ÁËÕàëõ !-8COZfr~Š–¢®ºÇÓàìù -;HUcq~Œš¨¶ÄÓáðþ+:IXgw†–¦µÅÕåö'7HYj{Œ¯ÀÑãõ+=Oat†™¬¿Òåø2FZn‚–ª¾Òçû		%	:	O	d	y		¤	º	Ï	å	û
+
+'
+=
+T
+j
+
+˜
+®
+Å
+Ü
+ó"9Qi€˜°Èáù*C\uŽ§ÀÙó&@ZtŽ©ÃÞø.Id›¶Òî	%A^z–³Ïì	&Ca~›¹×õ1OmŒªÉè&Ed„£Ãã#Ccƒ¤Åå'Ij‹­Îð4Vx›½à&Il²ÖúAe‰®Ò÷@eŠ¯Õú Ek‘·Ý*QwžÅì;cŠ²Ú*R{£ÌõGp™Ãì@j”¾é>i”¿ê  A l ˜ Ä ð!!H!u!¡!Î!û"'"U"‚"¯"Ý#
+#8#f#”#Â#ð$$M$|$«$Ú%	%8%h%—%Ç%÷&'&W&‡&·&è''I'z'«'Ü((?(q(¢(Ô))8)k))Ð**5*h*›*Ï++6+i++Ñ,,9,n,¢,×--A-v-«-á..L.‚.·.î/$/Z/‘/Ç/þ050l0¤0Û11J1‚1º1ò2*2c2›2Ô33F33¸3ñ4+4e4ž4Ø55M5‡5Â5ý676r6®6é7$7`7œ7×88P8Œ8È99B99¼9ù:6:t:²:ï;-;k;ª;è<'<e<¤<ã="=a=¡=à> >`> >à?!?a?¢?â@#@d@¦@çA)AjA¬AîB0BrBµB÷C:C}CÀDDGDŠDÎEEUEšEÞF"FgF«FðG5G{GÀHHKH‘H×IIcI©IðJ7J}JÄKKSKšKâL*LrLºMMJM“MÜN%NnN·O OIO“OÝP'PqP»QQPQ›QæR1R|RÇSS_SªSöTBTTÛU(UuUÂVV\V©V÷WDW’WàX/X}XËYYiY¸ZZVZ¦Zõ[E[•[å\5\†\Ö]']x]É^^l^½__a_³``W`ª`üaOa¢aõbIbœbðcCc—cëd@d”dée=e’eçf=f’fèg=g“géh?h–hìiCišiñjHjŸj÷kOk§kÿlWl¯mm`m¹nnknÄooxoÑp+p†pàq:q•qðrKr¦ss]s¸ttptÌu(u…uáv>v›vøwVw³xxnxÌy*y‰yçzFz¥{{c{Â|!||á}A}¡~~b~Â#„å€G€¨
+kÍ‚0‚’‚ôƒWƒº„„€„ã…G…«††r†×‡;‡ŸˆˆiˆÎ‰3‰™‰þŠdŠÊ‹0‹–‹üŒcŒÊ1˜ÿŽfŽÎ6žnÖ‘?‘¨’’z’ã“M“¶” ”Š”ô•_•É–4–Ÿ—
+—u—à˜L˜¸™$™™üšhšÕ›B›¯œœ‰œ÷dÒž@ž®ŸŸ‹Ÿú i Ø¡G¡¶¢&¢–££v£æ¤V¤Ç¥8¥©¦¦‹¦ý§n§à¨R¨Ä©7©©ªª««u«é¬\¬Ð­D­¸®-®¡¯¯‹° °u°ê±`±Ö²K²Â³8³®´%´œµµŠ¶¶y¶ð·h·à¸Y¸Ñ¹J¹Âº;ºµ».»§¼!¼›½½¾
+¾„¾ÿ¿z¿õÀpÀìÁgÁãÂ_ÂÛÃXÃÔÄQÄÎÅKÅÈÆFÆÃÇAÇ¿È=È¼É:É¹Ê8Ê·Ë6Ë¶Ì5ÌµÍ5ÍµÎ6Î¶Ï7Ï¸Ð9ÐºÑ<Ñ¾Ò?ÒÁÓDÓÆÔIÔËÕNÕÑÖUÖØ×\×àØdØèÙlÙñÚvÚûÛ€ÜÜŠÝÝ–ÞÞ¢ß)ß¯à6à½áDáÌâSâÛãcãëäsäüå„ææ–çç©è2è¼éFéÐê[êåëpëûì†ííœî(î´ï@ïÌðXðåñrñÿòŒóó§ô4ôÂõPõÞömöû÷Šøø¨ù8ùÇúWúçûwüü˜ý)ýºþKþÜÿmÿÿÿî Adobe d    ÿÛ „ 
+
+		""ÿÀ …— ÿÝ  ³ÿÄ¢            	
+         	
+ s !1AQa"q2‘¡±B#ÁRÑá3bð$r‚ñ%C4S’¢²csÂ5D'“£³6TdtÃÒâ&ƒ	
+„”EF¤´VÓU(òãóÄÔäôeu…•¥µÅÕåõfv†–¦¶ÆÖæö7GWgw‡—§·Ç×ç÷8HXhxˆ˜¨¸ÈØèø)9IYiy‰™©¹ÉÙéù*:JZjzŠšªºÊÚêú m !1AQa"q‘2¡±ðÁÑá#BRbrñ3$4C‚’S%¢c²ÂsÒ5âDƒT“	
+&6E'dtU7ò£³Ã()Óãó„”¤´ÄÔäôeu…•¥µÅÕåõFVfv†–¦¶ÆÖæöGWgw‡—§·Ç×ç÷8HXhxˆ˜¨¸ÈØèø9IYiy‰™©¹ÉÙéù*:JZjzŠšªºÊÚêúÿÚ   ? õN*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*²I5.ä :’h1V1¬þiù[E¨Ô5KH˜~É™KÈ´%ÿ áqV®ÎZùN¯Õæžõ‡h!aÿ qè.*óÍ{þs{ªèºWÉîeÿ ™Q/üÎÅ^o­ÎXyëR'ÑºŠÍ| …?âSúïÿ Š±-GóŸÎZ‡ûÑ¬^ÐöIš1÷EÃI.<é®\o6¡tõþiä?­±Tº¥ÜÆ²Í#âäâ¨Rk¹Å]Š¢bÔ®¢<£–E>!ÈÅQqy£U‡x¯.ž¸ÿ ±Td_˜^d‡û½VùÕ¹”ÆøªgkùÍç;oîõ›ßöS³ÄËb©¥¿üägŸmþÆ¯1ÿ ]coù9b©ÕŸüå‡Ÿ-ö’î)ÿ ×‚?ù–±â©íüæ›¡5¹¶±™Ôu?ð³Æ¸« ²ÿ œá½Z}sG‰ü}9ÙâQÉŠ²KùÍ½J}wMºˆ÷ôÚ9?âfU•ißó—EºÖžâÚ¿ïØÿ É[eÚ_ç’õ2¾±h	è$Fä·§Š²û-JÖýyÙÍÉãð¸ª+v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«ÿÐõN*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØª×uK1 ¤ì1V1­~hù_D%uRÒ&TÌ¥¿äZ’ÿ ð¸«Ö?ç,<‹§ÔEs5ÛÐBßñ)½ÅX6±ÿ 9½`•V•4¾yV?øXÖø–*Â5ùÌÿ 4Ý|:}µªøñiþ	ÝSþIâ¬'Wÿ œŒóÞ©Q.«,J{@©ü4Jÿ Š°WÌÚ¦¯¾¥yqs_÷ì¬ÿ ñ6lU/Š'•¸F¥˜ö¸« Óÿ .üÁ~xÁc0÷‘}1ÿ 7¦¹QËÌ¶R=.›ù­Ü€×O¸îoù&?ä¦RuQÃM"Êôÿ ùÇí:1þw4­ÿ …Œ}Íëÿ Ä²ƒ«=xÒŽ¥ù‹ùa¤hz·Ö¸žŒ—g,H,#¡Sð~ßeÉaÎg*,3a…¿’¾]Òu}6w¾¶Škˆç"®µ<J§ÿ êaÔÎQ"—OÈzBù'B4û_ùŸóNaøÒïs<(÷.ÿ hõo´ÿ ‘ÿ Í<Yw•ð£ÜþÐÿ êßiÿ "#ÿ š1ñeÞWÂphù+C?ô¯µÿ ‘)ÿ 4ããK½|(÷(Éù Iö¬-þˆÀÿ ˆáñåÞ=È)ü³)«Y/Ðò/üBEÉ~b}ì|w(¿ä÷–¥¡_”²ÿ 2_™š?-¾ãò+@—ìµÄêÈ?æbI’©y1ü¬|Ðsþ@i~æâåOùEõF™!«=ÌN”w¥ÿ 8ð?cPúÇÖÉ_“¤óJî 5Uoô{«w_æ§þ%ÿ ‰dÆ®>l–^IUïä§˜íÛŒQG8ñŽUþKzY`ÔÀµ<‚O{ùqæ&ã-ŒÍÿ ×Ô|>¦X2Äõ`qHtI/të›ôîâx_ÁÔ©ÿ †Ë¶²)«KéìäZÈñH:2§ï\(fºç·tJMZá•z,ÍêºãÔÅ^™å¿ùÍ/0YšÕ½ê­0¿ßûØÿ ä–*ö¯#ÿ ÎRyCÌì¶óÌÚmÓmÂêŠ¤ÿ “:Öùéâ¯]ŠU™ÆC+
+‚A_Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å_ÿÑõN*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š­f
+	&€u8«Î|áÿ 9	äß*³Eu|³Ü/X­‡ªÕð%?tŸóÒDÅ^;æOùÍÎ© i).¤ÿ ™0ÿ Õ|Uæÿ üå/žµ}’ñlÐþÍ´j¿ðïêKÿ %1WžkpÖu²N©}su^ÓJî?áØâ©\Q<­Â5,Ç°ÅSëËÝ~ù‚Ãc8¯wSÿ ‚—‚åg,G2Ø1Èôd?‘¾`¹˜Coí$•ÿ “"l¤êbFšEXÿ Î=¹P×·Á[ºÇGüºÿ É¼¨êÇ@Ú4‡©dV?‘Z»™§Ÿü—pþI,oÿ ”T&Ñ¥‹ Óÿ .<½a¼61øÈŸò|É•ò=[FŽ‰ý­¤6ˆ"¶bŒtTP£þr“"y¶ˆÉW'b®ÅXïæ%’Þù~þ&è i>˜ÿ |?òì¤s‰y×üãÍÊ¬—öäüL°¸ÊdVÿ ‰®fjÆÀ¸šC¹gÍk±v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wöí¢’[ÿ %è·á…Í”_«Õ[þF'ÿ †ËFY­gOF7¨þHùzïxV[cÿ ÈHÿ ’Þ®]T‡6“¦‰äÃuoùÇûØm:ê9ö¯Æ~@¯ª§ý—ÈŽ¬mÒ‘Éçš÷–µ
+_GR¡cZ>ÿ Q×àö—‰rq%lƒÉœ>gòK£^º@ðIñÄç”œ•?Öƒÿ •“búÈÿ óšVWmüÕfÖòt3Û|iþ³Bß½Oö6*÷¿*ùûCód^¶‡{Ð¥HFø‡úñ5%OöIŠ²UØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š¿ÿÒõN*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb¨MSU´Ò­ÚóP–;{xÅZI*îÍŠ¼óþsCÑùZùn#©\½F¬pƒóþö_ö*‹ÿ b¯›<õùÛæŸ;rMVñ…«Ç¼?»‹åÁ?¼ÿ ž­&*Ät½÷U“Ñ°‚Iß¸E&ŸëSìÿ ²È™Í‰<™Î‘ù­ÝÑ¯+Eî¹µ=–.Iÿ %1¥©ˆå»‘4“/Ó tÈ@úõÌÓ°þ@±©ù¯ï[þ1å«=|t£©eZwå——l(¬£cÿ ÖOÂc"å<Vñ‚#£"µ³†ÍVÑ¬QŽŠŠÀ®RdO6Ñ9*àdìUØ«±Wb®Å]Š»v*¡¨ZÛim[ìÊŒ‡äÃŽJ&ˆc!aàß÷+»"1Þ[gQóÿ ÄQ³iª—Y¦>§Ð©v®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wbªw6±]FÐ\"ÉŠ28¤”­±Â	@<Þ}æ?É'R&[k)Oeø£ÿ ‘m¸¯ù*ÿ “™pÕÏwz`ylóò^Ò*â­D?n‹þIí7ü“ãþVfÃ<dáÏ¢Äí/'±•g¶w†d5VBUÿ %—q™\ò_üåWœ<»Æ+¹“S¶_Ø¹z“pœdÿ ‘ž®*÷%ÿ Î^ù[Zã°’éw€—¤Uÿ ŒÑü_ò2$Å^Ñ¤k¶ÔëL¸Šæèñ8q÷¡ÅQø«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb¯ÿÓõN*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØªY×ltKf¾ÔçŽÚÙ>ÓÊÁGü6*ùÛóþs&ÊÓŸ“àúÔ»¬Î
+Æ?ÊŽ†Y?Ùú_ì±WÍrüÃ×|çqõ­vîK’	*„Ñ¿ï¨—÷iþÅqV¼³ù«ùˆ†²„ˆß²|1ÿ ÁSãÿ aÉ²©åŒ9¶Ã—'¬ykò/M²]YÍÜ¿Ê*‘¿É>£Óù¹§ücÌ	ê‰å³›0Þecoc‚Ò4†!Ñ#Pª?Ø®Ù†dO7,DJØ;v*ìUØ«±Wb®Å]Š»v*ìUØ«±WÎþE…t¿;­µ~®.!ÿ …–%üsq—Õƒ¨Å´þ/¢3NíÝŠ»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*“ëžOÒuÑþäm£•¿žœ_oøµ8ÉþÇ–[²"Õ,Q—7œk¿Õ}è©ì“ŠŠÿ ÆXúÈ–ÿ [3!«þpq%¥î/8×¼ƒ­h@½í³ˆ—s"|iOwJñÿ žœs.9c.EÄ–9G˜K´O0êÂëJ¹–Öaûp»#}èrÖ·´y;þsÍ:?µ„‹T„u.=9iÿ b?àálUîžNÿ œ®òw˜8Åy+é—önGÁ_iãå?ã/¥Š½zÃQ¶Ôa[›9Rx[£ÆÁÔü™>UŠ»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å_ÿÔõN*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ƒÕukM&Ýïu	’ÞÞ1V’F
+ {³b¯2¿ç1¬lyÙy>­Ë¸úÌ ¬@ÿ Åq|2MþÏÒ_õñWÌ^oóÞµæû“y®ÝIu'`ÇàZÿ ¾â_ÝÇþÁqTO–?-õŸ1RKh}+vÿ wKð¥?Èý¹?çš¿ùYLóFÛ¡ŠSäö+þMhú=&»]¸å ?äÃºÿ ÈÓ/ù<s_“ReËÒçCN#ÏÔÏ@ Plb9nÅ]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb¯õ«oÑ¾|Ù~¿§þz2Lßñ<ÜGÕü×Q-§þsèŒÓ»wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUŒëÿ —¹Wº¶T˜×÷‘|SûG‡Âíÿ Uòøg”Z%†2yÞ½ù<dÉ£Ü¬‹ÔG0âßò1ÿ €‹3!«›‰-)žy®ù;VÐû‘¶’$œéÉ?äjV?ølËŽA.EÅ”yµåÏ8jþZ—ë5äÖ’wôœ€Ö_²ÿ ì²l×äïùÌŸ0éœa×à‡RˆP_ÜËÿ €Âßò%ÖÅ^çäïùÊ&yŒrÜ>àþÅÐà+ÿ Ç(?à¤\UêÖ·Q]F³@ë$n*¬¤2‘þK.*­Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«ÿÕõN*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š©Í2B†IHTPIbh 'x/æwüå®‹åþv>ZS½J‘n‡ýq¼ÿ óËàÿ ‹±WÊ~züÊ×|ñqõ­vé¦ ’‘£OøÅøýo·üÍŠ¬ò¯åÞ¯æRÒ.ýæ“áO ý§ÿ žjÿ åqÊ§–0æÛF|žËå_ÉÝ#D"{‘õË‘ûR
+ ÿ V³ÿ #=Oòxæ»&¤Ë—¥ØcÓˆóõ3ÌÄrŠ»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»|ïùÍÙy™îTÑ¤H¥_ö+é~¸³q§7S¨7ÑqÓ5Sµ»]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®"»U‰kŸ•š±V{q§öàøüý×üy‘D¢ãËdó½{òö
+É¤Î—	BBIð?úªÛÆÿ ì½,Ì†¨{8’Ò‘ÉçÚß•õ=‚j6òC^„Š©ÿ VEå±lÊŒÄ¹8²4W•üû®ùVOWC½žÓz•G<úñÝ¿û4É±{—“ç4uk>0ù–Î;ØûËî¤úSâ…ÿ Øú8«Ý|™ÿ 9äß5qŽÁkrßî›¡é5|9ŸÜ¿û	qW¥+¬ŠH*EA‚1Uø«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±WÿÖõN*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å^gù¥ùýåïËôh.$úÖ¥O†Öÿ ?ÙÖøÿ –<Uñ÷æwç¯˜¿0$1ÞËèiõøma%SÛÕ?jfÿ _ý‚&*Å<·äýOÌRúzt%À§';"ÿ ¬çáÿ cñ?ù9\òsgr{?”?%ôí$-Æ§KË¡½ýÚŸòPÿ yþ´Ÿò-s]“RO-†=0÷z"¨PE  f–Þ)v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«Â?íŠêÖÓŸ²öÜÍ]Ûþf.m4‡Óñuš¡ê{'–nZëJ³¸µ%¼N~lŠÙ¯È*GÞçã7îL²¶Çb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®ÅZ’5‘J8¬(AÜ„AÃußÊ=V«ˆ~­)ý¨ù'ñEÿ $ó"™GÍÇ–ž'ÉçZçä>©kWÓeŽí>û·'½rþJæd5Q<ý.$´Ò·yö«¢^é2z:„@ç§5"¿êÿ 7ûÊ“ŒbG6EäßÍ¯3y5€ÑoåŽþêcÎ#ÿ <däŸð?I‹èO Îg[Ü2Zù¾×êäÐ}fØOõ¤·<¤_ùäÒÿ ©Š¾Ñ5ëvÕ/ô¹ã¹¶“ìÉõ×ù8ªaŠ»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å_ÿ×õN*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±T¯Ì>cÓü»fú–­:[ZÇöÍú£»;~Ê¯ÄØ«ä¯ÍßùËKýoÔÒü£ÊÊÈÕZäí<ƒþ+ÿ –tÿ ’¿åGöqW€[ZÝj·(ç¹”ôfbzŸõ›5Í _'®ù7ò1c¥Ï˜X1ÿ |FM?ç¬ƒý—ÃüŒÌš®‘s±éºÉëV–pÙÄ¶öÈ±D‚ŠˆòUÍy‘;—< 6
+¸ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å^9ÿ 9Ú{þÿ ÿ ÈšfÇHyºýXäÏ¿-o>·åÛ|"	ÿ  L_ñ¦bç2äà7Ér†÷b®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*¥uiÜf”Ybn¨êOÍ[l ‘ÉÍëÿ ’z.£Y,ùYÊzpø’¾-ÿ Äcxó.©~§z`yz^OæßË=WË Í*	­Aþú=Àÿ Œ‹ö£ÿ eð—™ØóF|œá0æ¥ä?Ì½sÈ·b÷C¸h«öâ;Ç ð–/²ßëýµý†\½¥öwä÷üäNù€«e9ZÅ(`vø\ÿ 5´Ÿ·ÿ Û÷¿ëý¼Uë˜«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ÿ ÿÐõN*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«Ï6¿:4Ë‹?Rí½{ùGîmPüMþ[ÿ ¾¡ÿ ‹?àñWÃ¿˜ÿ š:ÏŸïî±11‚}(¢(ÁíÄ¤oÞ>*«äÊýCÌünú=‰ÿ w0¯*~ßúßÝÿ •ËàÌ|¹„=íøð™½ëË>PÓ¼µ¡§EÄ·ÚvÝÛýgÿ Wàÿ '5y2™óvpÆ!É9Ê›]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb¯0üþ·¤[OûKr|™$'þ!™ÚC¹pµC`œ~LÜ‰|µnƒ¬M*ŸŸ6“þ7Êõ#ÔÏL},ß1\§b®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«ˆPî*òï=~K[ê¯t °\nZˆçü÷ËÉ/øÇñ6gbÔÖÒpré¯x¼ZîÒïHº0\+AsŽÌ¤n¬¤Á+Ù{‡^Es}-ùÿ 9ZÑzz¤,›,WÇ¨ð[¿æÿ Œÿ kýûþüÂ‡ÕpOÂ,Ð°xÜ¬¤Aî¬:âª¸«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š¿ÿÑõN*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUæÿ ßœVŸ–úQ›á—S¸m =ÏûöOø¦?øvýÚÿ ’«à0y‚ûÌwòêzœ­qw;rfn¤øåUû*‹þÇz·åçäâ SóVO´–ç þVœ7üUÿ #i3_›SÒ.~?Y=qT 
+¢€
+ ;×;ñWb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Vùáiëùy¤ÿ |Íýõ‹þfæ^”úœMHô¡? ÞºËátÿ ñ²Z±êäiNß¥f˜ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUyÃÈöiƒÓ»^3¨"9”|Kÿ 5§üWÿ Á¾<»Sœ˜„ß<ù·ÉwþV¹ô/¨Õ1Ê¿a‡ù'³/í/Ú_õ~,ÛãÈ&,:©ã04^‡ù#ÿ 9¨ùUÓõ×š#‰ø¢¯íÛ–ÿ †‡ì7ùñeo¶ü³æ}?ÌÖ1êº<ëqi0øY|{«/ÚG_ÚFø—MqWb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š¿ÿÒõN*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*Ã4?3´ÏËÝ)õMI¹Hj°BWþDþUîÇý…ÿ cŠ¿?¼ñç]CÎz¬ÚÖ­'9å;öQØŠ%ý˜Óþoo›z‡ååªÙ¤zö¦µ¸aÊØ}€Ý­ÿ 7ì"ü_oû½n£7ð‡a§ÃüEêù€ç»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*Ä?7Ÿ–/@ëHÏÝ,g2tçÖ}@ô–)ÿ 8÷uÊÒößù$ÿ àÃ/üÊËõc“F“«Ö³^ç»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*„Õt›]ZÝ¬ï£Y`~ªß¬+ÙeÉFF&ÃDHQ|ûùù_wå–k»zÍ§Wgý¤¯ìÊ?æbüþGØÍ¶,âÖuYp˜Uß•›ÚÇåÍïÖtÖõ-d#×¶r}9 ÿ “rÿ ,«ÿ Ÿd¸ï».¿2tŸ?é«ªhòW –&§©$‹ÿ o°ÿ ³Š²ÌUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±WÿÓõN*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»aß™Ÿ™ÚWåî˜Úž¨õsU†#œ¯ü‰þHý¹>ÊÂâ¯ÿ 0ÿ 15O?j’jÚ³ÔŸ†(”ü%~ã_ógof_•_•ŸY1ëzÂþãf†oÂYGûïýöŸîß´ß»ødÁÏž¶n¹{^k“±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®ÅR?@&Ð/Ôö·‘¿àT¿ük—aúƒNo¤¼ãþqáèÚ‚w"÷zß×35|ƒ‰¤æ^Ëš×bìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±U³B“#E*‡ÁVVŠ²ž áE¼;ó'òŒéjÚžŒ¥­â’!»F;º×âx×ö¿i>×ÙäË³Ã¨âØóu¹°pî90ß$yóUòN š®‰1ŠeÙ”î®¿µ©ûhæäâÙšá¾íü¡üæÒÿ 2l}[b Ô"×¶cñ/ùqÿ ¿!oçÿ bø«Ñ1Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb¯ÿÔõN*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š¼ûówó“Jü·°õïšþP~¯j§âsüÏþû…nOö)É±WÂxóæ©ç}FMWY”É3ìª6D_ÙŽ$ý„ÿ ®Ÿ“b¬çò¯ò«ë\5j?ÜlÐÂÃíøK ÿ }"»~×÷|}Lùë`æàÁ{—µæ±Ù;v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØªQçËE¿6³ù&Ùf/¨{Úò}'Üò?ùÇû‚5+¨{4¿àYWþ7Í†¯é÷KÌûžçš·fìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å^Iù‘ù@“‡Õ4ã «In£fþfŸþ*ý¿Øø¾Ø`Ôt“¯Í§ë“ù{ÌWÞ\¾‹TÒæk{¨ZªÈz’™[ì²7Úý¬Ø¸¹?#??,1m…•ßmn%¬×á÷u¿ù?ÏÛü¤øñW­â®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb¯ÿÕõN*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å^-ùßÿ 9§ù$Òô¢·zááZÇ	?µqOÛþX?àø~Ò¯Š<Ãæ+ÿ 1ÞÉ©j“=ÅÜÆ¬ï¹>ÃùT~Ê/Â¸«Õÿ .?'– šž¼•}™-Øl?”Î¾?ñWüŒþL×æÔt‹Ÿ‡OÖO]Ís°v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb¨v#.ŸsêÐÈ>õ98söä^%ùÜÜãþ]þNC›-WÓñuÚ_«à÷¼Õ;Gb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUæÿ ™_•1ëõ-,ïéV^‹/üÓ/ù_·ûÍ™¸5;Nl[‡‡[\ÞèW«<ö×¶ÏU*Jº:Ÿ½XfÑÖ>Óüƒÿ œŒ¶óÂ&‰­²Á®(øOD¸ }¨ÿ ’oç‡ýœ_¶‘ª÷,UØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ÿ ÿÖõN*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±T=íì6P½ÍÔ‹1)gw!U@ý¦fû8«å_Î¿ùË¸õ4_$¹H÷Y/©B|EªŸ°?âöøÿ ß|¼Å_5ØØÝë7kon­=ÔÌvêÄý¦f'þà&·)özüºüªƒËÊ·Ú€Yµ£ºÇþ§óIÿ ±Oç}^mGÃévxppîy½0Ü·b®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìU-ó4ÿ WÒï&zvò·ÜŒÙ<bä=íyDûž3ùbâP>µ*O¹xÈÿ ˆ6lµgÓñp4¿WÁïªvnÅ]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±V	ù‘ùe™“ë¶|bÔPu?f@:$Ÿå/ìIþÁþ>ž^ü¥ÅÍƒqõ<x.ô{¿N@ö÷p7¸e`ve#þ—6 ß'VE>Áÿ œ{ÿ œ‹Ìë—|Í MXQa¨ò_²\ÿ Éïõð¡ô.*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š¿ÿ×õN*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«Ï¿3¿;|¿ù{”¾µñKXˆ2ý’ÿ ³—'ûx«ã?ÍOÏ=wóR—¯õ}8RÒ"x
+tiOÚšOòŸþy¢b¬{ÉÞCÔ<Ó7U+n¦3€{–ßä'û.+•dÊ!Í·3>O ¼£ä?ÊðzvkÊf’fÍ)þ@ÿ †o‹592™óv˜ñ2¥¹Ø«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*~`Oèhïã¯üáÿ eØ> Ó›é/:ÿ œx@N¢ýÀ€}þ·üÓ™š¾AÄÒs/dÍk±v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»b˜—vÞkƒšÒ+èÇîåñÿ ŠåñOødýŸÚVÉÃ˜Ãú®>l<Ö|íªéWz%ÛZ]©Šâ"*<Ueaÿ ›hÈaÔFÅõGüãßüäÈÔ=/-y¾Z\ì–÷Žv“ùb¹o÷ïòKþíÿ v~óâ’H}9Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±WÿÐõN*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*£ww¤MqpëQ©fw!U@ý¦fû#|­ùËÿ 9jò4$7W¾#sÿ 0¨ßdÅÏñ"~Þ*ùœµÞ¯tY‹Ü]ÎÛ“Wwbà°IÞ­äŸÉb·ža<FÄ[¡Üÿ ÆW_³þ¬ùk˜9u5´\ÜzkÞO`´´†Î%·¶EŠ$T@ ÙFk‰'rì `«.Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb¬OóUøyjôÿ ’£ït~Ÿëþ’ÂçÃ¨ŸáëfV³§ÅÆÒu{kƒ±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±V'ù‡ä«1Y<×l šfYÀÝUjì²<_µÇö~Ò~×,ŒLM8ù±‰|Ç›—P÷ÿ ÉùÊKÿ *ˆô2ó½ÒÅ%­f„}?ßÄ¿ÈßþÃºñWØ>^óŸæ+$Ô´™ÒæÖO²èj+ÝOuuý¥o‰qTÓv*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«ÿÑõN*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»@ëÅ¦i.£¨Ê°ÚÀ¥ÝÜÐ 1WÃž¿óß˜3¶Ÿ`ZÛC‰¾«F”÷mÇüiØOòŸâÅX“¼‹æ™ý+Eá‘êLÃáZÿ ÄßùQáWâÊ²d¶ãÆfv}å"iÞW‹¢¸aG™€æÞ4ÿ }§ùþË›|Y©É˜ÍÚcÄ È²–çb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®ÅXæÏü£7¿ê§üœLÈÓýa£?ÐXgüãÇØÔ>pÿ ÌÜÈÖtø¸úN¯aÍ{žìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUæŸž>hý§&“R{ÃWñ©©ùzÅWù•eÌÝ,,ñw8Z™Ð¤·òÇòÎËQÐÞãWˆ3ÞÆvˆ>xÚŸ3rådôÿ ÊË3ç1•Œ0áž¬/Ï_•÷þY-qg°Ú’Ž«]¸ÊŸ±þ·Øÿ eðæF,Â~÷&rò÷ó?[òè½Ñ'(¦ž¤-¼R	cÿ ™ŸÞ/ì¾d4>Ðü¤ÿ œ…Ðÿ 0m	Z°´ösm'û»ýOïÈý¬Uê¸«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb¯ÿÒõN*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š 5jÏEµ’ÿ R™-í¢i$4|7ùùùóqù‡wõ<´:»V4;X»æÿ ™QþÂÿ –Ø«ü¼ü¼¸ó]Ç7¬VÞIÜŸ÷Ô_åÿ É¿´ß²F\¢Í¿#2ú7LÓ-ôËt³³A1Š*óÜÿ 3fžR26]´b"("r,Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*Ä¿6P¿–o@þT?tˆs#Oõ†Œÿ AaóáÔGƒñõ³#YÓâãé:½‡5î{±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«RH±©w!UEI; sˆ‚ió•ì²~aù¤"!‘ø'ŠÂ›’7û\yIÇùß7#÷Pu÷²}	oÃ
+…Ž5
+ª: GÈfœ›ÝÛ[.e
+°¨;p%åžzü”†øµîƒÆK@vF?ñYÿ uò»ÿ ŒyŸ‹S[IÁË¦½âñ‹«K½"äÃ:½½Ì$ljOUaÿ æÄÜ:ò+›èÉïùËK­/ÓÒ¼çÊêÔ|+v7•ü\¿îõÿ /ûïøË…¬t}jÏZµŽÿ M™.-¥I#5Gâ®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb¯ÿÓõN*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb¨=SUµÒ­Þ÷P• ·ŒUä‘‚¨å3b¯¿3?ç1ll9Ùy>®L*>³("!ÿ âød—ýŸ¤¿ëâ¯™<åùƒ®yÊãëzíÔ—,Â¤Ñþ1Ä¿»Oö+Š¯ò”Íz±.#‰Ë!ïÀZ&ßi™×íÍ¹N\œÛqcã4ú_LÓ-ô»t³³A1Š*óêi³M).â1YNÅ]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*Æ3"õ<»|¾Wî!²üXhÏô–ÿ 8ïÓRÿ £ùŸ™ZÎŽ6“«Ø³\ìŠ»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å^ùÏæ¯ÑOÔaj\^Õ6ê#Þ·û/îÿ Ù·òæf›¿æ¸š™Ð¯ç%_‘Xúµ¤ºÜÃã¸ýÜ_ñOÆßìäç—ùY=Tÿ …†–Äõ\ÀsŠ»HüÕäÍ;Ìðz7ñücìJ´¿ê·òÿ ß[)‡&¬˜„ù¼Î¿–Ú‡•ÜÈã×³?fdŸóÕÝMþ·Áü™µÇ˜MÕäÄ`‰ü³üÜÖÿ /.½}&NVîA–ÚJ˜¤êþÃÿ ,©ñ±ørö—Ûß•œ:Gæ=‘¸ÓÛÒ»Šž½³‘Í?Êÿ ‹"oØ•Ùp‡g¸«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUÿÔõN*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±WŽþnÿ ÎJhžDçagMCW]Œ(ßgþ^%ìâ¤ýçópÅ_~`~jkþ|¸úÆ¹rÏ5Há‰?Ô‹§û7ç'ùxªÊß—š·™Hk8¸ÁÞi>úÚùæ¯þWªyD9¶ÃŸ'®hß“V“m#ÜÖòèÆÀ3Š"š7Ø‹âÿ ’'ó/À:“#·¥Íq¾ì#òÿ ¹Éÿ æÿ ää9“ªú~-o©ï™©vŽÅ]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìU óúsÐ/Ç_ôyÜ9eØ> Ó›é/;ÿ œx?ñÑñƒþgff¯q4œËØóZì]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å_9yŠöoÌ3ˆmbvÄ{–¥¥úy7ó|\3sáCwO3âKgÐÖQX[Çin8Å
+* ð
+8®j%.#eÛDP¥|‹'b®Å]Š­–$™)T:8*ÊÂ ƒÕX áE¼wóòl/=K@_†œžÛõ´?õKþý÷›:›ÚN¿6ž·‹Í|©æ½GÊzŒZ¾“)‚î±ìGíG"þÜoö]3ÜßŸ“ÿ ›6™H¾¶¤W‘QnmÉÝÅš?ÝoþÇí£b¬ûv*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å_ÿÕõN*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUŸ—wr,PD¥ÞG!UTufcŠ¾Düíÿ œ¨ºÖžMÉÎÖö¬—B«,Ÿñ‡ö ‹ßûçÿ Š±WÏúNy­\[ÚiÜ“Aø³1ÙGùG#)îY“°{O’¿%-4þ7zß›ŠéuOù_ïßö_»ÿ ŒŸk5ÙuDíaM[Éé±Æ±¨Ž0   €Á&ÜÀ)w[øG5/ž#n^`ÝHƒèã'üi›mOÐê´ßSèlÔ;gb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*“yÕk¡êó9û‘²Ü?PjËô——ÿ Î=IIïÓÅ"?qù«3µ|ƒ…¥æ^ÓšÇdìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»a›Þgý	£<Q\^Vñ
+Gï_þàÿ ž‹™ZhqJÿ šâê'Ãþsüˆò¯§ºìëñIX¡¯òï_§í7À»ÿ ¿2íVOájÒÃøž¹š÷=Ø«±Wb®Å]Š»xïçåÇÚ×ô¸ýîcQÿ %ÕäïüŒþvÍŽŸ5úK®Ôa¯Pa?•ÿ ˜×þ@Ö¢ÖlMP3EZ,±Ÿ·Ä£oØ“‹fÁÁ~‡ùgÌv^eÓ­õ5ýK[¤‡¾ýU¿•Ñ¾_Ù|U5Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«ÿÖõN*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*†Ôu}6ÞKÛÉxP¼’9¢ª¨«3UðÏçßçå×æÉÓtÒÐèP·ÀÄ»çÿ ™0þÇüeû*°/%yûÍW8ŽÙOï&`x¨ÿ 'ùäþT_ö\WâÊre¶ãÆfv}å)XyjßêÚ||köÜîîËoøŠý•ÍNL†gwk‡$ã*mv*ìUó¿åÍ¿Ô¼ë·hå¹O¹&_á›ŒÛÁÔaÚo¢3NíÝŠ»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØªSç/¢ß¨êmg|m–cú‡½¯'Ò}Ïü€ššµÌ?Ín[þÐÆù°Õý?Kõ|íš·fìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»|íçíRo:y‘l,ˆhÑÅ¼=)×÷’Ô~É~MËýõÃ7£áÇ{¨Ë/[=ûHÒ Òm"°µb…/ÑûGü¦ûMþVjg.#nÖ1á‹È²v*ìUØ«±Wb®Å\ÊQ…Aê*ù·óOÉ_á­K•ºÒÊæ¯~4þò/öü?ñ_Úå›œ8Ç›§Í€½{þpûó<é÷Ïäëçÿ F»&[jŸ³(¼Œ{Mòÿ ^?ø³2`b®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUÿ×õN*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ùþrËó•õ+Æò^“'ú³­²Ÿ·(ÿ tÆ8?oþ.ÿ ŒX«Äüƒä©üÕ| PVÚ*4Ò(þUÿ -ÿ gý“e9rmÅŒÌÓé]+J¶Ò­’ÊÉpÆ(ª?Ï©Í4¤dl»ˆÄDPEdY;v*ìUó½¤cçâ[bÚƒ¨ùJì«ÿ &nøÿ ÍulŸç>ˆÍ;·v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb¨mRqi4'pñºýàŒ”9†ä^ùi®N<mþNC›MWÓñuÚo©ï™©vŽÅ]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«üÃóèâñŠúqxó„÷AÊ_ö~qI£4øbó_È_.z÷3ës¡”dÿ ;
+Èßìcøç®fj§BœM,,ÛÛsXìŠ»v*ìUØ«±Wb®ÅXßæ–‡˜tiíVt¤?ë¨Ø³^Qÿ ³ËðO†M¡ÅÍ:6­>{¥fÜn-¤IcoCÍstéß¦~[×!×´Û]^Ûû«¸Reö¡¿U3Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUÿÐõN*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»a_œ>}O#yjïY¨}8ï3ü1Àÿ xßäFØ«ó­VãSºâšæáýË31üY›4-õ“|±–´Ø´ø·p9HßÌçí·ËöSüŽ9¤Ë“ŒÛ¹ÅIÞTÚìUØ«±Wb¯ž<ÿ :é~v{³²Å=¼ßrÄí›Œ;ÁÔeÚo¡óNíÝŠ»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»oP¹¾‚Ô¸‘#QÔ»ðÙ!X™ –?44ë¨Zÿ Èôÿ š²cBÀåz]sù¥å»}žùúªïÿ &ÑòcO>æ'<{Ð“~ryf1U¹göX¤ÿ Ñr_–“ÌÅ.—óãACEK—÷T_øÞTÉ~R^L55	?´aýÝ½Ñ>êƒþf6Kò‡½šÈÿ ç!-—û›oõ¥ú•ò_”ócù¿$?ý=zi¿ôñÿ ^0þOÍ›òSùÈiÙÓÔ|æ¯üÊ\?”èüÑîPùÈ;Ã^Q
+»à0þPw£óG¹Aÿ ?õ2¤-­¸=‰æGÝÉp,GRƒª>L+Êm¸ò½á¿´T‘Ú6Œ‡©4?²Wö•s'$Å06ü¯ío´ŸðÕlÇü¬|Ûÿ 5/%§óó\?î›QþÁÿ ê®ÊÅ™’‘ü÷×‰Ù-Çûÿ ª˜-~fJ_ò¼|Ããü‹þÜ-üÄÿ +ÃÌ?Íü‹þÜ-üÄÿ +ÃÌ>0ÿ È¿íÇòÐ_ÌIßò¼|ÃüÐÿ È¿íÇòÐ_ÌIzþzy€uöþkÇòÑ_ÌÉU>uÐ7ŽØû”oú©åbŸÌÉxüý×X-?à$ÿ ªØ?+5üÌ›ŸÚßx-~„“þ«`ü¤|Óù©y#"ÿ œ‚¾ÞYÄß&aÿ 5d(;Ù~h÷"“þrþÖ_”ôÿ ™8?(;Óù³Ü¯üä,GûÝ=”“0o×d'æËó~I„_ŸÚ9½·¹SþHCúäLå{/ÍäTžÚ¦Œ·û´kÿ 2ä|‰ÒËÉÕGÍ1ó‡ËÖï‰ð1Kü#9¦›!¨Šaiùåë±Xï¡ë·ù;Ã"pLtf3DõLm¼Í¥Ý7{Ëy[Á%F?ð­8ä:C$OP™ÅGLÎíØìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«Ã=üÇõ»è´XRØxÈãá_ö1q§üelÚiaBûÝf¦vk¹ê~Eòàòö‘‰”/9|Lñ=i×‡÷ê¢æiñJÜÜPá'ùKs±Wb®Å]Š»v*ìUØ«±WË˜zÑuË«D‹Ÿ4§@®=EQþ§.ìsyŠ\QÒåˆ}uÿ 8æÿ ÒþUm&F¬ÚdÅ)ÿ ÉûØ¿áýTÿ a–µ=Ûv*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±WÿÑõN*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»|yÿ 9çƒ{«Zù^ýÕ’zóþý~ìøÇüžÅ^qùåÁ¨ê©L+’‚+þüz„Ûü•æÿ ëðÌMLøc_ÎrôÐ¹_ó^ýš—hìUØ«±Wb®Å^ùõj"×"•G÷¶ÈI÷"ÄUsm¥7U©§»i—¢þÖÅû3F’“ ÿ Ç5sHvq6DäY;v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*…¾Õm4ñÊöxà¼Ž©ÿ #$ O ÄÈe"½üÎòå‘ã-ôlâ¾R¾e£ÏF£ž#ªEyùí ÀÅb[‰¼ äcÆÿ ð™hÒI¨ê¢‘Üÿ ÎB $[Ø^Å¦§ü(¿âyhÒw–³«î	4ÿ ŸºÃéAlªzU\‘ÿ %ÿ ÂåƒK6³ª’OqùÉæiMVåcñº3eƒOÑ¬ç‘ê”Üùÿ _¸bÏp	þIüeFX1DtI©Uî¯y}þõÏ$ßë»7üK& 	´"í4Ë«Ï÷–%ÿ Q¿â8	¤i‚ù+\o³§ÝPÿ Å/ÿ 4äNHŽ¡„B˜[~VùŽä–Nþr©øHËñ£ÞËÁ—r-?'|ÎÇ{P£ÞX¿ãYDê!ÞÏÀ—r:È­~AV0Gþ´‡þ4GÈþf)ü´‘ò u¿÷ý§üŸõG#ù¨ù²ü¬¼‘Î?jgûë¨ý^Mÿ TÁù¸÷þTù##ÿ œz›öïÔ|¢'þf.ÍŽäþT÷ªùÇGþH×ì›Éü¡ïoþ…ÜÕËþÿ ëþÎy'òžnÿ ¡wõqÿ §úÿ ç<¾Õü§šªÎ=Ãþì¿cþ¬@~¹ç<“ùO4TóúhûwSŸQü0~l÷'òƒ½Y taö®.OÉÌ¼›=Éü¨ï]ÿ *Dÿ Ýÿ ÁÇÿ TqüÙî_ÊŽ÷Ê‚Ðÿ ß÷ðqÿ Õ›=Á*;Ýÿ *Cÿ Ýÿ ÁÇÿ TqüÙîùQÞïùPZûþïþ?ú£‡óg¹*;Ü ´^ÓÝÁGÿ T±üÙî_ÊŽõ6ü€Òfæà|ÊøÓÍžä~Tw¡ŸþqòÈÓ…ä£Æ¨§úaüÙî_Êô1ÿ œx^Ú‰óÂ¿ó;ç<¾Ö?”óZßóû:~p×ì—æÇr?({Ð“Î>^(ýÕäLÊF_Ô_æÇr?*{ÐGò[í=§üŸõG%ù¨ù±ü¬¼×‘ZüB¨`ø,‡þ7DÉ~f,-$½¿'¼Î:YÔ{KýTÉD;ØøîA]þ[y†×w±”Óýö9ÿ É¾y1š'«ŠC¢_7”µˆG)lnPíÖ¹!0z°0#¢Tñ².>ù6-Å+ÄÜÑŠ°î1TÞ:kPPGr íë=>îTÈÑ˜™Sx?7<Í
+·„üÑÆÇþ	“–Vp@ôlä:§VßŸZÜ`	"¶w%øY8ÿ ÂågKÌjdžZÿ ÎB©!nlÙ%¯ü#Gÿ åGIÜ[F¯¼'Ö_žšÃ”O ?´èÿ ’O#ÂåGK&Áª‹ Óÿ 1ü½ýÍô#þ2üŸåG‡FÑš'ª}kwÜbkgYc=`Ù.RbG6Ñ y*àdìUØ«±Wb®Å]Š»v*ìUØªUÔ¢Òí%¾¸4Šgo ÿ )¿g%ñc)p‹xåÎŸ7›|ÏúBîŒ±»\ËáZþí ÿ Œœ>÷Ú¶m³KÃ…êº¬Qã–ÿ Ö}šwnìUØ«±Wb®Å]Š»v*ìUØ«Çç 4J‹]]Œ~ù"ÿ ™¹±ÒK˜uú¨ò(¿ùÄo7þ…óèÙZêq4>ÜÓ÷ÐŸ¹dŒÆLØ8¸ñWb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»ÿÒõN*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š¨Ý]GkÏ1ãjY‰ìrlUù¡çŸ3Iæn÷\–µºä öZþí?ØGÅ1W¼þSh¢t9ŠKsû÷ÿ gýßü‘æŸQ>){¶ž<1÷³Ær]Š»v*ìUØ«Ç¿ç!m	[¥Uüý6Oøß6:CÌ:ýXäYçå¥ù¾òíŒÇ´^Ÿü‹&ù—˜¹ÅL¹8Ä2\¡½Ø«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š¥Z§›4+½»†&QR…Ç?ù?xßBå‘Å)rg$G2ÅuÎÿ /Z0´·>ñÇAÿ %ŒYxÒÈ´LCÔç å#’«vid$À"§üœËÆu-'Tz5ùÕæ;£XåŽÜ,Q­?ä·ªßðÙpÓÄ4D‹¾ó~±|
+\ÞÜHÕLÇþ¼rá 9£2y”Ÿv>$äØ'žNÖnÀh,®OíšŸðTã3™f O ŸZ~Mù–r9[¬J{¼‰ú‘ÿ ár£¨€êØ0HôNí? 5W#ë76ñ¯rœÜýÌ‘ÿ Ä²£«‹hÒÉ9´ÿ œz·V­Íóº÷	Sÿ Ï/üG+:¾àØ4å9¶ü‰Ðb!®%ögP?äœhr³«—“1¥Šmå/–a5`‘üÒHzd¢g«`ÓÄtM"òN‡l-vñ…	ûÙr³šG«1Š#¢ike¢„·"QÐ"…ð¹"Yˆ€¯‘dÖ*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±WQC¸Â"’ÛŸ,iWMÎâÎÞFñx‘ü2äÆI¥ÇÑ)¼ü°òåÛr’Æ0È-û¡dÉŒóX={ßÈï/\Ä³@<#’¿òyfËªMgMš÷þqòÑÛýöH×ÂD~ôhrÑ«ïgIÜR;ÏùÇýMýRæ	ü¾H~åYGü6X5qk:Y$W“Þe¶&–ÂUÒD?ð¥–Oø\´j zµåÿ –uKçwi<+âñ²ø"´Ë„äZŒHæ‚âHI28èTÐä˜²;ó#Ì:y¬7Ò·´‡ÔtÂL¨â‰èÚ2ÈuegçÖ¯oE¼†…Hý*JÉ,¢ZXžMÃS!Í•éŸŸš\â—Öó[·ù%dQþË÷oÿ $ò‰iBßPêv™ù… ê_ï5ì5ðséŸø½69,ãš'«!»Œ¥¹Ø«±Wb®Å]Š»yWçÏ™MµœZ,&p}IGù
+~þÎ_‹þyf~’Äàê§ü)ÇäÏ–Î‘£©…'½>©¯P!_øRÏ\¯S>)WóYé¡Q¿ç3ÜÄrÝŠ»v*ìUØ«±Wb®Å]Š»c¿˜z'é­êÕG)#ñäŸ¼P¿ëñáþË/Á.ŒÑâ‰|Ó ëhš…¶©li5¬©2¬Œâ9ºtïÓmV‡X±ƒRµ< º‰&Câ®¡×þ%Š£±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š¿ÿÓõN*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š¼·þrWÍ_áï$_²7¯Ú'üõøeÿ ’¶*øCËšIÕõ}<zòªà	øÏÐ¹K„[(ÇˆÓëDEB TPÐšmÞMâ—b®Å]Š»v*óÿ Ïsåó0ÿ y£üaýr®fiMJœMH¸¨~DjXÑÝZ	Øà¬Çü?©‡V=V)ôÓÑó	Ìv*ìUØ«±Wb®Å]Š»v*”koÒ4j‹û¨¢eêœªÿ ò)9Iÿ 	–Ç¥È5K,cÌ°_óëJ¶ªØC-ÓÔÒ4?&<äÿ ’Y“!<Üyj‡FªþzëWU[4ŠÑ{¼Ûþ
+^Iÿ $³":XŽ{¸òÔÈòÙ‡ê¾oÕµPEíÜÒ)ê¥ÈOù¼Sþ2#A Ìže/²°¸¾“Ñ´‰æåE,~åÉL@¶M¦þTùŽüKF‰yHŽŸì‰á2™gˆêÚ0Èôe:wüãõóŸôë¸¢_ø­YÏü7¢2“«†”õdºä.êiçqÖ…QOû¬ÿ òS(:³Ð7(êÉ,?,¼»bÜ¢±üYY?áf.¹IÏ#Õ¸`ˆèŸÙiÖÖéÙÅ)á…rS*2'›hˆ‘NÅ]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*€Ô<¿§j'•í¬3·Œ‘«ø&ÉŒ’‹ŒaŒê?“ž\¼RÝ cûQ;ÿ þ¤ð™xÔÈ4<KÔÿ çaj¶ŸxË¶Ë*ßþ2'§Où—GWÞ—¸±=KòOÌ6f°¤W+Ö±8Ûè›Ò?ð9‘LKL´òCSÐoô²ý¼°W§¨Œ ü¹lrñ y4‘Í~•æ=GI?î>æX5!…?4û-Œ¢%ÍDˆäÍ´ÏMjÐ|±]¥w$p¡¢¢öQ6cKMËg":™{³óÓF¼¢_$–nFäŽh=¹ÇûÏù#˜ÒÒÈrÝÉŽ¨{3½3Y²ÕSÕ°ž9Ðu1°jWù¸ýŸöY‹(órc1.HÌƒ7b­3˜€äžƒº8Ê_óÍ|A"¤ #n0§üoé¯üŒlÜÿ uQýìßFÅÄ¢8ÀTP ` èi‰·n.Å.Å]Š»v*ìUØ«±Wb®Å]Š»|«ç}ô±u§¨¢$„ ÿ !¿yü“eÍî9qDI’<$‡Ù_ó‰^oý9äõ°•«>™+@G~÷°Ÿøh×þ1eolÅ]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ÿ ÿÔõN*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š¾Rÿ œÜó(/¥ù}Ù]H>gÑ‡þ#qŠ¼‡ò+H7zÓÞ°<-bf·7ýÒ¦?Wþ15R¨×{•¦Êûžÿ š—jìUØ«±Wb®Å]Š¤¾tÓ?Jh×–”äÏ•,£œòQW-Å*-YEÄ‡”Î?j^ýÝé4K'ÓqÛè›þ3õq±n–[ÓÜsVìÝŠ»v*ìUØ«±V3¯~dhz%Væå^PîâøÚ¿Ëð|(ßñ‘“/Ž	K£D³F/?Öÿ ç ‰M"Ô(ìóšŸùøäkæ\tƒ©qeª= Ö¿0µÍh¼ºLŠCÁHÿ )#ãÏýŸ,ÊŽ(Çq¥–RæR{:çQ”CiÏ)ý”RÇþ,&šÀ¶_¤~My‡Pž$¶F¬Ìü"z’)ÿ Y1å¨ˆoŽžEši?óÖÉFÔîÞCO³
+„¡ÿ ]ý^Cý‚f<µ}ÁÈŽ—¼³'ò¿ËÚe;D‘ÇíMY+ïÆNQö(¹-DVøàˆèÉmí¢¶ŒC,q¯EP %A$óo J˜ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å\Ê;ƒÔb"˜Þ­ùq j»ÜYÆ¯OµôÏü’áËý—,¾9å­2ÃÑƒkóÐ0-¥]²l“(`Oüd‡ùù“_xqå¥î,Zü¨ó”Iksqý¸>:ÿ °½ÿ ‚s*9ã.®,°Ê=´ØÊ$‰š)ÔJ°9w6®LÛAüç×tÊ%Ã­äB‚’ŠžÒ¯åþT¾¦cÏOy7ÇQ(ù½/Ëÿ Z.¦DWe¬¥?ïÍÒ¿äÊŸñ)<Ãž–C—©Ì†¦'Ÿ¥¿Í¿6Ga •³‘]ïÿ tŒ¬(¾u+^KÃ÷ó×>;–ÿ ÂºŒ•¿‰%ü†òÁ·¶›\˜QçýÔ_êYýœWþydõSþ½,?‰ë€ç»v*ìUØ«±Wb®Å]Š»v*ìUØ«Å¿?ô>Zêè6u0¹ð+WþZOù›-$¶§]ªŽöžÿ Îy»ôWš%Ñ¥jC©ÂTø¶*Ëü’õó=Á}±Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUÿÕõN*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š¾ÿ œóéŸ=_ñ5ŽÓ…²ûpQêÉf—dz_Õô©ïˆ£\MÄ{¬cáÿ ‡’LÖjå¸ËK‰zv`¹®Å]Š»v*ìUØ«x«ç-„<æ°·ÃW&/ˆÿ ºäø#vÿ žR,™¹—ï!ðuôOâú34ÎÝØ«±Wb¨_^±Ñ¢õõÒ¡#™¡4þEûOþÁrq—&˜7šy‹óòÚÇ¢Àfn‚Iª«ôF¿õš,Í†“ùÎõ_ÍyŸ˜<ÿ ¬ëÕKÛ–ô›oM>§º'Úÿ žœ³2£AÃ–IKš[¤ùPÖÓÓ­äœŽ¼?Öo²¿ì²r6"$ògú'ä6©tê3Gh§ªÞ8úŒ_òW1eªˆå»“4=ž¢þMèmHšêAÞcQÿ "Ó‚Á«æ$µ2<¶r£¦ˆófV–pYÆ!µ"ŒtTPª?Ø®ÙŒdO7 DJØ;v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±T³YòÆ›­©MFÚ9ª)É‡Äù2-$Oö-–G$£ÈµË—0ó½òÖjÉ£Ü4¹ôåÖ¾ÇïÖõ³.¾ðâKKÜó?1þ_k_«ÞÛ±€»cø“æY»ÿ žœ36c.N$ñJ<ØÖZÔö!~rÚXZÁ¥jpz1D¢5š-×oÚ’?µÈý©9|_±˜tÆFÃ‹QÂ(½wLÕmuHEÕŒ©4-ûHj>Gù[ü–ø³_(˜ì\øÈK’+"ÉØ«±Wb®Å]Š»v*ìUØ«±Wb¬WóCDý/ \Ä "_Y=ŒSÝ£õý–d`—š3ÇŠ/ž|¥æ	|»«Zko%¤ÑÊWý—ÙÍË§~šX_E}oå»rŠdWFñV—ðÅQ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb¯ÿÖõN*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®ÅT®.Þ6šCD@Y€§~`ù‡UmcRºÔäûWSÉ1ù»?ãlUô§åÖœ4ÿ /ØÀ;Â$?9?|äæi3Êä]ÎQ)nv*ìUØ«±Wb®Å]Š¼3óëB6Ú„¬b‹pœÿ —Fÿ ‘l¿ò/6šYX®çYªzÏ’õá¯i6Ú5‘Ð	:}µø$éþZòÿ W02Ã†D9Ø¥ÅN²¦Ô“ÌžsÒü¸…µ	•d¥V%ÞFðã¿ó·ÿ ËËaŠSäÕ<¢ÞKæÏKû²ÐèÑ‹XºzFÿ Ì´ÿ ‡ÿ _6ÒÏÔàÏRO-žosss©Îe™Þ{‰å‰fcÿ 9–8„Û5òçäÎµªÒK¥PÊ>#ò„|uÿ Œ¾žcÏQù¹ÓÊ^OMòÿ äÎ‰¥ÒK•7“
+o/Ù¯ù0¯Ãÿ #=\Âž¦G—¥Ì†š#Ÿ©œAo¼k
+±Æ¢Šª  ’£¦b“|Ü+’ü	v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š¥Ú¯™4Ý&¿_¹Š¼]Àj“Ûoö+–G¥È5Ë 2ÄõÎß/ZšDòÜÿ Æ(Èÿ “ÞŽ^4²-SÇ®ÿ ç!aV"ÖÅ™{”/ü*¤Ÿñ<¸i;ËQÕ÷žãþrU'÷Öê?Ëßñ&4‘ó`uRòC·çÖºÝ"µ_’?ñ—%ùX±üÌ–§çÆ¼:Çl~hßÂL?•ŠþfJ«ùý­×â‚Ôõdó;"t±óHÕKÉoÿ 9	r£÷ö1±ÿ &B¿­dÈþPw²üÑîG[ÿ ÎBÂÍIìÅfø4qä“Í˜Õù&öÿ Ÿ¬ã¹Ž½IE ÀÈÍÿ :Iy3¨§¶_š~[¼<c½E?ñ`dðRª/ü6Ttóxž¬‚ÇV³Ô6SÅ8Ln¯ÿ ')0#˜n‘EdY;v*ìUØ«±Wb®ÅXw™¿*t]v²z_V¸?îÈhµ?åÇýÛ•ðóÿ /2a¨”¤ãOOy<—Í_“ú¶‰ÊkqõËa¿8ÇÄùq}¯øküÌ¹ŸQy83Á(±]^¾Ñ.Í„­£cÄìÉt?¯ù-—Ê"[˜ÈÇpõÿ '~y[Ýñµ×TA/OY~Áÿ ]~Ôìy¯ücÍ~M/X¹øõ=$õHfI‘e‰ƒÆàe5Œ¬:ŒÁ"œÐmv»v*ìUØ«±Wb®Å]Š»q ŠÁÅ_(y·D:&©s§Ÿ÷T„/ú‡ã‰¿ÙFË›èKˆ[£œxM>Ãÿ œxüâÑ?ÁÖ–šæ¡misdZÛŒò¬d¢o*ÈßgÒeOö6Fœ¾L&ƒZ°¯üÄGÿ 5b¨ë?Ì,ÞímªÙH|â2âxª{myÒó·‘d_`ÃþWÅ]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb¯ÿ×õN*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»c~füÇòï–?ãµ¨[Û?ò;Žò)k'ü&*òÍ{þsÉö$­‚]_0èR1ŸöS²?ü’ÅX>¥ÿ 9Á1$iúB(ìeœŸøT‰âx«»ÿ œÓóKŸô{;þk#ÌåÅP_ô9^tÿ }Xÿ È—ÿ ªØª½¿üæ›ÐþöÞÁÇüc~©±TN«ÿ 9‘¬jºmÎ›>Ÿns‘z‘»‚¼Ô§0Î¼y>*ùã}9¥~fùnä,0]¤T 1€Ôå Xÿ á³O,îvÑÏöOkyâz¶Ò$±žŒŒÁ.c˜‘Í¼HJ¸;v*ìUØ«±Wb¬góËÌz<Ö‘ŠÜ%%‡ýuýŸùèœãÿ g—àŸš3CŠ/*ü óý·—¾±aª¹ŠÕÿ xÅ¯VoÞ/ùþ^gj0™î,x6*þnüð»¾åm¢)µ„Ôz­C!ÿ Wöbú9¿ò¾z`9îœš’ylóˆa»ÕîBF$¸º™½Ù˜ŸÚ9™°q7/Jò¯äUÝßõÉ>­_I(Òõ›xãÿ ’Ÿê®aäÕËw.byìõ/y3JòòÓN·TzPÈ~'>?¼o‹ýŠüäæòÊ|ÜèbŒy'YSk±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìU-ÖüÉ§hqúÚ”éÀcñõ#Z»ÿ °\²Ì¹5Ë 7šëÿ Ÿ°ÇXôks!í$Û/üŠO‰‡üôOõs2Oç8“Õw<ïZüÉ×µŠ­ÅÓ¬dS„_»Z•éñåþÌ¶fGcÈ8’Ë)s,`šîzå­Mb«Ñž**OaŠ§6~I×oEmtë¹AþH$oøŠâ©´“¾qœrF¾¡ñ·qÿ \UQÿ %<ètkï¢?¨b©eÏåÇ™mEgÒ¯xµ´€Ä1T’êÊ{FôîchŸÁþCâ®Å]Š¶7qVE¥þakÚaÚöZ‚»sZ©/5T±F\ÃdrHr,»GüüÔíèšŒ\¨êÊLl}Éøãÿ ’k˜òÒÄòÙÈŽªC›8Ñÿ ;tê-ËIhôÞ-TŸò^/SþcÌiid9näGSÏfqe¨[_ÇëYÊ“GüÑ°aÿ ¹(˜órDä¯‘dìUØ«±Wb®ÅX—›ÿ ,´¯2ÖYÐ»?îèÀ©?ñbý™?âñfdcÎaæãäÀ$ðÿ 8þ\ê~Xró§«kÚd¯û?÷Ùÿ _í~Ç,ÙãÊ'É×dÄaÍ¯&þaê>V’7«hM^?	?Ì¿ï¶ÿ )~×íòÇ&!>hÇ”Ã“ß¼£ç;Íú–OÆexZœ×·OÚOò×þ¾ÕdÄaÍÚcÊ'Ée-ÎÅ]Š»v*ìUØ«ógæ&•åvß3´ì¡–4BI£—&ãUÿ ~eøð™î2fæóMkóöúbSK·Ž"œ¤«·ÍiÁý’É™±ÒÍÃ–¨žL?QüÉóù¬·Ò¯üb>˜ÿ ’"<È¢:4²=XõÅÄ—.ešI«1©?IËZ”qWb®ÅQV:Íƒú¶rÉÿ 4lTýëŠ³¯.þù×A*-µIåEý‰È™ióŸ›Àâ¯_ò‡üæ¼èV/3ië"w–ÐÑ¿äDÇ‰ÿ ‘ÉŠ¾€ò7æß–¼îƒô%âI5*a‚Qÿ <Ÿâÿ dœ“ü¬U˜â®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ÿ ÿÐõN*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb­ ß¦*ñ¿ÌÏùÊ-ù<µ‰ý)¨-G§Ÿø¶ãâ_ö1¬ŸåqÅ_2ùçþrKÍþl-Ö£W÷6µM¿Ë—ûçÿ ƒãþN*òédyX»’XîIêqU<UpšÎ*šÚùOX»¶²¹”ä…Ûþ"¸ª+þUç™?êÕ}ÿ HÒÿ Íª”þG×`›N»AþTø×J®-&¶<gFŒø0#õâª«±TMôöN&µ‘â”†F*GÒ¸´ƒLãË_›>d‚Xí¾¼\ñXä^LI;RDã+7úÌù<?Ñr!žCÍô$C™€Y
+ŽAM@4ø¸µ’×üœÔ'j<×àK±Wb®Å]Š¼ãÏ?œ–z?+='ÕàØ·XÐû•þñÿ ÉO‡ùŸö37˜Ëy8yu l}w%õÃÜË¼²¹v âcÈì3f:Òmè^Nü–¿ÕxÜêÕ³¶4!Hýëõ?Ý_ëIñÅm˜¹5";S“NeÏg´y{ÊÚw—âôtèV=€gêíOçüMÿ þ\ÖÏ!Ÿ7cb“\­±Ø«±Wb®Å]Š»v*ìUk?™JÜ]£H+ðEYÝ¥È!ÿ Œ…2øà”º4K4cÕ„êÿ ó6éUÓ-CMžf
+ÿ Œqúœ‡üôLÉŽ“¼¸òÕw#¨~wyŠå¹A$VÀvŽ0kÿ #ýoø×2š! ê$RkïÌŸ0Þï-ôËÿ Ï§ÿ &}<°bˆèÖrÈõKn<Ïª\m=åÄƒü©]¿âM“‡(s)Ü»}ç"×%ÜÑš«°>ÄãKhø|Ù«Á´7×(?É™Çêl ôH‘S[Í1ÙŠG{#ø°,Ÿòu_+8bz6ÒYùñ­[€·QÁpRT«¥§ÿ $ò£¥‰m™W¥þiÓ:…´¶çÅ}?Ý7ü
+6Q-!è[£ªC7Ñ|ï£kD%…Üo!4O?(äàíô.bË£Ì91Ër)ÞTÚìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØª[¯yŽÃAƒë:”Ë
+v®ìÇÁ|OþÇ,†3>Ms˜7y·óÎîó•¾ˆŸV„íê½‡ä»¤ðíü¬¹°Ç¥žîMI<¶yíì÷ÒµÍÓ´²¹«3I>ç3 §›QDi*Š±Ø…KòüãŸœüÐX,­»»n¤)þ£~ý¿ØÅŠ½ŸËó„¶‘ÒO0êRH{Çlü—Ôåÿ "“z–ƒÿ 8ßämšj\?ó\––¿ì$>Ÿü&*Ï4Ï.éºR„Óí`·QÐE§üAWLqWb®Å]Š¡î¬`»_Nâ5•OgPÃþaúçä—“u°~¹¤Ûrn­zMÿ ¦Ø«Í<Ëÿ 8cå«à_G¹¹°ôDÉÿ ü%ÿ ’ø«ÇüÝÿ 8æý”ºo¥©Â?ß-Áéï¼àRI1WŽêú-ö;ZjVò[N½RT(Ãý‹ŒUŠ»v*‹Óõ+:Q=œ¯££FÅOÞ¸¾i¹=Ëÿ žZ­ê*·±xš$”ÿ Yø$fÿ /1g¦‰åéra©çêz—–¿3´]|ˆá›Ñœÿ º¦¢·ûöý‹òÿ '0g‚Qsaž2eyŽä;v*ìUØªÙbI‘¢•C£XTz«ÔaE¼“ÏŸ’©({ï/2ukrh§mýû?ñþåeûŸ‹SÒ_éœºn±ù<ŽÞæóD»ÂÏouàÊFÌ¬§þ"Ùž@p1/xüºüÕƒÌ!lu°ê6Y?ÔþY?â¿øäMfm?ãévXsñly½0Ü·b®Å]Š»v*óŸÎß+þ’ÒÆ§
+Ö{=ÚLgíöý·þ¯©™ºYÑ®÷SÜù÷6Ž±ž~Y~Nk_˜ÆeÑ [qõ²qãÏ—ÅD’ð7ìb¯_Óç5¡Ô5h"ñBÒ~.ðb¬’Ûþp‹GQþ‘ª\¹ÿ "4_ø—©Š¢üá/—)¶¡{_ùçÿ TñTçüá˜ÀýWVnp«ÄZ,U‰ëó„úì ¶™¨Û\‘ÐH¯?w®1W›yŸþq÷Î¾[%Ö›$°¯û²Þ“->Qruÿ f‹Š¼öXš&(à«)¡¨ÅWÛ\Ëi"ÍåCUe4 åaŠ½ûò§þr×UÐ™4ÿ 5òÔ,v¿û¾1îz\õÿ yÿ ~Î*úçË>iÓ¼Ïdš¦:\ÚÉÑô=ÕÇÚG_ÚFø±TÛv*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUÿÑõN*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±T›Í~lÓ|©a&­¬Ì°ZÄ7cÔŸÙD_µ$û(¸«âßÎ/ùÉ}_Îìúv–_OÑÎÆ54–Qÿ //ìÿ Å)ð?©Š¼[d^Qò¹ç	þ­¡ZKtãíUÿ Œ’µ#ý“b¯}òwüáUÔÁeó=ø„Ì6£“}3Ëð)ùE&*ö/.ÿ Î3ùE¡]<]H?néšZÿ Ï6ýÏü’Å^¦ygKÒ”&Ÿi²ŽÑD‰ÿ \U3Å]Š»P¹³†äqž5‘|CølUŒjÿ ”žSÕêot›7cûBVÿ ƒ‹ÿ Ãb¯™ç&ÿ .ü‘ä{xaÑ xu{¦ä±¬¬È‘·#¤¾¡øÁÄ¿¶ßî¼Uóž*ö¿É$zIþ ¼_‰ª¶àøtyÙ}„ÿ gþNkõ9„9úlÄ^»šç`ìUØ«±T=þ¡o§@÷w’,PF*ÎÆ€óéüÙ(ÄÈÐc)‹/	üÀüÞ¸ÖùXéDÁbAVn =y¾ãÿ #ö¿où3i‹N!¹úf\æ[¥ˆù[Ê7þe¸ú¶žœ€ûnvDÌíú—í6_9ˆ-™ ÷¯$~WéþXpßéÀo+
+¯ûé7áþ¿÷Ÿå*·ÕåÎg· ìñà÷³,Ær]Š»v*ìUØ«±Wb©˜|ï¤y|¨\*Éþû_‰úWû´«-™ø¯ùYl0Ê\š§–1æóMóöW&=Ü"ôO¹ÿ ‘Hh¿ò2Oõs6AÕÃž¨ôyÖ¹ç=_]'ô…Ì’!5àÿ ‘IÆ?ø\ËŽ1AÄ”Ì¹¤ycÀ$ÐuÅYf…ùOæ½v‡NÒ®åCÑý&Tÿ ‘’pþg_üâgž¯€imàµ¯ûúuÿ ™>¶*Él¿ç
+<Ç îþÊ#àž£ÿ Ì¸ñTÅç5>-^ò…üÌÅZùÂHƒV€ŸxXÆíŠ¥Wÿ ó…~hˆVÒòÆofiÿ É§ÿ ‰b¬cUÿ œVóæž%š\Þÿ ÂÈÑ·ü.*Á5ßË¿1h5:¦un«Õž&ãÿ #8ðÿ †ÅXæ*Ø4ÜuÅYG—¿2µ½‹opd„l"—ãZËËâAÿ Ý2™áŒ¹¶Ã,£Éê[üöÓîÀ‹XŒÚIÐºÕãü?xŸêñ“ý|Âž”¥Í†¨oI³½‚ö!qk"Ktt`ÊÙ.Ù„bG7,HJØ;v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb¯1óÏç=¾˜Mž‰Ææze­cCþM?½?òOþ2|K™Ø´×¼œ,ºšÚ/Õõ›½^sw+M3~ÓŸä¯e_õsc°uæDîTì4ûBt´³çžCÅ5,Ì|Wâl“Ð—_ó‡š¾®ïÍþŽ·;ú)GœsýÔ?ì½Vÿ ŠñWÒ¾GüòÇ’•Nd‹8ÿ wÉñÊç«ýŸùçÁÉÅY®*ìUØ«±Wb®Å]Š»v*ìUØ«±T£Ì>TÒüÉ´Öma»‡ùe@Ôÿ TõVÿ )qWÏ¿˜_ó†v7Aîü¡pm¥Üý^r^3þJMýììýlUó?œ|ƒ­ù6çêzõ¬–ÒoÄ‘T`?j)W÷rõ[c˜«7ò¯œt“ÆÃÍö}cÐOî®¢)2|7
+¿ï«¯Sü‡LUèw¿óŒƒÌ#[ü»Ô¢Õ,Ïû¦jG2Ÿ÷Ûîý_øËõ|Uã~aòÆ§åË“e¬[Kip?fU*~küëþR|8ª}åOÍM_Ëåbçõ›Q·¥.ôñ[ý¸éü«û¿ò2Œ˜#6øf”Ñäÿ ÌÍ/ÌÔŠ&ô.Ïû¦B*ãtÃÿ Åy­É€ÃÍØcÎ&Ë3Èv*ìUØ«±VçßËk?4ÆÓ%!¿á–›5>ÊMO´¿å}´ÿ +ìfN,æ—ŸõŸ=kzæ‡tÖwÑ˜¦SÓ±ÿ )}¥?Ì¹¶Œ„…‡W(˜š/_ü²üÚú÷+[zN6ŽsûäËÿ ÅŸ·ûÄøôýbçaÏÒOWÍ{žìUØ«±Wb«&…'FŠU‚¬¤Tve#ÀáE¾WóŸ–ßËº¤úsT¢5cc½Q¾(Éÿ +Úÿ +7˜çÆ-Òä‡	¦]ÿ 8ÿ ùˆ|æ›{©ÛÉú½Ízps´ŸóÆN©Ï,k~„ƒ]Æ*ìUØ«±Wb®ÅX¿)¼·çD+­YG$¤m2Žùì”ö-É?ÉÅ_0~hÎ"êÚ¾¡åwmJÑjL,)p£ü¿ÇûÅx«çù¡x\Ç *êH ŠF*Ëÿ ,ÿ 4õËÝ@_é/X˜Z'Ó•|Ÿù$_?à±WÞ–ÿ ™_æ–š¶’ûì²ÄÇã‰ÿ ßrÆöd\U–â®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å_ÿÒõN*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØªEç?8iþOÓ&Öui=+hGû&cö"jGýŸù§|	ù±ù·ª~cj&òùŒv±’-íÔü©ÿ ‰Èß·/üE>U…ZÛKu"Á´’9
+ª ’Iý•QÔâ¯¨?'ÿ çL«­çz¨Ù’É	òõ"ôÿ Œ1³“ö1WÔNg£Û¥–vöÑŠ,q(UBâ¨ÜUØ«±Wb®Å]Š»IüÙæ{?+éw:Ö¤ü-­P»xŸåEÿ .Gâ‰þSb¯Îo>yÖóÎšÅÎ¹¨šË;|+]‘÷q'ù(Ÿü6*¯ùyä÷ó>¤–ìµŽ3¨µû#ü©>Âÿ /ÛýŒ§.Nm¸±ñš}9)
+,Q(HÐU€²¨4¤Û¹—`K±Wb©v¿æ=Ñïïß„K°vcû)þÓ·üÜßN34NbËç;yþÿ ÍS9ôíU‰Ž;/cûr—ÿ Åsq€ÙÔäÊgÍ3ü¿ü­ºó1[Ë’`Ó«»þÓÓí,#þÔo…•þÎC.q¿‰–,&Õ}¤höš=ºÚXD°Â½”u?ÌÇ«7ùMš©LÈÙv‘ˆˆ ŒÈ3v*ìUØ«±Wb®ÅX_š6´m
+±#ýnäºâ €Ë—ì/ûoþFecÓÊ_Ñq§¨Œ|ÞIæ_ÍíoY&8¤ú¤ö!$•/÷Ÿð<üŒÏ†ÅÁžyIƒ“]Ï\Èq×"3°U' Å^©äoùÆŸ7ù¬,ßVú…«Pú·uJò!£Lßð?ÊÅ^ñåùÃ?/iÀI¯\M¨ËÝú1ÿ Â7ü–Å^ÅåÏËŸ.ùhÐú}µ³ÛHÇ?ùÕÿ Áb¬v*ìUØ«±Wb®ÅZ C¸8«ó7å•<Ìô¦™o$ÖE^ÈØxIÿ Š¼kÎó…zmÏ)|µ|ö¯ÔEp=Dù	Œ©þËÕÅ^çŸÈ¯6y,4º•›=ªõ¸·ýätñf_Ž?ùì‘â¯>ÅSmÌÚ†ƒ/¯¦LÐ·í j­þº7Àÿ ì—áýœ„ %ÍœfcÉìþOüë²ÔÙmuu—`õýÙ>äïû/ƒü¼×äÒ‘¼\üzv/JV)¨" Žã0\ÆñK±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb¨}CP·Ó {»É(#gc@ùôµ’ŒL2ˆ²ðOÌ/Í›|›-0´ƒÙäÿ ^Ÿf?ø¯þü®Ÿ©ÕåÎg°ú^u™N3Öÿ (ÿ çuÏ?²ÞÊŽMMÄ‹»ùvoSþ2|1•û8«ìoË¿Ê_/ùÜE£[9{‡£Jÿ ëIû+þBpüœU™â®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±T·]òý†¿jö¬ÜÛ?ÚI£çþ·ùKŠ¾ZüÛÿ œCžÈ>§ä¢ÓÂ7k75uòï/û·þ1ÉûÏòälUóMÕ¤¶’´ÑÊ„«+#öYN*È|ƒù‡¬yP–‰7¦æ‚D;¤‹ü’ÇûKÿ Ÿ°ËŠ¾Ñòæ'•¿;4£e¨ÛD×HµžÎp©ÿ ~Àÿ hÇÿ ÇÂDý¾«Ì3?çÅ÷Ésçê—øAqÿ Mÿ #±WÌÚÞ… ]µ†©–×QŸ‰aýŸÊØ«;òWçMæ–V×Xåuj:?YWý“$_gø¿ËýŒÄË§Ül\¼zƒŽïoÒu‹M^wa*ÍmÉOCü¬:«’ßjåEØÆBBÂ3"ÍØ«±Wb©œ<›eæ›_«^2-Lr¯ÚCíüÊm?kýn-—bÊ`Zrc›|Íå›Ï-^áG²ý–_ÙtoøŽn!11aÔÎ&‹Õ*?4ÑMWoÞRÊ{ÿ Åoïü­˜9ðspgè^·š÷=Ø«±Wb®Å^[ùïå¯­XÇ¬Âµ’Øð÷ôØü'ý„¿³ÿ òÌí,èð¸:¨XâxNlÝsïïùÆïÌ/ñ—•aúÃò¾°¥´õêxÜËÿ ="ý¯÷âÉŠ½[v*ìUØ«±Wb®Å^=ùÛÿ 8ñ¦ùþ¿°	g­¨¨˜
+,´ý‹¿ð³}´ÿ -~Uðþ¿åûï/ßK¥ê‘4P7GƒüU¾Ò²ý¥ø±Tûò¿ó+Qü¾ÕãÕ´ö¬f‹<$ü2Ç_‰ßýöÿ °ø«ô'Ê>j±ó^™µ¥¸’Úáy)îí#ÙxÛà|U:Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å_ÿÓõN*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUFââ;xÚi˜$h31  LÇåŠ¾üþüã—óX)lÌº5¡)oNG£\ºÿ <Ÿ±ü‘|?ïÎJ¼ÒÂÂ}Bâ;KDig™‚"(«31âª£Äâ¯¸!?ç-<‡nš®ª«>¹"îÇu€÷T?åÿ ¿&ÿ bŸÛUí8«±Wb®Å]Š»v*ìUØ«ãOùË_Í¯Óš—øKM’¶6[†S´“ÿ ¾ÿ Õ¶û?ñ—Ÿò.*ùòÚÚK™VT´Žhª:“Š¾œü¾òzy_MKbº’;€7nÉ_åˆ|+þÉÿ o4¹²q—q‡ dÙC{±Wb©o˜¼Åiåû7¿¿n1®À¬Ý‘voóørÈ@ÌÐkœÄ—Í~sóßšnÍÍÉãÔE; ÿ ¿i¿ký^9¸ÇŒ@Pu2›,ÓòÏò˜êa5]e
+Úš4qŒƒ³¿òÄßðÿ êqÌ|úŽ‡7#-Ï'¸EB‹JUQ@ Ø*ÐÕ“nÈ
+]Š]Š»v*ìUØ«ó‡æ^—å€b•½{¿÷ÌdTÆVéÿ ‡ÿ ŠÛ21à3qògx§šÿ 4u0Ö'«ÚŸ÷TU ø±¾ÔŸñò3e`ë§šSaÙ{K±WµþXÎ-y‡ÍÜ/uAú/NjÒ)õ\ÅPlGúòðÿ 'ž*ú«òûò?ËFU}2ÔIv:ÜÍG–¿äµ8Åÿ <R<UŸâ®Å]Š»v*ìUØ«±Wb®Å]Š»v*Ñ ŠÁÅ^Sù‰ÿ 8Ûå_9‡¸ýBý·õí€ZŸø¶î¤ÿ „“þ,Å_(~gÎ>ùÈ%®g‹ëzp;\À	P?âäûp²ýßüYŠ¼Çf~IüÎÔ<°D?ïEûå)½yDô>™ÿ „ÿ '—Å”eÂ&ß1ƒßü·æ›1[ýgN8ä‡gBfDýŸø‹~Ë6jgŒÀîí!Ll›emŽÅ]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb¨=_W¶ÑížöõÄpÆ7?©T~Ó7ì®J124JB"Ëç?>þ`]y®jÅdû¸«ÿ ÿ Ìÿ ñÜbÄ N\¦eŠÛ[Éu"Ã—•ÈUU$‚ªŒ½¥õ‡ä‡üâœV¢=oÎÑ‰e4h¬Nê¿å];ÅcýùÏìª¯¦â‰bPˆ P  
+ *¿v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUåœ?Z?æ$MsAi«ªÑ.T}ª}”¸O÷j•ýâÂâ¯ˆ|ëä]WÉZƒéZÜ&)—u#uuí$OûiþmÅ±T¿C×¯t+Èõ2g·º…ª’!¡çûKö[}Íùùñiù‹kõ;Î0kp-eˆl²(ÿ wÁíþüý×þ¦*Í<õùo¢yæÓêZíºÊ÷r†HÏŒRý¥ÿ Wì7í«b¯¿8¿ç5Ÿ"Ô,¿ÑÆæd_Ž1ÿ /³ÿ S÷ñ‹ìâ¯7ò·›/üµsõ=é_¶º8þW_øí/ìås€˜¢Î16Cy#óÇÍp“î®VHXîó¡ÿ vGþWìþß‡59p˜{®,Â~öO”7»v*ìU"ó‡“ìüÓflîÇZ˜¥âFñÌ­ûiûëpu·SmY1‰‡Í^còíç—¯ÆùxÈ»‚>ËÙxÛºŸùµ¾,ÜÂbBÃ¨”LM²~Rþe]Fª5ow!ÿ v(ý—ÿ ‹Sù¿Ý‹þZüzýFõ?kô—§fšìUØ«±Uë(¯ ’ÒàrŠddqâ¬8¶š6ÆBÅ>Qó‡.…¨M§Oö¡zâ:£õ×âÍô%Ä-ÒJ<&žÿ 8»ù…þóTv—ÆËTÞJô_ôi?ägîÿ Õ•²L_yb®Å]Š»v*ìUØ«±Wÿ ÎA~HÁùƒ¦›Û	­Ú)0°ÛÔQ¹¶“çþêo÷\Ÿä<˜«àû›y-dh&R’!*ÊÂ„ÕN*÷OùÅOÍ–òÎ°<¹¨=4ÝIÀJ£œü1¿ú³ÿ rÿ óËùqWÛX«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«ÿÔõN*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUóüåïæ‘Ò4èü£§½.o×Éu„†?ú8uÿ ‘Q²ÿ »1WÇ8«ìùÄïÉ…Ó-ÎšºVîåÐÑ‡Øˆÿ »ÿ ã$ÿ ±ü°ÿ Æ\Uôž*ìUØ«±Wb®Å]Š»v*óOÏÏÍü¿òô—0°ý%uXmW¸r>)¿Õ~/õý5ý¬Uù÷4Ï3™$%‰$“RIÅ^­ù%ä‘u/éûÅ¬Q ïûRÿ Ï/Øÿ /âûI˜:œ´8C›¦Çgˆ½·5ŽÉØ«±T&¯«[é²_^7bcüÅ›örQ‰‘ ÆR_3ùãÎ—^j¼7ü0FHŠ vU¯oÛø×7Xñˆ
+Ÿ&C3ešþU~VÂšÎ°Ÿèâ,>ßüY ÿ }*»?kàø_>~ƒ‘ƒî^ÝšÇdìUØ«±Wb®ÅPZÆµg£Ànõ	V†ÕcÔÿ *Ž®ßä®N024Jb"ËÄ|ëùÑyªk£òµµ=_¤­þÉIô—ýO‹ü¿ØÍ–-0Žçrë²j¶<ÌšîzæcˆÖ*É¼‹ù}¬yâøiºY¹Ù#_çšNˆ¿ðÍû±WÙ¿”óš‘•/¯Bê¸ßÖuø#?òïû?ñ‘¿yþ§ÙÅ^ÃŠ»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š¬’1 *À ‚¨ â¯Ÿ¿7ÿ çôß0	5O*p°ÔY é‡ü‘ÿ ïþ§î¿â¿ÛÅ_!ù‡Ë—þ^¼};Ví®£?r
+ŸùKü®¿~Î*ÖƒæÝ
+åotùrŽ½ÃèëûJ—#(‰
+,£#aôG0í|×¡½AûÈ«ÿ %"þhÿ á“ì·ì»ê3a0þ«µÅ˜OúÌ·1Ü‡b®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUBþþ>	.îÜGJYØô Ÿû,”bdh1”„E—Íÿ ˜^ŸÍw4NQÙFuzÿ Å’Åÿ 	öÊÍÆ,BÔeÊfXÖ—¥Üê·1ØØÆÓ\ÌÁ#Y˜ô eí/·?!ç­<‰êúÂ¥ÆºâµûI ?±Œ¿ïÉ¿ØGðòõ{f*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®ÅXŸæ/å¶“çí5´½^:õ1J z‘?óÄßñ%ûûX«àŸÌßË-Sò÷Tm/T^HÕhfQðJŸÎž?Ý‘ý¨Ûý‹2¬wFÖnôK¸µ-:V†êŠhTŒU÷·ägç5¯æF—Y8Å«[(0‡´ñÅRÉ7ø?•W¥º,ŠU€*E;‚*ùóÓþq^;±&»ä˜ÂK»Kd½Åí‘¿â±þúáöWË6—wz-Øžh. b<X2²ÿ Â²à"ö)· .?2¡óDU¹¤ZŠ-YGGöãÿ Óöâ:œØ87K´Ã›cõ3ŒÅrŠ»v*Æ<ÿ äx|×b`$GuÅ‡±þGïé¿í/Ûýž9~¼É£..1æù¶æÚóC¼1J¸±¡VXÂ¶n¤ƒú'ò×ÏIæ›ß/  L R¿Ë*åÚþWþ_ƒ59ñpè»\9xÇô™†c9Å]Š»xÿ ç×–*°ë°(øu1wþåÿ âHÍÿ ×6:Iÿ ¯ÕCøž4ŽÑ°e4a¸#6ôWòKÏÃÏ>W´Õ]«t«èÜxú±ü.ßóÓá›þzb¬óv*ìUØ«±Wb®Å]Š¾>ÿ œ¾üª]êyÃNJ[Þ7 £ešŸ¿óÝ~×üZœ¿Ý¸«æôvBMèqWèwäGæóß•íµ›•ì_¸¹ñõþz§	Ùâ¯CÅ]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb¯ÿÕõN*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*…ÔoáÓ­¥½º`À$Œ{*Žnßð8«ókóÎWr×nõÛªÖæBQOì øaý„\Wd‘—Ï¾fƒO”cïîüV„~ïþ{?ÿ ÙrýœUúI
+ãQ@ @ íŠªb®Å]Š»v*ìUØ«±U)æH¥•‚¢ÌI  u'~{þzþgIùæoc'ô|†ÕÈSýí?šfýçü~Æ*Ãü¯åùüÁ¨C§[ìdo‰¿•GÛö+û?µörŸ²Îâ4Tišle´vVŠ”*à?ãfûMþVhå.#eÝF<"‚'"ÉØ«RH±©w!UA$“@ êIÄA4ùËóCÏíæk¿«Ú¹ýøNmÞVãò'òó|Ü`ÅÀ?¤êseã?ÑG~U~[~a©êþãâ;)ÿ v¸ýøÄ§ûÏæûÏÂ9óp
+S,x÷?KßÕB€ª(ÀÔ»VñWb®Å]Š»aÞ{üÌ±ò²“ß‘ðÄÙ¯F™¿`~×¶ÿ êüy“‹žÿ ÂãeÎ!·ñ<Ìžh¿óÁºÔ$.eEB þXÓöãoÚÍ¬ "(:ÉLÈÙIòlŠ½Oò_ò#SüÇ¸[]6¤·}¯íÇû²_ù'íÿ ¾ÙWÜ~OòV•äí=4½‚Ý74Ý˜ÿ ¿%µ#â©ö*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Vù›ùM£~aÙ}SUŒè£p€z‘Ÿò[ö“ù¢o…¿Öø±WÂŸ™ß•z¿åæ l5TåTÃp¿ÝÊ£ºÿ +Û¾4ÿ W‹²¬WOÔ.4ù–êÑÚ)£ «)¡üÿ gÍ ×'Ñ_—˜±y¦FzG‚ê:0ÿ ~'ül¹¨Í‡ƒqô»\9¸ö?S4Ìg%Ø«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š¼óoóëW'K°`l mÙO÷Ž?k—ò'ìÁÿ /¶Ÿ³õ:¬ùx¥ç–öò\H°Â¥är¨$œËq_oÿ Î:þCEäkUÖµ„®\/N¾‚0þéâÖÿ w?üòO‡—¨«ÛñWb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«üÄü¼Ó<û¥I£êËUoŠ9 øâÙ–3ÿ þÚü/Š¿??0ü¨ùV—EÕãMã}™ý‰Sü–ÿ …nIû8ªÉs¿òn«µ¥·á;Ùu?n)<REøæìUúù{ç«<hðëziýÜ¢Ž„üQ¸þòÿ )á—ãý¬U“b¯ÿ œƒÿ œu‡Îq¾¿ "Å­ «  [€?›ùn?ßrþß÷rþËÆ«ãnôkÏÛ·»¶’†»2:ÁÌ­€‹H4ú+òçÏÑyª×Œ”Kè@õPwïÔÿ %¿áàsQ›þ‹µÃ—ŒI˜f3’ìUØ«±W~mþ_rÜê–þŸü@»~ÏüdOØþo±ü™›§ÍÂxO'Q‹‹pñO,ùŠçË·É¨Zš:0=n6öoø\ØÎ"B‹¯„ŒM‡Ô:µo­ÙE¨ÙšÅ*ÔxƒûHßå#|-šIÀÄÑw0°È3v*ìU®ik3i×ÝÎ…O±ý–ù£|k“„¸M°œx…>OÔl%Óî$´œq’hØx4lÞƒ{ºB+g¼Î~`^“Ëw-KmMkz	Ðr_ù4ÿ ]bÂ‡ÙÒÌ‘R0UÉ b©{ù§ICÅ¯-Áð2§üÕŠ£-o »^vÒ$‹âŒÂâ¨ŒUØ«±Wb®ÅXÿ žü£oæýïB»§§uPÇöX|QIÿ <åU|Uù¯ªé³éwSX])IíÝ£‘OfSÁÇü*÷ùÃŸ;+Ì3y~f¤”d 'oZ!ÌÁEêÿ Âb¯´qWb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«ÿÖõN*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ñ?ùËO9Ê§ÂÜgÕ%
+uôÇï'?r¬Mÿ qWÂø«íÿ ùÄo"ËZiuª¿©SÔB„¤ý—ï%ÿ ž‹Š½×v*ìUØ«±Wb®Å]Š»|ùÿ 9qù¡úHW°z^êKYˆ;¥¸<Oý$7îÿ ãÍŠ¾.Å_AþLy;ôFŸúRáiux ŠõXþÒÈÏïþyæ«S“ˆÐèìôØè_{ÑsÌv*ìUä?^|1)òõƒ|Mþô°ìªÁþËíIÿ þü\Øé±ÿ 5×êrÿ y÷|™7šoÖÜUmcø¦qû+üªßûð³™Yrpqqcã4úbÂÆ#´µA1(TQÐšYHÈÙw(+àdìUØ«±Wb¯+üËüÜw-3C`×=$˜nü˜û4Ÿå}”ÿ _û¼ü:{ÞNmEmÙÙ_k×«mnu{pôUgv?‹Ù:æqæï'Yþ]Z?S)wæYÔ3Ä¤4VhÃa'i¯d_ùån¿ÆÞ“â¯7Å^Ëùù	qù…r5-H4:-Ga³JÃýÓ·ûö_Ùÿ _}Ç¥éVºM´v6¬6Ð¨HãAEP<1Tf*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®ÅR/8ù3Ló†.‘¬Ä%¶”|™[öd‰ÿ bDÿ ?‡|ù½ùE¨þ[êFÒî²ØÍV¶¸Àý–þISýØŸñ«b¬+LÔî4»„¼³sñš«Çþ6\^Å Öáô§åÿ ž!ó]­@—QQfŒtùÓþ+Ùþ_±þSi³bà>Nß^1æÊ2†÷b®Å]Š»v*ìUØ«±Wb®Å]Š¼Ûó›Ï¢,ÿ DZ0úÕÒžduHÂÙIöÕçþFfé±Yâ.£-ðÚ:ÇÕÿ óŠ’^š§õ¸þ&è10è?å­¾ñïÿ #ßx«ê\UØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«Î¿;¿)-1ôf¶¢¦¥nÚÌ{7ûéÏûêo²ÿ ËðÉû«óóSÒît»™l/ch® vŽDaB¬§‹)Å^£ÿ 8çùºÞAÖ„þâ/Š¥Àì‡ý×sÿ <ÿ Ý¿ñW/òqWÞˆáÀe ©t¦*¿|÷ÿ 9/ùžf‚O4ù~:jÐ­g‰÷èÚ ÇÌkÿ #SàûJ˜«äZ¹Ño#¿³n3DÕã£+’Ëð¶FQYFF&Ãéï)y¢ßÌ¶	¨[|5ÙÐõGi?æ–ý¥Í.LfÆ<œbÓœ©µØ«±Wb¯üäò(Ñ®¿KY([;–£(ý‰XíÙ$ûIþÍ~á›m>^!G›ªÔbá69)þNùÜè×¿£.Ûý
+è€	;$¾Rvÿ ìì¦:Œ\BÇ0¸2pš<‹èÔ»Wb®Å]Š¼3óÛÊÿ U½Z„~îäp“ÙÔ|-þÎ?ù7›M,ìWs¬ÔÂ÷¼ÒÂú{	ÒîÑÚ)á`èèHee<•Ôø®f¸jú¯˜ua½MJêk§ëY¤g?ðå±T»Eéú•Î(žÊg‚QÑ£b¤²]ñW°~]ÿ ÎTùŸË.êÒVÀf?½þ+¹û|¿ã7«Š¾Áòæ&‘ç½9uM^iö^6Ùãoä•?güŸØØlU”b®Å]Š»|9ÿ 9oäÑ¡ù¸êP­ Õ"mÓÔ_ÝN?äoøËŠ¼—Êšô¾^Õm5‹ï-&I‡¿åÇý—ÙÅ_¦¶±_ÛÇwåÈ²!ñV—ðÅQ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ÿ ÿ×õN*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ø¯þs/ÌçQó<:Ç§ÛŠ	%ýãÿ É!*ðýH—Z¿¶Ó-ÿ ¾º•!Oõ‚ø–*ý7Ñ´¸t‹(4ëQÆhÒ$ä¢„\UŠ»v*ìUk0PI4rN*ù×óKþròÃC™ôß*Ä—÷JµÃ“èƒÿ „øçÿ [”qÿ +IŠ¼#Yÿ œ–óÞ¨åŽ¤Öêz$ˆÈ…õ?àŸI×ó¿Î¨j5›ÊûÊÇõâ©æ“ÿ 9;çÝ9ý"gAû3EþË‚Éÿ Š°Ÿ;yÏPóž©6µ«0k™¨EGD_ÙP¸ªaùiåñ.ª‘J	µ†’L|@?óÐü?êóÊsdàÝ‹§Ó  (64ŽåØ«±V=ç¿6Çå5ïMíðB§öœ¿Ø§ÛoøÚË°ãã4Ó—' |Í]k7W”×WßrÎÇ¯û&ÍÖÀ:~eô×‘ü£•ôä³Œ3Q¦qûNFô¯ì/ÙOù©›4¹rq›w±ð
+dKs±Wb®Å]Š¼_óGó`ÎdÑ´GýÖë4àý¯æŽüŸÍ'û³ö?wñI²Á‚·“®Ížö>òw“5O8êQé:4&k™OòªþÔ’¿ì"þÓÆÙžà¾¥½Ñt/ùÇ/-›ø¸^yšñLQÊãrôø½5ÿ uÚÃöŸöåýÚ?ÛN
+¾FÔµ+Næ[ëÙ[‰Ü¼ŽÆ¥™&fÅ^‰ùù7sùªp4zU±s0î?fÿ âÙäš|ËÉWßF“k£ÚEaaÃmŽ5
+*Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb¬{Ï>IÓ¼é¥Ë£j©ÊGÂÃí#±,gö]?æÖøqWçÇæWåæ¡ä-b]R]×âŠE±Ÿ±*|ÿ maù&*—ySÌ×>[¿MBÐý;:~Ò7Ïù¿e²€˜¢Î16PhºÅ¾³g¡hk«ÈW¨ñVÿ )OÂÙ¤œLMs		Üƒ7b®Å]Š»v*ìUØ«±Wb¨=gV‡H³›Pº4Š.|M:*ÿ ”íð/ùY(GˆÐa9p‹|­¯ëwÝìº…ÙYš¦ û*«þJ¨â¹½ŒxEK)q,÷òò¥ÿ 0uôŠáHÒìé-Ëâ¿¿úÓ·ü“õ$Å÷ü$°Ä¡ U P À|±U\UØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±WÌó—”"æñ¾•ïb
+—ª£í'ÙŽççÃŸñ_÷Ûb¯’±WÛó‰ßš'ÌÚ!òõûò¿ÒÔ*wx>ÌGþxÿ rßäúX«ÞqWb¯Ž?ç*ÿ %Æƒt|ß£ÇÆÂééu£™¿Ý¾ÑÜø	¿ã*â¯#ü´ó«y_P)­Åa¾Â¿¿ëGö¿ÔørŒØøÃvœô²:È¡Ð†Vn>¥"ÀÝ¼RìUØªZÒ Ö,åÓî…b™JŸàËþR7Ä¹8HÄØa8ñ
+/–|Ã¡O ßË§Ü
+IR£¡i’ëñfî2,£Âh¾€üªóó–á«ymHå?Íþû“ýšý¯òÕ¿™sU¨ÇÂ}îÓN!îfyŒä»v*‘yãËkæ-&{”¯(ŽÛH»§^œ¾Ãí—aŸ­§,8£O•H¦Ç®nÝ3X«±Wb®ÅYÇåæmçåæµ«nY­X„¹„¤ˆŸˆÆDûq7óÿ “Ë~ˆéš¾©ký›‰-çE’7
+°ä­÷b¨¼UØ«±WÎdùdj>U‡WAY4û…$øG(ôŸþJú«âŒUú	ÿ 8×æ­ùNwþòÙZÙ¿ç“pþHúx«Ô1Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUÿÐõN*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*üÚüÜ×Ž½æÍWQ&«%ÔùÞ”_òMeÿ óŠþ_Çžm…RÉ$¹oö+é§ü•–<U÷¶*ìUØ«±Wb¯œÿ ç/4fÐì"ò¦œå./Ð½Ã)¡×€þ{¿._ñ\lŸîÌUñ¾*ìUØ«±Wb¯¥ÿ *¼©þÑÓÕZ]\ÒY|EGîãÿ žiÛýøÒfŸQ“Š_ÕvØ!Ã{1Ìg%Ø«±WÍŸš>p>cÕÑjÙÛÖ8‡cCûÉç£É>9ºÃ€:|Ù8Ë4üòoo0ÜÛ”po÷d¿î×þzf6«'ð‡#Mø‹×ó\ìŠ»v*ìUä?›ÿ ™ ú–ÿ ªÜH§qãŸù;ÿ "ÿ ›6:|?Ä]~£7ð‡œyÈú—µH´m">sÉ»²¢·,û(Ÿójüm›÷‡å×åÆ‰ùO¢8Œ¨)–îíÅøLÇù"ý×üIÙ™•|OùÃù•sùƒ®Ë«IU´ZÇmýˆ”ü?ìäþòOò›ùxâ©’¼Ÿ}æýVßDÓ”÷JöUý¹üˆ×âlUú%ä#Xy#HƒDÓîág#â‘Ï÷“IþSÿ Â¯ÁöWd˜«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wœ~x~RÛ~ch­l®§nÚJv£w‰Ûýõ7Ùö~Æ*üüÔ,'Ó®$³»FŠâ(èÂ…YOVùb¯@üšó©Ò/E]5,î˜'¢J~?ó×ì7ûåÌMF.!c˜r´ù8MEïÙ©v®Å]Š»v*ìUØ«±Wb®Å^1ùóæŽoƒÙi,ß3ýÒÀþóý’fËKŽ‡®ÕOø^G;¬QÒ1 ¹$ôÌ÷úù!ùk<¹šê>½(]7Œ¬7Jÿ ,+û¥ÿ W—íb¯AÅ]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*‡½±†ú	-.I¨ÈèÛ†VYOúËŠ¿:?7ÿ /fò˜®tg©€RÝÏíBßÝŸõ“û§ÿ ‹ñU/Ê¯=Mäo0Úë‘TÇqGíÄßËÿ ñ'üYÃ~ŽÙÞE{
+\Û°’)Q]teaÉX|×WÅPÞ‹k­ÙM¦j%¶¸FŽE=ÁÅ_š>@ºò½q¡ÝU–3Îûq7÷RÆÿ +®*ôßÉ8JÉ´{–¬ö¢±“RLdÿ Ì¦øÔdþ\Öj±ÑâËM’Ç	zn`¹®Å]Š»y‡ç‡”EýÖ­Ö³ÚŽ2S©ŒŸù”ÍËýVåÌí.J<.§Ž'–þ]ù¤ùoWŠíú;þîaþCu?ìŒŸåpáûY›–q§ø¾ V)ÁiËx¥Ø«±WÎ_œ>\ý­<ñŠAyY—Ã‘?¾_ø?ýY7yñGÜê3Ã†L2\wb®Å]Š»}Ãÿ 8…æÇÖ<¤téÚ²i³´K_÷ÛZ?¹šDÿ aŠ½Ïv*ìU‡~phŸ¦ü£«XV{IYGùH=Xÿ ä¢.*üÜÅ_`ÿ Îjþ®©é„ïÊLüeNö/Š¾“Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±WÿÑõN*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»@kº‡èí>æôÿ º!’Oøgÿ qWåì’»nI©Å_Nÿ Îi<¯5mM‡÷qC
+ŸõÙäù2˜«ëLUØ«±Wb®Å_Ÿ¿ó’ÚÛê¾{ÔKš¥»%º ˆµÿ ’…Ûyn*ìUØ«±VcùYåÓúÌk*ÖÚß÷²×¸e=ýGø[þ+ç”fŸ[°ÃŽO¥óJî]Š»`œ^jý¤›HOúMícè€~ù¿àwÿ =9þÆeé±ñþk‹¨ÉÂ+ùÏò‡—%ó¥ÁÍ]©^(7vÿ ÿ †ã›,“áëa#O©ìí"³†;ku	JvUTfŒ›6]Ø(*àK±Wb®Å^}ù­ù†<½oú>Å¿Ü„ëZ÷Z½OõÛý×ÿ üœó4øx·?K‰Ÿ/Ã›Ã|¹åÛï1êéZj®®"/‰?´Þ
+£âvÍ««~€~NþQØ~[éBÊÞ’ßJ\ÜSwoå_å†?÷Z³o±W’ÿ Îb~g›+H¼™`ô–è	®ˆ=#÷Pÿ ÏW^oþLkû2b¯‘1WÛßóŠß”ÃÊÚ7øƒQŽš–¤”0Þ8Å­7÷²Ï4ýŒUîØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å_)Î_þSˆÊùßLJ+ê¨ïöa¹ÿ eýÌŸóÇü¬UòÈ4ÜuÅ_LþXy¿üK¥+ÌkwnDs{š|ÏEÿ ’‹&ióãà>÷oƒ'eÙŒä;v*ìUØ«±Wb®ÅT/ï¢°·–îsH¡Fv>Ê96J1â4ÆF…¾NÖõyu{É¯çûs;9§jô_ö+ðæö1áé$lÛØçÿ /™¼ËúZé9Yi K¸ØÌOú:ÿ °*ÓÏ?ò²L_qâ®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUàŸó—_—¿§¼¼ºý²VïJ<šZ4—þE·	¿Ôõ1WÄØ«îùÄ=ÊçH¸nW:S…z˜[ãƒþ÷ÿ «â¯sÅ]Š¼7þr»òÌy›ËÇ\³Jßé@É°Ý¡?ß§üóþùÕçÅ_y[_—@Ô Ô¡©15YGí)ÙÓ¿Ú_‡!8ñ
+g	p›}[ksÔIqŠE¬:aÉ[é¢";°lZ¦»v*²hRth¥Pñ¸*ÊEAfR<i[åŸ;ymü¹ªÍ§µJ)åË#oò¿eÿ Ê\ÞcŸ·K’&ž×ù5æÓ@³™«qcHÏ‰B?rßð­üóåûY­Ôãá7üça¦Ÿ¯æ³ìÄrÝŠ»`Ÿœž\:¶Š×-g³>¨ñáÒaÿ ûÏùç™ziðÊ¿œâêaq¿æ¾rÍ³ªv*ìUØ«±WÖóƒÑ¸¶Ö×{p>`M\Uõ*ìUØª…åºÜC$/ö]YOÉ‡UùoqA#Dßi	Sôb¯¥?çn¸êšµ·óÛÄÿ ðËÿ 3qW×x«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ÿ ÿÒõN*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»aÿ œ&ÛÉÚÌªhE…Àûãeþ8«óo}ÿ 8KlËúÇw¼ÿ 7üÌÅ_Fâ®Å]Š»v*üîÿ œ´{O=jñ¸Ý®=AòuYð|Uç˜«±Wb®Å_E~Kùtiz(»RkÓê·à>Wþ%"ÿ Æ\Ôêgr¯æ»M4*7üæ}˜Ž[±Wb¯˜¿2¼Ê|Ã­Mp‡•¼_º‹Ã‚þ×üô~R³ã›¼0à:l³ã•½Cò;Êÿ QÓÛX˜~úïáOhÔÿ ÌÉ>&ÿ Q0µY,ð¹šhP·¦æšìUØ«±T£Í~dƒËš|ºÆükBî~ÂøÛüŽM–c‡¦¼“àù{YÕî5›É/îÛœòšŸøÕWü•\ÝÆ<"ƒ¦‘³eö¿üãWä¢ù#MÆ«ý5z€žCxb?ÁþK·ÚŸýŒ±ñI‹×µ½^ßF²ŸS¼nöÑ¼²QÉ±WæÇ¼ÕsæÍfï\¼þöîVzuâ¿î¸Çù1ÇÆ?ö8«0ÿ œ|ü´ÿ yš+{”å§Z~þæ½
+©ø"ÿ žÒqOøÇêb¯ÐEP  (ÀUv*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Tµ£ÛkVSé—Éê[\ÆÑH¾*Â‡~o~ay6ãÉšåÞƒw»[HBµ)ÍÅ¿ìãâØªcùQæŸÐÄbSK[ªC!=OîÞ½¸?Úÿ Šùæ>xqÅ¿ødúO4ÎáØ«±Wb®Å]Š»v*óÏ=wê::X!£Þ=ß°”wÿ ‡ô³7K7ü×U*Þùû6Ž±÷ÿ üã_‘Ç•|Ÿkê/«áõ¹|x?r¿ì ôÿ ÙòÅ^«Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±T6¡c¡o%Ê‡†dhÝOuaÅ×þ~iyëÊòùS\¼Ðç©kIž0Oí-kÿ ÏHø¾*ô_ùÅ9/yÊi–ú’›Wðä~8ÏÕUþzb¯¼qWbªsD“!Ž@AUùËùÇäFò?™ï4p·Wõ '¼OñÇÿ ýÑÿ )1W¥þGyˆêKiÒŸÞÙ5üc‰>æõý^«ÕB÷»=4ìWsÑó	Ìv*ìUØ«Ëÿ =¼¶.ôøõˆÇïmHG#ýöçjÿ ©-8ÿ ÆGÌí,èð¸Z¨X·›þUù”h:ÜRJio?îd=€cð¹¯Nqfoäç™™áÇødúc4®åØ«±U“B“£E*‡ÁVS¸ ìTáE¾RóN„ú¥q§=u!
+OR§âÏúÑ·,ÞÂ\BÝ$ãÂi'É°v*ìUØ«ï¯ùÆ?"Iå?(Än”¥Ýû›©õPÀ,)ÿ "‘_ýglUëX«±Wb®&›œUùq¬°kÛ‚7Wÿ ‰Uôüá ÿ sÚ‘íõEÿ “‹Š¾ÄÅ]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±WÿÓõN*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»a?Š[ÉzÈ~¥1û”â¯ÎUögüá;WË7ëÜ_±ûâ‡}Š»v*ìUØ«ä/ùÌï!½®£kæ¸ú7H-æ#´‰¼Lßñ–/‡þxâ¯š1Wb®ÅQšFžú•Ü6Q}¹äXÅ|XñÁ#BÒš}qkm¬IoãjG€QÅGÝšlÛ½…*`K±V#ù§æ?ÐzÎ†“\~â?bàóoö1óÿ eÇ2tðâ—¹ÇÏ>¾zòÖƒ.»¨A¦Ã³LÔ'ùWí;ÿ °O‹6³—·Uñ}_km¬Io„Š5ª:QÅWè¢&Í»À+eL	v*ìUØ«çOÍÏ9Rúµ³r³µª¡!›ýÙ/!Ûöü•åûy¸Á€y—QŸ'òz?üâåó¢|ÓªG]>ÁÇ¢¬6’q¸?ê[ü/ÿ x+æKŽûC|ùÿ 9çƒ¥y~/[µ'Ô¤«þùˆ†?ðrú_ð/Š¾.Å_wÿ Î,yycÊ‘ÞÎ¼o5B.½B÷™?ä_ïç®*ö\UØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š¾dÿ œÏò¹³µóu²þòÜ‹{‚;Ææ°»©/$ÿ žØ«äpi¸ëŠ¾¥ü¾óéýÞñÈ3ôåÿ ]~¯úÿ ŸìóKš2w8gÅE”7;v*ìUØ«±Wb¯Ÿ?<µƒy®}L}‹HÕ>lãÕcÿ È¿ì3o¦GÞêµ¹{˜ÿ å×–Í>a°ÑëupŠþÈ)›ýŒ\Îe8¯ÒÈ¢HF€*¨ ÐŠ¯Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUŠùïó3Bò-·ÖµÛ•‡ªF>)þ1Ä>#þ·ØþfÅ_4yÛþsCU¼f‡Ë‘ÙÃÚYÿ y!÷ôÇîcÿ W÷Ø«È5¿Îo8k-Ê÷W»?äÇ!‰ä\šÂâ©ón°[‘¾¹åãë=âXªu£~py»FnVZµâû-+H¿ò.oR?ø\Uë^Jÿ œÌ×,bó%¼Wðt2DR}¿rÿ êð‹ý|UôÇåïæÏ—üû«¢\™E^øeOõãþ_òÓœåb¬Çv*ìUñ·üæ‡”ÅŽ»i¯Ä´KøLn|d†‚¿ò)ãÿ ‘x«çí;P›O¹ŠöØñšYø2žkÿ Š¿N|»¬Å­é¶º¬Ý]CËòuüqTÇv*ù£þsGÉBëN³óDûËWú¼Ä¾ßâ‰üc—’ÿ ÏlUó¿å¹ú+Ì+GuXý—÷òYcÿ c˜ùáÅüá“é<Ó;‡b®Å]Š¡õ¯í¥³œV)‘‘‡³'%p›c!bŸ&ëdºUäÖSm,2’zžobl[£">šò˜OèÖ÷¬Ü¦ãÂ_kð¿/Þªù¦ÍS¸Ã>(Û Ê[Š»xwçöŒ°ÞÛjH õÑ£zw1ôfù¤œçžlô’±N·U6òŒÎpŠ»}ÿ 8Ýÿ 8ÿ /š.có.½]ål?Þ‡S¶ßòÌöÿ ß¿ÝýŸS}¨>X«±Wb®ÅRß1êK¥é—Wò-¼JO²+?ðÅ_—ÄÔÔõÅ_Qÿ ÎéÌgÖ/ˆøU ˆrevÿ ˆ®*úÃv*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å_ÿÔõN*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»H<û¦þ“òþ¥cJúö“Æ»FÊ1WæV*úËþpƒTm«é¤î¯À{0xÛþ ¸«ê,UØ«±Wb®ÅR?9ùFÇÍÚUÆ‰©¯+{…âHê¬>$‘?Ëþ%Å_ž?˜¿—º—õit}M7SXåá•Ù–?cÿ ßb¬Wv*ô/É'ëºð¹?bÖ6“æÄzJ?ä£?ûÅÔÊ£ïrtñ¹>†ÍC¶v*ìUà_žš÷×µdÓþîÍ(zSœŸÿ Âz_ðÙ¶ÒÂ£Îuz™Ü«ù©¿ä—CµÆ·(¯ÜGZu4y[þÓUÿ ^L¯W=¸YéaÕìÙ­v.Å]Š»a¿šÞl>^ÒBÔºº¬Qx¿y'ûÿ ‡tÌ>>)UÆÔO„{Þå?-]ù£U¶ÑlW•ÅÜŠŠOA_¶íþJ/ïü•ÍÃ©~y7Ê–~RÒm´M9xÁlFÛ±ý¹ü¹“¶*â¯?ç'|ßþ#ó¥ÚÆÜ °Ò=ÿ ßßÉv—a¿–¾Ro7yŠÇBZñ¹™D„uÞL~ˆ•ñWéD¥¼kJU eÅUqWb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*†¾Ô-´øÍÅä©C«ÈÁT²‡`ÚŸçÿ ‘´ÒV}^Ý˜¾«/ü˜Y*—Cÿ 9;ä	ˆÕ ¯sÀÉ¬U•hš^Wóô½NÖyD¨ùüdÿ …ÅYN*ìUØ«±TÎÞX‡Í:-æ‰qNp´u?²Ä~íÿ ç›ñ|Uù¡c5…Ä–—*Rh]£u=C)âË÷â¯Wü€ÖÊÍu¤9ø]DéìV‘Éÿ ?ù˜¸ínv–[ÓÚ3Zì]Š»v*ìUØ«x«ä¯2jCTÔî¯‡Ùšgq_Ç‡ü.oâ(S¢‘³oiÿ œ5òï×üÕ>¦â©alÄ”ˆ—þIúÙ&/µñWb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»xÇç×üä·åôGKÓ8Ükr-BÒ?fY¿™ÿ ßq²ƒ5_ëþa¿óãê:¬ïsu!ø¤ÔŸù¥•á_ÙÅRÌUØ«±Wb®ÅQÚN¯w£ÜÇ}§Êð\ÄÜ’HØ«)1WÙÿ óÿ ó‘±yØ.…¯•‡YQð8Ù. þ_ä¸þxÿ ÝŸn?äU^ïŠ»xüåç—F§ä·¾²ióÇ0ÿ UÕßþO+±Å_â¯¾çõã«ùÉ\ÕíKcþÁ¹Gÿ $¤zÞ*ìUŒ~eùU|×åËý…Zâ	ÿ Ç	ÿ ‘ª˜«óaZKi-RDjŽÄŠ¾µÑ5!ªXÁ~»	âI(;r¸ÿ ±ÍãÂHw—´nA›±Wb®Å^ùï¡ýST‹RAD»Ž¾åãøkÿ "Ú,Úégq¯æº½Lhßzcù¯%Î!ª°õãö"‘Ëÿ Ê?øÈjáµ³ÒËz{>k]‹±Wb¬ó³Núß—žnöÒÇ/Þ}ùË2ô²©S‹©Åó¦mRg¡ywP×î–ÇI·’êáº$JXþü¬Uõåüâ,vlš§ŠÍ £-’ ?òó þóþ1'îÿ ™äû8«é¨!Hb‰B¢€ Q@ ì*©Š»v*ìUäßó“Þi]Éˆ	¯¸Ú ñõïä‚ËŠ¾Å_oÎùxé¾PmBAF¿¹yÿ €@¿ðé.*÷lUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»ÿÕõN*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»ZÊwPŒUù—ç­ ù{]¿ÒSê·Æ£üÇÓ?ì“|UêóˆþgGœÖÎV¤ZŒý9­&‹þM2/úø«îlUØ«±Wb®Å]Š°ÿ Ì¯Ë'óMm7UJ2ÔÅ2Î&þt?ñ4û/Š¾üÐüÖÿ .®½-I=KG$Cs>›÷ÜŸñSÿ Ã¯ÅŠ°<UïzIƒL¸Ôf¹”(ÿ V1×þGÿ Íf®[€ì´±Ø—¨fšìUFòî;8$ºœñŠ$gcàª97á†"Í1‘¡o’u=B]Nî[ÙeÙÚž,yPfü
+èÉ³o§ü¡~‚Ñí¬¤Š¤­+Í¾9ãü¬Ü?Øæ—4ø¤K¹Å€žå-®Å]Š»|ßù¹æS­krG¬Ÿ¹O˜?½o¦O‡ýE\Üà‡]>yñIîŸó†_—T[Ÿ9^&æ¶Öµ¿ãâUÿ ……[þ3.d4>¨ÅRß1ë1èšmÖ«>ÑÚÃ$Í_Rÿ ñ®*üÆ¾¾–úynî)fv‘‹1äÇ}ÿ 8Wåqw¬ßkÒ-VÎ
+òæ;ÿ ÀÇ/üôÅ_aâ®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ƒÕu[]&ÚKëùRh—“ÈäQîÇ|¹ù¡ÿ 9‹+»Øù&0±äËRãöÖ›þE.*ùËÌ^lÕ|É?Öµ‹©®åñ•ËSý@~_òWIñWb®Å^‡ä?Ï5ù1•lokUëopL‘ÓÁC|qÏLUõ§åüäv‰çòº|ÿ è±Ø@íUÿ Ë¼»sÿ ŒmÆOõþÖ*õÜUØ«±WÀŸó”V¯5ãðK¤ÿ f)/ü—IqVùuª~Œ×ì®?dÊ#jô¤Ÿ¹cþÇÔå•eHmÅ.ú4néØ«±Wb®Å]Š¥Þd½k2îî3G†	]~j¬Ëøå˜ÅÈ¼†¢_$fõÒ>Àÿ œ$Ò-SÕø¦¹HkízŸö1Š¾”Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*óÿ Î¿Í?.ô5-šöRbµŒþÔ„}¦ï¸—ãøÛÅ_Ÿ®«s«ÝK#Ms;—’G5,ÄîØªv*ìUØ«±Wb®ÅQwsYL—6ìÑÍFSB¬U•¼F*ûïòóm14ORæ‹ªÙñŽåÕ¨ýÜê?’n?ìdWýž8«ÔqV+ù©£þ™ò¶«`Z[9¸ÿ ¬¼ðê¸«óW}wÿ 8C«	4ÍWL'x§ŽjÆE1ÿ Ø¾*úgv*ìUùËùßåÁåï8ê–
+)ÖT/ïÐÀÉŠ½CòGRúß—’ÖÚY#ú	õ¿æoÔê£R·i¦•Æ™öb9nÅ]Š»a?œZ!Ôü¿3 ¬–¤N>KðÉ÷FÎÿ ì3+M*—½ÅÔFãîxoµÐúÝ¥ë¨²rzÝHØ£“›<±â‰»¸dêŒÑ;·b®ÅR¯6Xý{H¼¶“IGù\Oøl³©×\KäÌÞºGØó„÷ñË¡ê6”_V¥rh+ÆD
+ ž¿jÅ_Hâ®Å]Š»v*ìUñGüåßæ"ëÚü~_³~VºX!È;Úž¯üŠ@±ÿ ’þ®*ðÝ3NŸSº†ÆÕKÏpëj:–cÁü*ý.òg–âòÆg¢AºZ@‘Wùˆÿ ³~OŠ§x«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ÿ ÿÖõN*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*øŸþsÉÇIó<zÜKH58cÛÕˆ¤ÿ ’^‹b¯Ðµ‰ô[ë}NÌñžÚT•ùHy®*ý,ò™m¼Ï¤ÚëvF°ÝÄ²Ö„ý¤?åFÜ‘¿Ê\U8Å]Š»v*ìUØ«çùÍ2}KË¶z:=õÇ6äB*ä¬±b¯ŒñWÕ^CÒ¿Ehvv”£,JÌfÞ¸ÿ ƒvÍ&iqH»œ1¨„û)nv*Á9µŸÑÚ‘)øîa/¶ÿ ð©Ãýžeé£r¾çS*w¼WòïE]g]´´p|ýG¡T«)ÿ _öY±Ë.’ëñGŠ@>¤Íºv*ìUØªIç]{ô‘s¨I§Ûo‚>¾Ü²ÜPâYeÃ|»§ióêW1Y[)yçu¹f<TÁfñÒ¿K<åX<§¢ÙèvÔôí"T¨ý¦ë$ŸóÒNoþËOqW”ÿ ÎOëgIò%ÿ G¹1Û¯û7^òIdÅ_ â¯¸ÿ ç4§ù0_Sã¿¹–Zÿ ’ŸèëøÂø«ÜqWb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š¥úî·i¡YM©ê2­mÐ¼Ž{ü”b¯‚:¿;õÌ{â ´DL}`zÿ ÅÓÿ <Íÿ ØOÛwUæ8«±Wb®Å]Š»U†gÄ‘’®¦ ˆ#}‡ÿ 8Ûÿ 9Þdáå2Éþä”RÞá÷Àº¤ÿ —…ý–ÿ wÆOï}Š»|±ÿ 9½ ‚šV¶£¡–ÙÏÏŒÑÄfÅ_)ƒMÇ\Uõî“|58/@ ž$õÔ?ñÍÅìM€QYNÅ]Š»v*Å?5.M·–¯¤^¥?àÝ#ÿ ó#N.a£9¨—ÌY¹tï»¿çl…¿‘-åîùç“îsüÊÅ^ÍŠ»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUðgüåŸ›Í~lšÖ&­–—[hÀ;rý&O›Kû¿õbLUãØ«±Wb®Å]Š»v*ìUØ«Òÿ ç<þÞLóe­Ã·K¦×·	ÿ ç”œ$Å_¡8ªœð¬Ñ´MöX~Db¯ËBÐÚ\KlzÄì‡è<qWÑ_ó„w¼5NÓýùjÿ  üæv*ûv*ìUñwüæ†‰õO3ÚêJ(·–€v™þI´X«ÿ œ|ÔI{bNì#•GÈ²?üN<ÀÕs´§rÍš×bìUØ«±U+»Xîá{i…c•Yx†[ðÂA)ò6£§É§ÜËg>ÒBí|Ôñ9¿÷tDSêo'êÿ ¥ô‹Kây4±/3þX%ÿ ’ŠÙ¤ËîqKŠ §Sk±W|ñ/ïmZÖy-ßfÙOÍM3 ˆ¾’ÿ œ ¿á©jÖUþòd§úŒéÿ 3°¡õÖ*ìUØ«±Wb¯/üúüßƒòïFc+j÷@¥¬grF¸qþû‹þN)üØ«à›‰.diçbò¹,ÌMI'rN*úþqòÍµ}]ü×xŸèšqãFÍ;ù‘sÿ ^H±WÙ¸«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUÿ×õN*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ó/ùÈ_Ë³ç+Oml¼¯­ÒmÀ–@yÄ?ã,\‘ËáŠ¿>qWÓóˆ¿›K§\7“5I)Ës³f;,‡ûËùíöãÿ ‹Ê—}wŠ»v*ìUØ«±WÄÿ ó™bý#æÈ´Ä5M>ÙT“÷Ïÿ $½UãYÒÿ JêvÖìÍ2+ªOÇÿ œ¸E²ˆ³O¬óBï]Š»xoçþ©êßÚØ-
+ÁÓù¤4£±‰àói¤uš©Y¤Oüãö‘Êk½M¿aVÿ d}Gû¸Gÿ ‘ÕË`ic¹/iÍk±v*ìUØ«È¿ç 5ž0ÚéHGÄÆwÀ»ˆý<¥Í†’<Ëª— ³þq?Ê^óŒW’¯(4ØÚå«ÓŸ÷pÃ¿©ÿ <³bëßvb®Å_8ÿ Îlêf-O°ûë¶r?ãÿ 3±WÇ8«ô‡òkJýäíÔŠg‘îëë7ü3â¬Ïv*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«ãoùËÍ‡Ö5/ð†Ÿ'ú‹Vä©ÚI¿ÿ “möã7?÷Úâ¯1Wb®Å]Š»v*ìUØª"Òî[I’âÝŒsFÁ‘”Ð«ÉXªqWè?ä_æj~`ùv+ùHðFéFß¼ûÊ,ËûÏõ¹'ìb¯EÅ^)ÿ 9w¥­ç‘å¸"¦ÒâAð«}_þgâ¯…±WÓÿ •×yå»)¨CÑ4Kÿ 
+™¦Ô
+™wÄ2œÇov*ìUØ«±VùÄÔòÅØñ1ù)ei¾§Sô¾jÍ»©~‚ÿ Î4À!ò”Ü’V?L²œUéø«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb©Wšµ•Ñ4›ÍUúZA,Ûÿ Œÿ Ã~c\ÜIs+O9-#’ÌORNäâª8«±Wb®Å]Š»v*ìUØ«±Wéoå—˜Ì^YÓuid¸µœÿ —ÇŒ¿òP6*ÉñWæGž¡ôµýJ?ä¼¸_ºFÅ^Áÿ 8a)_8\ èÖ×è’Uö¾*ìUØ«æoùÍí(>™¥j@|QO,5ÿ ŒŠ$ÿ ™«Á¿#¯þ¯æü´C$u&ÿ ™Y‹©'LjO¡³PíŠ»v*ìUówç•ú;ÌS²€áVeü¡ÆCþÊT“7:y\C§Ï‘zOäF«õ­ì˜Õíf`‚?ïï“ÕÌ=\jVæiebž‘˜Nc±Wb¯”|èœuÍAFÀ]Oÿ '7ØÍÄ{ö'ÞöùÃ+£œ'‡´¶2¹ál›Û8«±Wb®ÅXæ×ç“ùoaõ‹æõoeêöÊ~7?Ìßï¸Wöä?ê¯'Å_ùÛÎšœµ9u­ZNwšSöQGØŠ5ý˜Óþnû\±UoËÿ "ßùßWƒDÓ÷²š³‘ðÆƒûÉ¤ÿ %?á¾ÇÚlUú%äÏ(ØùGJ·Ñ4ÅãonœA=XÞGÿ .Gø›O1Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«ÿÐõN*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUñüå7åyWW>aÓ£¦•¨9fâ6Šcñ:’“{üôOØÅ^oq$,Ð±Y‚¬#¦ø«îOùÇÏˆ<õfºFªá5Ûu¡o]~Ÿñgûú?ùèŸØUíX«±Wb®Å]Š¿6?5üÃþ!óN§ªTšêNü…>œ_òIM#´Ï­kâàôµ‰äúXz4ÿ ’­˜º™T\<nO¡³PíŠ»|»ù“¨þ‘óìÝ–SùF?Y¼Å€érÊäKÚÿ &´ÁcåØ_ö®æo¤úkÿ $ãLÖêervhÔY¾b¹NÅ]Š»|Ùù½«~óÀVåa_n#ãò9¤ÍÎÔC§Ï+‘}+ÿ 8[å¡g ^kn(÷·šŸò!_ú«,¿ð9Ðú+v*ù;þsŠè›ß°K—ûÌ+ÿ â¯—qWê.‹l-,mí€ ŽJª¡qTv*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«üÀóRySA¾×‡ê3¨=ý˜“ýœŒ‹Š¿5//&½šK«†/4¬Îìz–cÉ›ý‘ÅPø«±Wb®Å]Š»v*ìUØ«Üçüèt/5*F¥¶«ˆŽÞ¢VHþNGÿ =qWÜx«Ïç lÅß‘uxÈ¯rÿ ð²ÿ Æ˜«ó·}ù#uëyySýõ,‰ø‰?æfju_S´Ó},û1·b®Å]Š»a_œiËË7GÀÄä¢ÊÓ}N.§é|Ù›wTýÿ œk”Iä(Ö´IGÝ,¸«ÓqWb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®ÅXçÌ­‘õ†N¦ÕÇÐÄ+b¯ÎœUØ«±Wb®Å]Š½ƒòcþqÛRüÅS©\Iõ-%X¯ªW“HÃí,	Uû?µ#|ëüX«Ù5ùÂ]	íÊØê7qÜÓf”Fé_xÑ!où)Š¾iüÈüµÕ?/õ3¥jÊ	 ´R¦é":øš7Å*ÄqWb¯¿¿çnZËý4¿ìúê>BiF*õlUù“çÉž`Ôäòà¦GÅ^»ÿ 8b„ùÆsØXKÿ '-ñWÛ8«±Wb¯ÿ œÁ°I3¼p¿ßÎù›Š¾Eü­»¾d²‘º)ÿ ¯ü_)Ì.%»	©Ó¹¤w.Å]Š»v*ñŸùÈ=<,–Wê7e’&>Ã‹§üN\ÙiÄ:íPÜ'üãö¢ÑßÝØþÄ°‰>”n?ªl–¬mlt§z{ŽjÝ›±Wb¯—ÿ 3!ùŠùGyyÁ ßÇ7x~érýEè?óˆ²”óÔ*?nÞpàyÆ¹sSî¼UØªÿ P·Óá{«É#y$`ª£ü¦o‡|ïù«ÿ 9yc¦Ó¼šÝ×Ctàú+ÿ “íNÞÿ _ñ“|Ÿ¯y‚ÿ ^»“QÕf{›©MZIIÿ ›•Wá_ÙÅQ>Qò~¥æíB=#F…¦¹”ô~Ô’7ìFŸ´Ç}íù9ùA§þ[iŸV€‰¯ç ÜÜ»û	üÇû	þÍ±W¡b®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb¯ÿÑõN*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìU)óG–,|Ï§O£ê±‰mn‹)ê?•”þË£|hßÍŠ¿?¿6ÿ )µËQ¬nÁ’ÒBZÚà†Dÿ eO÷jÆŒ˜«Óu+.â;Û˜X:H„†V
+¶*û#ò?þr~ÏÍ
+š7š-u]•&4X¦?ñg?ÉýÛÿ ºÿ ßx«èUØ«±V9ù¯ÿ ‡¼»¨êÃí[ZÊéþ°Séÿ ÃñÅ_™Ø«Ü?çtÓåù§ïdX‡À9·ßë/ükurä†–<ËÖ3Ïv*¡x–6òÝË´p£Hß%›%f˜ÈÐ·ÈR;LåÛvc_¤æýÑ>·Ðôó¦Ø[ØšV’3OP§436Iw Fä»v*â@;ˆƒ³ä-Rýµ©¯$ûsÈò›G: (S¢&ß¡Ÿ‘èO%i6”âÍl³7Îoôƒÿ 'p¡žâ®Å_ ÿ În“ú_J¾­'üO|áh+2Óýx«õ*1E xU~*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«Âç1µ“cää³Oøü»Š6ÿ UÏÿ ‰1WÄ8«±Wb®Å]Š»v*ìUØ«±TßÊZÃhºÅ–¨¦†Öâ)kþ£+â¯Óµ!€#pw«üêó¥ëUÿ –ÿ â~pb¯üƒ5Ð¦ÿ ˜·ÿ “pæ¯Wõ|ž—éø½'0œÇb®Å]Š»b_›™|³z«Ô*7ü‘¿ük™së> zKæLÜº‡Þ_ó‰×‚!ZGZ˜fÓ#Kÿ 31W±b®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š°ÏÎ]9µ'jöÑŠ¹³™€÷Uõ?ã\Uù½Š»v*ìUØ«±Wé·‘4›}#B°ÓìÀXa¶‰VþVÿ f~6ÅSìUàó™ºM½Ç•-õë×h¨Ýé"¸‘?ÙpFÿ aŠ¾*Å]Š¿Bÿ çôÃ§yI‰…‘4¿ò5Þaÿ 
+ãz4’Ô»l~C~\ê·Ÿ\»šçýû#Éÿ yb¯¡ç	lùëº•×ûîÑSþEoù•Š¾ÄÅ]Š»yGüå¿¯äKÅ>‰¢Å_ù$Ó]Óéÿ -pÄ×+ÉôŸs<P÷¾­Í¼v*ìUØ«±WžþyØµÎë/Kyã‘¾D4?ñ)W34¦¤âj‡¥åŸ”Vó-­MOQÒÇþŽggá`5 úW4®áØ«±WÌß›ò“^ÿ ­ü›7x~é³}E’Î5kVZ-oõIãµµHçå$¬Ecu_‰¼[áËš_Syƒþr—ÈÚ8!/òAû6Ñ³ÉGôáÿ ’˜«É<Ûÿ 9¯y8h|µ§¬ ì%¹nmÿ ""â«ÿ #dÅ^çÌ0yÊ_W]½–æ†ª„ñÔ…8Ä¿ð«Å^™ùOù®þaÈ&·Oªé¨÷RƒÇo´°§û½þ_óºâ¯¶?.?+´oËûc£ÅG`=Yž†IHý§oåEøf«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±WÿÒõN*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«ó§’tÏ9éÒiÌ^¤nÙ‘‡Ù’'ý‡_óøqWÂ¿›ß‘Ú¿åÍÑ2©¸ÒÜÒ¥ò&î©Éý¿÷[6*ó\Uí?•_ó“úï’øXj5Ô´µ Èß¼ŒÅ3ï·üW'%þOO}aùùÕåŸ<¢®•t«tÃ{ih’ƒþ¡þóþy4˜«;Å^#ÿ 9wæÑ¾K{54{ûˆ¡§²ÿ ¤7ü™_ø,UðÎ*úwò³KýåÛD •ÆýBdOù&È¹¦ÔJä]¾Q¯1Ü‡b¬có6ù¬¼»}*õh½?¢B°ŸÂL¿ ¹†Œæ¢_:ùJÅoµ{;YRIãVä–ÿ áso3@—UdÖ9¡wŽÅ]Š»J<ápm´ké£-´¤~Çþ-Ä.A«)¨—Ê¶–Íu4véöä`£æÆ™¼t¯ÔM>Ñlm¢µe…ÉGUŠ»|‹ÿ 9¿5-&_æ‚eÿ d?ñ¾*ù¦'ôÝ_ÀƒŠ¿R­dDŽ:}#VÅ]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»|Ýÿ 9·Ëô™O³õ·¯ÏÓjÆØ«ãÌUØ«±Wb®ÅQzv>¥s•ª™'Ö8ÔufcÁélU÷_åoüã—¼¡gê6Ñj£(2Í2‡Uoå‚7øùøúÿ 
+ª²_7~JùOÍ6ío}§ÀŽEXb‘OŠÉ_øäŸäâ¯…?4¿/n¼®Ï¡ÜŸQ’C%($¿»øÑÿ âÅ|U‡â®Å_©zuE´\¾×¯Î˜«üï˜Cäe{9Wþpÿ ±Wç*úò2š„þÕÓŸøH—þ5ÍV¯êø;=/Óñz>a¹ŽÅ]Š»v*•y¶Ñ®ô{Ûtw·•T”Q¸ÿ Ãe˜H5äù37®‘öOüáF¯ëy~ÿ N&¦ÞìIO*(ÿ ‰Bø«è¼UØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±U+‹t¸¡”UJ°ñq8«ó7Î¾Y—ÊúÍæ‹=yZLñÔ÷Pvÿ ìãâøªEŠ»v*ìUØ«íùÇ?ÏÍ3UÒmü¹®Ü%¶©h‚ÚV
+³"ü1q‘¾YWàtý¿ï—ÅÁW»ßjÖv«Éã†2Hê«OõØñÅ_ÿ ÎO~uÚùÞæCoSK²bí-ËOO’WýÕrTo÷g¨ÿ ³Ãx>*˜hZ<úÕý¾—h9Ou*Dƒü§<~›hzTZE…¾›n)´Iü‘B/üGJÿ 1uq£ùsSÔ{Ái;¯úÁ‡ü6*üÍÅ_Zÿ Îi<,õmLï$†Ô#ÉåÅ_Oâ®Å]Š¼ãþr-9ùWñJŸºHÎ*ø+ÊÇY°>PŸøuÈÏ‘eaõ†hë±Wb®Å]Š±¯Ì›®ùvú/ŒŸò,‰ÿ æ^_€ÔÃFqq/›tKôf¡m~Aao*J@4$++ôÓ7)ÔÄÑ·¿iß\»ZÉ3Û·òÉWþIz«ÿ š©i¤˜ÔÄ§ÑyçB”Uoí€ÿ *T_ø“¯Á—sgõÿ ã=þ®Ÿò>?ù¯….âŸ=áó¿æMôþ`¼¸µu–&eâÈj¦Š‹ð·~™·Ä* U”Ü‰_-jv*ìUØ«±WÜó‡ºŸÖü•õrjmnæŽž¸Oÿ 3±W¸â®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š¿ÿÓõN*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±T&¥¦[j–òY_D“ÛÊ¥^92°=™N*ù_ó‹þq(Y$Úß“äV’KIšœUG'0Lÿ hÅsÈßÙÅ_/b«ÑÚ6†Œ7b¯Ròoüä§œü®»¶ëJEv=M¿É–«?ü•Å]ùÏùísù”Ú‹1fdf	!ev~ŠS€Oæ·Š¼ÆÖÕî¥KxG)$`ª<IØbT>¼´µŽÒ¶„R8”" £Šç?#fÝð)W]Š¼çóÏPô´!l9KpˆÂ»G—þ%æn–>«òpõ2ôÓÌÿ '-Œþe¶jTF$sÿ  Ê?áÛ35 \<äIf™Ü;v*ìU‰~lÊbòÍë¼cðRFŸñ¶diÇ¬8úƒé/ü·³úï™´«n¢Këp~FD®n]CôÃv*ìUòçüçŸÊßG¾°÷öB'_ù6Ø«äìUúqä}DjZŸ|¦¢{H$¯úÑ©ÅSÌUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±W…ÿ Îbh­}äÑx‚¦Êî)Iÿ %ƒÛÿ ÄåLUðþ*ìUØ«±Wb¬ëò>òÞÏÎšD×d…Üb§ -ðF~‰qWèÖ*ìUñ¯üæ­í¼¾b±¶Œƒ<6•’ƒ;×þ6ÿ eŠ¾uÅS¯&é­kV:bŠ›«˜¢§úÎªqWéÈP °«Ëç'5¨ùR#íJ"ˆ³–0ßðœ±Wçö*úOòn–m[¼†V?ò1Óþ5ÍF¤ú¶˜zY®b¹.Å]Š»v*ìUò.µ§6úâÉºÁ+ÇóâJ×7ñ6-ÐÈQ§¼ÿ ÎëâÏÌwšSš-å¯%/r_ù',¹$>ÍÅ]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ùKþsòÉ„‘yÖÅ*¤,”ømçoŸ÷ÿ <qWË«±Wb®Å]Š»TiÀF$¨è+Š©â®Å_IÎ~Y>£¨¿œ/SýÎ±ÛÔlÒ°øÜÆÛþOò1WØX«Ç?ç+¼Ä4Ÿ#Ü@¦’_K¸ñ¡>´ŸòN«àìU÷üân…ú3ÈðNÂ{4ÓŸ¿Ð_øHqW²â®Å]Š¼ãþr)øyW?ñJ¾HÆ*ø+Ê+ËY°7PøuÈÏ‘eaõ†hë±Wb®Å]Š uû3{§]Z³A$ðJËürp5!ïa1`¾EÍó£d×Ÿ—`´Ug±•ÕÀ#Ò¦ÇÇÑç•±=[N)‰UÇ—µ+oïígJ4l?Zäøƒ¤ºMãš%'ýFþ˜m‹‹ÊZÄÂ±XÜ°ÿ &?ñ®0:§„÷&6_–~b½º±•ã%#ÿ “Æ<¬æˆêÌb‘èØþFù‚äVa¿´’Tÿ É6Vu1ƒM"È4ÿ ùÇ²@këÐuŠ:ÿ ÉGaÿ &ò£«hÒw–Q§þIyz×y’[ŸøÉ!ògÑÊ%ª‘nh‡–þoèvÚ6µèÙF°Âð£…AAûIÿ fv	FË…ž"2 úþp†ïžªZÿ ¾îcø4ãÿ 2³!¡ô®*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«ÿÔõN*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb¯1ÿ œ“óÑ<©IýåÂ-²ÿ ÏVÉÿ $½LUùÿ oo%Ä‚(UžF4
+¢¤Ÿ–*ë‹im›Ó7™JŸÇQÅ]ŠªÁ;ÛºË‘*ÀÐ‚;ŒU5ÿ ë¿õp»ÿ ‘òÍY_‡áòlñ%Þ[u×êãwÿ #äÿ š±ðãÜâK¼¡/uýFýxÝÝM2øI#0ÿ †9!dJ_’bôßÈ(¹kS¹ý›VûËÅ˜z£éø¹zQê{Þj£±Wb®ÅXWç#ñòÍÈþfˆÉD?Ã2´ßS‹©ú^Où«çmi_ô¸ÏÜyfÝÕ?FqWb®Å^ÿ 9£ýwÉÉx½lîâsþ«‡‡þ'"b¯ˆ±Wè?üãv´5_"iZ´(Ð7·¤íÿ Â*b¯MÅ]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»H|÷åˆüÕ¡ÞèrÐ¸0Of#÷oþÂNŠ¿4õ	ôû‰,î”Ç4ÑºžªÊxºÿ ±lUŠ»v*ìUp%MFÄb¯ªÿ +ç0m ³Nóœr™ãP¢îË˜hê­ê3GËŸòb¬—Í¿ó™[±¶oÐM}vGÁÍLqƒÿ 3þóþ?Ù.*ùÍ>i¿ó>£>±ªÈeº¹~nzT²ˆ¿/òâ©>*÷oùÄ?$¶µæ“¬Èµ¶Ò£/SÓÕá_øVOùçŠ¾ÞÅ_=ÿ Îik_UòÍ¦œ¦uv›þâÅ_â¯ªü‹b¶ZŒ*8ÿ £ÆÄ”ãÔøvlÑæ7"î±
+ˆOr¦×b®Å]Š»v*ùÏó§Iú‡˜$•EéP='úyÆÏþÏ7y\]F¢5$åš¿ÂžiÓµv<cŠuYüVÿ ¹›þI»fKŽý#Q¸8«x«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb¨-_J¶Õí%Óï£ÛN†9ºaCŠ¾üìü¾ü·ÔÌd4ºdäýZzlGûæOåž?ù)ýââ¯5Å]Š»v*ìUØ«±V{ùIùM¨þcj‹ehv‘×7|1§üm+ÿ º“þ4Wâ«ôË^[²òÞ‘¦GéZÛ D^þìÇöÄíûMŠ¦¸«äOùÍ5ýcQÓü½T[Æ×üÒN/ø¿äf*ù²ÞÞK™Ai…P:’v~šy7@_.è¶Z:R––ñÅ·rª›ý“|XªuŠ»v*ò¯ùÊ‘5/òýLÑb¯†ü’	×tð7ÿ KƒþN.C'Ò}Ìáõ{êÜÐ»Çb®Å]Š»l{â_:b§¨4Î…Ð¾³ò´Æ}&ÊfêöÐ±úQ[4YHûÝÞ?¤{“<­±Ø«±Wb®Å]Š»x/çòÿ ¹¨·ÕT}ÒM›]'Óñuz¯«àõùÁÛƒêëP×b¶ÍO‘s1Ä}]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ÿ ÿÕõN*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb¯ž?ç55–ìmÐMxû„ŽOú©Š¾iüšµ3ù–Ù€ªÄ²;|¸2øw\ÇÔr0}%íškvÔ—ÞyN½5ºµ‚cÿ F­ÿ \˜É!Ô±0¢_#èR
+5…°ÿ V$_øŠŒ˜Í.ö{•ž[ŸíÙ ÿ Uâ¹/ÌO½{”?åPy_þX¿ä¬¿õWÌO½—‡räü£òÂ‹!ôÉ)ÿ ‰Iæ'Þ¿—‡remäMÜQ,-?š%c÷¸c‘9¤z²b:<«óâ+kYìlícH•"vâŠfaO³ÛàlÎÒ’A%ÂÔ€ÿ 8ó2j÷Q
+ýþ©ÿ r:¾A–“™{>k]‹±Wb®ÅX7çB“å¹ÈìñøuÌ½/Ôâê~—˜~A¸O<häôúÈx#6Î©ú)Š»v*Â:|¿þ ò~«§¨äílÒ ñxÿ ü<x«ó‡}ÿ 8Oæ1>•¨èn~+iÖuäÊ¼Ÿê¼?ðø«é\UØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb¯ÿ ç.)_O¾ÿ éÉ[K¢è(ûý•˜ÿ ‘?Ùÿ Œ¿ñ—|×Š»v*ìUØ«±Wb®ÅQVêÇih,ó0DE,Ìxª¯Ï~†~J~ZGù}åèt³Cy'ïnœ~ÔŒ7Zÿ $KÆ5ÿ W—íb¬û|iÿ 9¥æ!yæ-VÊØ»˜ÿ Õ8¢Å^¤iÍ©^AcÍ<‰>ÈZà‘¡iÍ>»
+PlLçÉ·z6v)v*ìUØ«±Wb¯0üùÐÞ›§«Z¿§òIAÈÿ «"Æ¿óÑ³;I:4áj£bÞ›7Zýü„ó¨ó”,o¹\ÂŸWŸÇÔ‹àäßñ’>ÿ ³Å^‡Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìU*ó/–tÿ 2ØÉ¥jð­Å¤ÂŒãû,­ö‘×ö]~%Å_~mÎ*ëYy/ü¶¯¨é›ž VxÇùq¯÷ê¿Ïû(ñW„ËDÅÀÐƒÔUOv*ìU°+·|Uí¿•_ó‹úïœ/5•m3KØòu¤Òø¦û<¿ß²ü?Ëêb¯²¼£äí3Ê6	¥h°ˆ-£ì7f=ÞGûNíüØªyŠ©Í2B†ITPI' ~m~iyÁ¼áæKýl’cžfô«Ú5ýÜþE*b¬Ÿþq³ÉçÌÞs²W^VöDÝËáû½âûçô—~b®Å]Š»xoüæ¤-|•õrw¹»†0?Õç7üÊÅ_$þVZ¯2YFÝ³ÿ À+Ê?Ês‰nÂ.AôæiË±Wb®Å]Š»|¯CèêQÙšEû˜çAN„ó}=ä–å¡éçþ]ar(Í&o¨»œ_HN²¦×b®Å]Š»v*ìUá¿óJ?HZ7sølÚi9{­ÕsEÿ œ o÷#«¯c'îgÌ×	õÎ*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«ÿÖõN*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb¯˜ç8‹-{nÜ±b¯ü„PuÉIê-\ÿ ÃÄ3Uô¹Zo©ïÙ©v®Å]Š»v*ìUØ«Àÿ ?¿ã·üÂ'üœ›6ºO§âêõ_WÁ<ÿ œyŽ‘êâÐ»Õÿ š²­gFÝ'W°f½Ïv*ìUØ«üáN^X¼>‘ÿ ’±ŒÉÓ}n6£éxçäåØ´ó–+túôÿ êŸñ¶nKô‹v*ìUk¢È
+°ª‘BÅ_š?˜¾Yo+ù†ÿ EaE¶¸uOõ	å	ÿ eFÅYïüâÇ›G—üéo­ÆAZÕ¼97Çü–Dþzb¯¼ñWb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š µ}*×W´—O¿f¶
+HÐ©Å_	~y~Cßþ]ÝµÝ²µÆ‰+~ên¦2zCqü­ü’}‰Öø1W’â®Å]Š»v*ìU^ÖÚ[¹V¼®Bª¨©$ì¨ïŠ¾Ìÿ œqÿ œzÿ ªù“ÌHX‘sßêêGíËÃ¯üŠ_ƒí3b¯ qUŽÊŠYˆ
+I= «ógóKÍâÏ3jÐ5Žâvôÿ ãþêù$‰Š¦Ÿ’º7éy.ª4¦¾'÷iÿ üÿ Øf6¦U{“§ÉôNiÝ³±Wb®Å]Š»v*‚Öô˜µ{)´ûû¹Ð¡Ú´¯ÙqþR7Æ¿ådá.l'!O“oìf°¸’ÒáJËqàÊx·ã›ÐowHE=÷þpóóô>·/–nš–Ú’òŠ½ñ‚ä´<×ýhã\(}Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Vç?Éÿ +ùÊ¯¬ØG$çýÜ•Ž_ùoö|±W’k_ó„úÃÓ5›jô*JÝè7ü6*ÇOüàìü¶Ö“üÂšÿ ÉüU=Ñÿ ç	thmOR¹ŸÄD‹ûÛë«Ö|™ù'å?'—I°ëÒiy ?äÉ/.óÏ†*Î±Wb®Å^7ÿ 9Kù‚<­åY,­Ûî¨M¼têþ>_þEþëþzâ¯ƒñWÙßó‡D:V…?˜î“jOÂ2ß1 ÿ ³—Ôÿ €LUô6*ìUØ«±WËó›Úßt!OÚi®ª(ÿ âRâ¯ü‰±ëNÃûˆÁ÷%bÿ ˆ»æ&¨Ô\­0¹>‚ÍKµv*ìUØ«±Wb¯“|Ùÿ ‹ßù‰›þ&Ù¿ è¥Íô·‘?ãƒaÿ 0ÑÄFi³}EÛáúBy”·;v*ìUØ«±Wb¯ÿ œ‚aõûEî!cÿ ›M'#ïuº®aèŸóƒë]CW=„0½¤Ì×	õÎ*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«ÿ×õN*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb¯™ÿ ç7í¹izMÇòO*Á*·üËÅ^ùt°ùƒÓ'y t0VOù—˜º‘értÇÔú5ÙØ«±Wb®Å]Š»xçé®¹µ¢ÄæÍ¶—éuZŸ©”ÿ Î?-4ë¶¯Y€§ÉFQ«æôœ‹Õ3Îv*ìUØ«üÇ²úç—¯¢=¡i?ä_ï¿æ^_€ÔÃNaq/›ü¯~4íZÊøì ¸†OøWþºtÏÓÕ`À¸;ŒUv*ìUØ«ã¯ùÌÿ &5–³iæHW÷W±z2ø¶/³_õáeãÿ qWÏ67²ØÏÕ»š&Œ:†SÉ[ïÅ_¥?—þm‡Íúž»oJ]D¬À~Ë†hÿ çœªéŠ²,UØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb¨kû5Òò5š	T«Æà2°?²ÊÝqWÌßš?ó‡ipï¨y.Q5cg1øç„ß³þ¤ßò7|Ûæ!kžUÅ­ÙMjk@Î‡ÿ RQû·ÿ `Ø«Å]Š¯Di*Š“ÐUéÞBÿ œróo›Ù]mZÆÑºÏtbŸäF{'ûãþV*úËòŸþq÷Aü½æ5úæ¨GÅs(ñ‚>ø)?âÌUê8«±W–ÿ ÎGùäyKÉ÷oq»½T‡Æ²Þ¿û=Fÿ _Ž*üýÅ^ÿ ù¡}KI“QqG¼}¿ÔŽ¨¿òSÕÿ …Í^ªvk¹ÙécBûÞ“˜Nc±Wb®Å]Š»v*ìUážžV6—©­B¿¹¹$§ilç¢Ã#æÓK’Åw:ÍL(ß{Í´ÍJãLºŠúÍÌw:ÉŽªÊy+}™®ôsò»Ï¶þ{Ð-µËz•xÌƒö%]¥þâ_ø­‘±V[Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUcºÆ¥˜€ T“° b¯ÏŸÏÏÌ¦óï™'»‰Ó­«¨ìQOÅ/ü÷~R©é¯ìb¬OÈÞSºóv³k¡YÞÝHŸå_µ$‡ü˜ãäÿ ìqWé>‰¤[èÖPi–KÂÞÚ5Š5ðUF*ŽÅ]Š»v*øCþrÃÌß¦|í=²Å§ÅºøVž´Ÿðòðÿ aŠ¢¿çtÂ–wšÿ vÈ±n›ÁzËÿ ší\¹a¥2õœ×¹îÅ]Š»v*ìUògš[–­xÃ½Ä§þ³NŠ\ßKùxèVþ]¢?zŒÓfú‹·Ãô„ó)nv*ìUØ«±Wb®Å^	ùúõÖàQÚÕ—6ºQéøº½Qõ|»ÿ 89jGé«žßèÉ÷zí™Ž#ê¬UØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±WÿÐõN*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb¯ÿ œÁÑ÷’ÍÐ6wQJO€nP~¹—|‰ùe¨1XÌz4žŸüŒù™•fq}Aš7tìUØ«±Wb®Å]Š¼óðS\‡ÞÕü<¹¶Òý.«Sõ2ŸùÇæ®v½Äàýê2_0ß¤ä^©˜s±Wb®ÅPú•’ßÚÍfÿ fhÞ3ò`Pþ¼”Mc!bŸ 2•$£7î‰úaùu­sËšn§ÞâÖoõŠŽðü±VGŠ»v*óßÏ!:ùRïO‰y]Ä>±oãêF	
+¿ñ•=Hç¦*üîÅ_SÎþbˆÞãÉ·öëskSÜôˆ‡û2¯üõÅ_Vâ®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUJx#s(tmŠ° â¬CSü˜òn¤Åît‹2Ç©X•	ÿ ‘\1T¾?ùÇ¿"FÜ—H€Ÿ~d}Ìø«&Ð¼‹ èºNŸmjÞ1DŠà€åŠ§Ø«±Wb®Å_ÿ ÎWþb3ù”é6¯ÊÇIC³LÞ‡ÿ `Uaÿ žmüØ«Ç´]&m^òzz“¸A^‚¿´ÕûYÊ"Í>±ÓìbÓí¢³€R(QQG²Ž#4R—·wðŠDdY;v*ìUØ«±Wb®ÅR¯4y~/0iÓi³ì%_…©^,7Gÿ bßð¿YŽ|ÚòCŒSåký>}>âKK•á,LQÅz×|Þ{ºR+g±Î1~m‚õ¯Ñz‹ñÒuªä£—ìÃ7ú§û¹¿Éøÿ ÝXPû£v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«çïùËÍÁåí/ü-¦½5E?|Tïfÿ eqýßücõ?ÈÅ_b¯°?ç¿+Î›c'œoÒ“Þ¨#uˆÞKÿ =x¯üVŸË&*úSv*ìUØª]æfO¸Õ.Í µ‰åsìƒ–*üË×uyµ«ûRçûë©^gÿ YØ»Ä±WÓ—ú'è]ÒÍ…$ó}·äÿ ¼`ÔåÃýŽi3KŠEÜáC!Ê[Š»v*ìU¼UñõõÇÖ.%ŸýøìßðF¹ÐB_Ty4SDÓÇüºAÿ &Ó4™~£ïw8¾‘îN2¦×b®Å]Š»v*ìUó‡ç5á¸ó%ÂV«Æƒþ\ÿ Ã»fçN*Ôg7"úKþp«Mh<¹}zÂž½ç|BFŸñ´™ã¾‰Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»ÿÑõN*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb¬oóË_â.ê(ûW6î‰þ½9Eÿ %b¯ÍAê[I]ÒT?"Å_YywYMkN·Ôc¥'XÐ7û±?Ø?$ÍHð’Ü%Ä-1È6;v*ìUØ«±W‚~Çnù„_ù96mt¿OÅÕê¾¯‚{ÿ 8õ-a¿‹ùZ&ÿ ‚øÓ*ÖtmÒuzökÜ÷b®Å]Š»|·ù‹¥3_½¶ìe2-:ROß*ÿ ±Wã›ÌRâˆ.—,xdCì/ùÄ_3[É«`íYtéä†ø7ïãÿ “Ž¿ì2Ö§·b®Å]Š»|ÿ 91ùn|›æy.-ÓŽŸ©¸†ƒ`Äÿ ¤EþÂFä¿ñ\‰Š¼ãË>bºòÞ£o«éíÂæÖE‘OºŸ²ßä·Ùuþ\Uú=ä_8ZyÇF¶×lî®P1ZÔ£¤‰¿ÊþUb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»yÏç¿æj~_ùv[ØØ~¸¬6«ÿ ýïú°§ï?ÖàŸ·Š¿=¥•çs$„³±©'rIÅ^½ùåNM&¿:ìµŠ
+øÿ »dGîÿ äf`j²¥‡ñ=—5®ÅØ«±Wb®Å]Š»v*ìUØ«É;¼nüAfµ’0à
+}‘öeÿ cöüŽÈÙ°Òåþàjqÿ xŽl]{í?ùÅ¿Î¿ñ5’ù[X÷)hŸ¹v;Í
+øi¡_µüñþóödÅ_@â®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®ÅXæwæ5‡4iu‹ò†«C,„|¯üIÛö#Å_ž>ió=÷™õ)õROVêåË±íþJ¢þÊ"ü(¿ËŠ²¯É?ÊÙÿ 15èôò
+ØAIn¤£ìþü›û´ÿ ƒýŒUúee”)kl‚8bUDE
+ª8ª¯ú«Š«â®Å]Š»|õÿ 9‰çá¤èqyjÙ©q©7) íg‘ÿ ‘’ðÿ €“|¯ùuåÓ¯k0Z0¬*}I|8!Ê×<cÿ e•eŸm·8¥O¨sFîŠ»v*ìUØªÍÀ¶‰ço³–? +’ˆ²ÆFƒã¼ßº'Øu¨´¶ŠØl"SþqÍÍ’ïb(FE“±Wb®Å]Š»q4ÜôÅ’|Å©þ”ÔnoÆÂy]Àð¹(ÿ ÍüE
+tr6m÷Ÿüãg—Î‹äm5íÜ#\·üõc$òKÓÉ1z~*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«ÿÒõN*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å_ÿ ÎLù¼¥æÙæ‰xÙjDÝB@Ú¬Ò#ÿ a7&ÿ RHñTGäO›8™<¿pßj²Á_~ö?ù˜¿ó×05XïÔí6Jô½“5®ÅØ«±Wb®Å]Š¼GþrÔ-å•Ïw‰ÓþƒÌÜÙéÅÖê†áÿ 8ñ(¨GÜˆÝêÿ ÍX5c`'2ölÖ»b®Å]Š»x§çöˆc¹¶Õ|2)…þkWCþÉY¿ä^lô’±N·U6É?ç|ãú/Ì³hs5!Ô¡<Aÿ ~Åñ§ü‘õÿ ás9Â}§Š»v*ìUçž–iùåÙ´øÀúüšÕûñG÷uþY—÷ð/û«óÚêÚKYZ	Ô¤±’¬¬(AiN*÷ùÅ¯ÍñåWô©%4½E‡'h¦û)'ù)7÷rÏ7û8«íÜUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±UËØl¡’êéÖ8bRîìhTrfcþN*üùüóüÔ—ó^{ØÉu½b´C·îÁþõ—ýù3|mþÂ?÷^*Ã|¹¡O¯_Å§[ŽV¥{*õw>È¿BráYF<Fƒê#JƒI´ŠÂÔq†¿Gí5?iÄÿ åfŽRâ6]ÜcÂ("ò,Š»v*ìUØ«±Wb®Å]Š­–$™)T:8*ÊÂ ƒ±V¨8ƒH"ß7þfùO,Þ™a_÷9ýÓÙÛx[ü¥ý“ûkþW,ÜáËÆ<ÝFl\É‹èú½Öw£§ÈÐÝ@áã‘NêÃ2|þG~sZ~di`¹Xµkuæ¶ÿ ïø‡ûæOù&ÿ ~Ë:¯MÅ]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb©O™üÏaå>m_V”Ciòf=ÉT_Ûw?
+'íb¯€?8¿6o25f¿ž±YÅT¶‚µž-üÒÉö¥oöebZ‡w®ßC¥éÑ´·W4I?çñ7ì®*ýüü®´üºÑ#Ó!¤—RRK™¿žJ~ÏüWØ‹þí³b¬ïv*ìUØªQÔ Ó­å½»q#I#·EU™ÉqWç7æ×Ÿæóç˜®u¹*"sÂ?±íüÿ Ýÿ ;â¯Lüò§èí=µk…¤÷Ÿb½DCìÿ ÈÖøÏù+jõY,×s²ÓB…÷½+0œ×b®Å]Š»v*’yæåm´+ùÓýUÝ”¢ÿ Ã6[„\ƒVSQ/—ô{¨^Áf63Ê‘ÿ Á°\Ý“AÓeõáß9÷|Ö*ìUØ«±Wb®ÅXoæÏ™EÑ%@vf½jx$|¿ÙðÌ<8¥ýWQ>ûÞ	äÏ,ÏæbÓD¶þòîdŽ¾ ŸþQ§'oõspê_¦6QX[Çin8Å
+,h<Gÿ …ÅQ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb¯ÿÓõN*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å^iùùùZ¿˜>^{h~’µ¬Ö­þU>8Õ~õý7ýŒUð3]iBD-Õ»üŠºÁö”ý¥ÀE¤}%ä=Ûù®ÌH(—‘€&ˆv?Î•ßÓoøO±þSiób0?Ñvø²ñ6S˜íîÅ]Š»v*ò/ùÈ[Vx,.ØG•ÍÂ2ÿ É¦Í†óp5c’Eù9]jxÉÙí˜üÈxÿ l·T=?­)õ=ë5NÑØ«±Wb®ÅXÇæG—Oè“Û ¬È=X¿ÖMéþÍ9ÇþÏ/Á>4f‡_9ys^¸Ð5}VÏiíeISæ‡—Ük7NúWå0ÛyL¶ÖlM`»‰e_nCì·ùH~ÿ +MqWb®Å]Š¾Eÿ œµüž6'ÎÚLè×â¯ìÈv[õ&û2Å¿ñ›|ËŠ¾Óÿ œ`üñh´O+ëOþåmRÈÇyâQÿ <+öÿ ž?Þ¿1WÐ8«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±WÈÿ ó•_ž#Pwò^ƒ-`©{*™Ôÿ ¼ª’6þûù¤ýßì?%_2]‡\Uô?å‘Žfoï—×@T|	ÕSýgûr°_´¹ªÔåâ4¦Ÿ²ôÃrÝŠ»Iõo8iEEõÜQ²õN@¿üŠNRÂå±Å)rRËó,bûóÃËÖÍHškãtòY¡9pÒÈ´LBMyÿ 9dŸï-”²®êŸñ6X4‡½¬êÇrþ†Õ»þž?ëÆKò~hüß’¬ó°“ûëQþL¡¿âQÇƒò~iüß’mmùñ¡J@’;˜ëÔ”RüŒßð¹¤“1ª‹"Ó¿2|½¨0ßD§ÂBcÿ “Â:ÿ ±Êe‚C£lsÄõdˆêê*wt9AÜ·ŠPö…k®ÙÉ§ß/(d¶ ²è{2ÿ ŸÃ“„Ì†€¢ù›Î>Qºò½ëY\üH~(ä¦Î¾#ßù×öàsu ˜°éò@ÀÑPò¯šµ*ê1jÚL­Ü-PGæŽEý¸ßìº6XÖûËòkó¯MüÈ±:[ê¨õí‰ÜÅÿ <-ÿ Ÿeÿ ÊUé8«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»J<Ñæ;ÊöêÚÄË¤"¬Ç¹ý”EûO#þÊ.*øCó³ó¶ÿ ó&ø
+}&ÝÕíëôzÓ4Ì¿ìcû	ûnê¼ÞÞÞK™T¼ŽBª¨©$ô
+1WÛÿ óŽ?‘Kä[1¬ë·rÿ WŒÿ ºWþ-o÷sÏ5ý¯QW·â®Å]Š»v*ùgþrëó„"ÿ ô™>#ÅïOAö£µú½›þy§íIŠ¾xò”_Ìúœv†¢Ý~9˜Aü¾îßÿ .U—' ¶ÜPã4ú~RX¢Pˆ€*¨ ‚à3HM»)v»v*ìUØ«±VùÓ~-|¹,g­Ä‘Æ>a½oøŒ-™ZQrqu&¢ñ¿Ë¯yŽÆ3û2zŸò-Zaÿ &óc˜ÔK¯Â.AôöiÓ±Wb®Å]Š»I¼Ëæí;ËúúŒ¡M*±Ý¿ÔOøÛì3e°ÄgÉªy9¾só¿œî¼Õzn§øaJ¬QŽˆ¿ñ³·í·ükÇ6øñˆ
+«&C3eô_üáïå[ÃêyÛQŒ©uhlÃ í5Àÿ “1ÿ ÏoòrÖ§ÔØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å_ÿÔõN*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š¾gÿ œ—ÿ œy“Yy<Ûåˆù^R·vÊ7’Ÿññ
+ÿ ¿¿ß±ÿ »~Úþ÷—ª«å=+U»Ñ.–îÉÚˆÎÄu÷VSðŸò‘²2ˆ"ŠA#pöÿ &~tØê¡mµ~6—=9“û¦?ëî¿Ùü?ñgìæ·.˜âìqêAÚOHGWPèAR*Ü˜DS˜·Š]Š»yïç“ÜyÕNOò!¡ÿ ‰Ê¹™¥5'T=/,ü¢¼Þd´äh²sCþÉü”ã™ÙÅÀ¸XH>•Í+¸v*ìUØ«±Wb¯š4ü¬<¿¬H±/kÞÅN€ñGÿ <ßá_ø¯†n°ÏŽ.Ÿ48$÷ßùÃoÌÎqÍä«çø“•Å¥Oìõ¸~G÷Ëÿ =²ö‡Ô¸«±Wb®ÅPšž™oª[Kc{Ëm:4r#nXQ—|ùåùAuùu«´@Òî	kYOqþùø¶/Úþ†OÚÅX—©ÜiW1ßØÈÐÜÂÁãt4e`~«îïÈoÏ;_Ì[kxVnÝ}@àÇÄ?äÛO÷S‘ÃzÖ*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»|óÿ 9%ÿ 9žZ‰ü±åÙ9j²'™O÷
+e[þZ[þHÿ ¯Š¾2$“S×z—ä÷åßé)Fµ©F~«~é[¤Ž?hÚŽ?øwøa×0µ¸vÜÌ¸·<žëš·f¶i’ie`‘ %™ «3ƒ‚iæ^jüó±°&>·(ÿ v5V0ârÉ?õ³7”Ÿ©Ãž¤¥åZ÷æ·®Unî\Dv1Çð%<
+§Ûÿ žœ³:8£AÂ–YK™cykS±Wb®Å]Š»v*šhþdÔtfå§\Iz…cÄÿ ¬Ÿa¿àr2ˆ—6Q‘'¤ùoóêâ""×!§OV þm>›×üŸKùY‡=(?K—QÞ¹¢ë¶ZÜëN•f‹¡+Ô_´‡ýl×Î;>3ä†óO•lüËfl¯—n¨ãí#:ÿ ÆËûY,y†91‰Š/›|Õåß,Ý5­òíÕ$áqüÊâIÿ 6æâÅ‡S8(=^½Ðo#Ô´ÉžÞêä’!¡ú2ý–Ëßi~Hÿ ÎJéþuéÑK=jGh§?ñI?bOø¡¿ç—?ØUî«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®ÅXwæOæ¦‹ù}eõÍb_Þ°>”	C$„"ÿ /óHßâ¯…ÿ 5?7õÌ{ß¬jMéÚÆO¡l„úq×¿üY/óJßð©ðâ¬*ÞÞK©¼®Bª¨©$ìªª?k}›ÿ 8ëÿ 8ê¾STó˜>®â±Bwàÿ 7ó\ÿ ÉŸõ±WÐ8«±Wb®Å]Š¼£óóóªË­3Ñµ+&³t¤Aß€èn%ÈŸ°¿îÙ?Èõ1WÁî÷ZÅÙw/qws%IûLîçþ°IßJ~_y2?*éÂÜÑ®¥£Ìã»vEÿ "1ð¯û'ý¼ÓfËÆ|¾|“åîÅ]Š»v*ìUØ«Ç?ç µQþ‡¦+oñLëÿ $âoù=›$y—_ª— óÏ$y·ü/ú@B.N%¸Ó•>%j7Å·òæfHqŠq1Ï€ÛÒ`ÿ œ……'°t+(o×y„tžn`Õù&)ùû¢þÜCä±Ÿùš2?”=ì¿4;—ÿ ÊýÐ¿ß7ðÿ Õl”—xOæ£æ¥/çöŽî­îXÿ ”¨?T‡ò‡½šÉE×üä+"ÚÀì^Zøây`Ò¥¬êûƒÕÿ 9¼Á©‘Ê–¨Ehwÿ .C$ŠÔtË£§ˆi–¢E…Ý]Mw!šáÚIXÔ³’~y“N=¦~O6¦,†©«d×¬ÉÈ¯(Ëc’ôÛ~™ÚYÅg
+[[¢ÇJET*ª¿Ê1U|UØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb¯ÿÕõN*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»|ÿ 9ZÖçyáÓ¢Ž&Ž„ü9ÊÃÖgj~ß§$Jßêâ¯&]>å 7‚'6á¸8ž<©^<þÏ*~ÎM&œ5mÿ ¸Û—‰zðûHkßÒ~Qòÿ +ŽFXÄ¹²ŒÌy=Lÿ œ¼xßÙÇ)þhÜÇÿ 
+Âoø×1%¤‘r£ª#›*²üõÐg!fYàñ.€ù$Ò7ü&Pt’èÜ5QMcüÛòÌ†‹z*|cÄ£ÊÎž}ÍƒQô·Ïròþ±¡ÝÚG{<‘Š	©eýäkÆŸ´è¹fRŒ¦¼¹c(‘oÑ5Ñ·ö÷ÀWÐ•$§OÃ6r)×DÑ·×
+Á€e5pFh§x·Š]Š»v*ìUˆ~hy<ù—Jd€VòÜúûÿ <óÑä¢Ç™82p{Ÿ|õåízóËº„®žÞÕ´‹"½›ü–û.¹¸uÑË>ÙùïDƒ\± 	G#­Lr/÷±7ú¿³üñðÚÅYN*ìUØ«±V;ç¿#iÞvÒ¥ÑuTå‚ªÃí#±,g³§üØßb¯ÏÏÌßËmOòÿ U}+TZƒV†e©ÚDÿ ™‰þëlU!ÐõËÍ
+ò-KM• ºƒ£¡¡ŸÄ¿e—álU÷ä_çýæºØ_”¶×"_Ž.‹(îëzÿ ÃÅö£ÿ )1W°b®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUó¯üäüä¼^_Y<»åYš¡ªMp»¬Ì±ÿ =Çü,?ñ“ìªøîââIäi¥bÒ1%˜š’OZœU™þZþ^Mæ{¡qp¥4è[÷ŒvæGû¦?øÝ¿aÊá˜ù³pé9qqŸè¾Œ‚·a…BF€*¨ €4äÛ¶”5]RßJ¶’öñÂC«þ}OìáŒLJB"Ëç/=þbÞùªSL6J~AëOÛ–Ÿmÿ áSösq‹ƒ¨É”Í‡eí.Å]Š»v*ìUØ«±Wb®Å]Š¦š˜ot¡y§Èc”l{†Ñ×£©ÿ ®r2ˆ¢Ê216EùÏ¶þmµ.£Ò»Š‚XºÒ½3ûQ·ü}–ý—}>lGòvØ²ñ4ßÌ]³ó£Xê	Î6èFÌ§³Æß²Ëÿ ]|9\&`l3œÅÎÞxü»¾ò¬œ¥ýõ›$Ê+ü²/û­ÿ â_³ËâÍÆ,¢n«&#(	SQ±sKè_ÊùËCËâ=+Í|ï¬gÏÿ .¿ïB­ûßòŸìâ¯­¼³æÍ/Ík¨è·1Ý[7í!è•×íFÿ ä:òÅS|UØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*§4É
+%!QA$“@ ñÅ_=~mÿ ÎZiÚ(}7ÊoïwSqÖ?äøøõuþ[ýœUòO˜|É¨yŠñõ-Zw¹ºï#šŸ—ù*?eá_ÙÅVùË×þ`¼MÒ¡{›©MTŸù¥™›áÅ_k~FÎ9ÙyVÕ¸Ýkl+ËªC_Ø‡ÆOæ›þü¥^×Š»v*ìUØ«Íÿ 9¿:tßË{Ò>©2Ÿ«ÛW¯ü[/òB¿ðOöü•_ùŸÌú‡šuµmVC=ÝÃrbáQöQ>Ê"â¯dü¥ü¶}?Kj‹KÉîã=cSÝ¿â×ÿ „Oò¹*k5¯Ò–5¹zf`¹®Å]Š»v*ìUØ«±WËÿ ˜Þ`ý=­Ü]!¬*Þœg·øyg<¤ÿ e›ÌPáˆ—,¸¥l—Ë?’³kºd:›]`Yc1–kEn|ÇÛ§?³”ÏR"i¶s!mËù¬ƒû»‹R=ÙÁÿ “G ÕGÍ'K/$,ß‘ž`ì˜ýYün«’üÌXþZHOùRþdÿ |/üOù«æaÞËÉäV¿'Ú6ñÿ ­!ÿ °~f)ü´“/ùÇíEÚ—wpF¾1†s÷8‡ uqèÌiK%Ò!4«j5ôòÜ°ì)Ÿö#œŸòW)–¬ôÑÒŽ¬‹YòÎ›¡è„zu¼pªN	QV?}©”þÉ²¨d2³Õ²xÄbióUˆ&â0:ó_×›‡RýK]€®*Þ*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±WÿÖõN*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š¸šnqWææW˜˜¼É©jµä·2²¨‘É>8«Ü?)t•²òåººïqÊW¿3ðÁB#Í>¢W?s¶ÓÆ¢Ö¹ùG jÄ¸„ÛHMK@xvÿ }Ñ¢ÿ je5–ž'Éƒj_ó·i¾ŸyžÒ«%?Ù'­_øÊŽ¬u4´§¡c7“¾e€¶ÂU´’&ÿ C2¿ü.\5=ZN	‰DÞC×¢n-§Üš,LÃïEa–‘=CŽ]ÅKü®VŸ£îÿ äDŸóN1ÞŽÜ‡ó‰>‰}6r)$-ÄžÄ~Ã³O‹$òbEs}ùW¯c@·byn=Ú› ?ä—¦Ù§ÔC†^÷m‚|QeÙŽä;v*ìUØ«±Wƒþrùé—GZ³_ôK†¬ ~Ä‡©ÿ V_µþ¿?³ðf×O—ˆQæêõ¸MŽJŸ_œrþ]jÿ éE›G»!ncñ?±sÿ <µþüáû\8æ8¾,¯a½….­d†UŽ¦ªÊÃ’²Ÿ|UŠ»v*ìUŠ~c~\é~~ÒßIÕ’ Õ¢•GÇö–#ÿ _³"â¯‚¿3+5oËÍDØj©Ê&©†u»•|Wù_ùãûIÿ Ø«²¼šÊd¹µvŠhØ2:HèÊËÐâ¯¬ÿ %?ç+à¿èÞuu†àQc½èísþúø·û¯çôÿ iWÒ±J²¨t!•€ ƒPAÅU1Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb¨MOTµÒ­ÞöþT‚Þ!Éä‘‚ªò˜â¯’?;ç*§Ö½MÉÌÐXš¬—{¬²ëíCùß?üWûJ¾mÅYçåçå×™nîùE§»þÓÓn1Íes6aë9°™ÿ Uô5•”60¥­ªáŒqUQ@j$I6]¨ 
+
+Ø<3óÛÌïq|š$Mû›uY$ë#
+­Õ‰—üd|ÚiaBûÝf¦vk¹åYšá»v*ìUØ«±Wb®Å]Š»v*ìUØª}äß3KåÍJ-B:ðSI~Ò¶¿wØÿ /+É1MŸ	·ÕAƒ
+ƒPzÑt§smÔmè²DâŒ¬Ì§5¸R/bñŸ=þIÉ	kß/ñnZÜŸˆÆ?Þòãþ_S6Xµ7´v]5o’ÍÀæ9T«®Ä0¡œá'Só¦¯å+±¡ÜÉk8ëÀìÃùdCðH¿äºâ¯§.¿ç2¬îZyÂ>³ -ÿ *H?¼Oùçêÿ ª¸«èo/yŸLó°½Ñîb»€þÔLžÍü­þK|XªkŠ»v*ìUØ«±Wb®Å]Š»v*ìUNyãY˜"(©f  =Î*ñŸÌ/ùÊ¯+ùa^ßLsªÞŠ€°Ýþ]ÏØÿ ‘>®*ùgó'óÓÌ¾~c¡?£bME¬5Hÿ ç§íÌßñ•›üž8«ÎñW¤~UþEëß˜’‡´O«iÀÑîå&ÝV%ë;ÿ ’ŸìÝ1WÚß–”º'ååŸÕ´ˆùO k‡¡’O›~Ê,iðÄ±VmŠ»v*ìUØ«Ä?;?ç%´ï%,šNŒRóZ¡†±@âænEÿ |/üôáûJ¾-×µëÿ 0ÞÉ¨ês=ÅÜÍVw5$ÿ þU_…g{åoåWèîÆ²Ÿé=b…¿ÝåÈ?ß¿ÊŸî¯Úýï÷zÜú‹Ú.Ã
+ÞOTÌ=Ø«±Wb®Å]Š»v*Ã5¼ÕúGqRêê±Eâ*?y'ûý¯÷ãG™:||Rþ«ž|1÷¾~òÖ‡.½¨A¦A³LàþUþÁ>,ÚÎ\"Ý\#Äiõ}­´v±%¼
+(”"(èG_ fˆ›6ï ¡J˜ìUØ«±Wb®ÅX×æMØ´òíô‡¼%?àÈ‹þ7Ëð˜hÎj%ó¯“­>¹­X[uõn Oø'UÍÓ§~â®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ÿ ÿ×õN*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š±ŸÌÍ{ô–µ-P<²²¯ÇŒòP®*üÔF»³Uõîd–ÑYÇö!c_’€ƒõf‚FÍ»ØŠˆÈ²v*ìUØ«±WŒ~}ùs„kq
+ýÌ½:Š´MîJó_õc\Ùi'·®ÕC~$›òGÌÃLÕN1¤7 (¯iû¯ø?Š?õÙ2ÍL8£ÍkÓÏ„×óŸ@f¥Ú»v*ìUØ«±T>£§Á¨ÛÉgv‚H%R¬§¸ÿ ?²ß³’ŒŒM†2ˆ¢ùŸÏžKŸÊ·ÆÞJµ¼•0ÉÙ–½üXŸe×ýŸífëA1nŸ&3OZÿ œpÿ œƒ>S‘<·æ'?¢%oÜÌwú»Ñ¿åÙÏÚÿ }7Çöyå­O³¢•&A$d2°j=Æ*©Š»v*ìU#ów“ôÏ7XI¥kP‰í¤ìv*eã´Ž¿ÍŠ¾$üåÿ œzÕ¿/dkÛnWš3†uWö.U~Çüeþéÿ ÈoÝâ¯"Å^¯ùOÿ 9¯y ¥¡o®é@ŠÛÊMTË¼bÿ Wâ‹üŒUöåÇçG—|ÿ ý8KºU­¥¢Ê¾?Iü¸¹â¬óv*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š¼§óCþr3ËžEW¶Yþ¦µVâåâ_‰!ÿ Wâ—þ+Å_~f~qkß˜WõY¸Z¡&;hê"_ö?îÇÿ ‹$äßìqV	Š½CòÓò¡õrºž°…l¶dì™{ŽÑÄ¿g0ógáØ}N^[žOv†…(”" 
+ª¢€ÑT€f¬›v`Rì	v*ù£ój'Ì·‚N¤ÆAö(”ÍÖ¤:lßQaÙ{K±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»}+äŸÌúÊÚÌ]¢Ü¤1£$Ÿ,T…çÅòÿ }³fŸ.M;ly¢@ÌóÉv*Æ¼Ùù{¥y˜s»…Í(&MŸý—ìÈ¿ëÿ °á—ãÌ`Ñ“›ÄüßùQªù{”ñ©º³™#¨ÿ ‹cÝ“ýoŠ?òóe<fë²a0aÐ™h~aÔ4y¥\Kk8ý¸œ¡ÿ …Å^Õäÿ ùÌ?3é!bÖb‡SˆmVýÔ´ÿ Œ‘Oï‡{O•ÿ ç.ü«Q5>)ëë'$ÿ ‘zŸðè˜«Ôt/>h:ø®•¨[]{G*³ÀW—ü.*Ÿb®Å]Š»v*ìU©kV:Zzº…ÄVéã+ªør¸«Î<Ëÿ 93ä}úø¼”~Åª™kÿ =?ä®*ñï6ÿ ÎkÝÌ/-ië=%ºnMÿ ""â«ÿ #dÅ^çÍ?2yÉ‰Öï¥ž:ÔDÇÊøÇÿ Š±<U’y7ò÷\óÇÕ4+I.XÉ€¢%ß²·îãÿ dØ«êOÊïùÄ=7H)æ×[û¡B-Ò¢?åŸ…çÿ „ü—Å_C[[EkÁ¬q Q@
+ vU]—VÅ]Š»v*ù»Îú?”-þ¹r–ÐŠÓ‘ø˜ÙŠ1ñÈßä¢â¯“?7ç+õ/1‰4Ï+‡ÓôóUi«IäÅÞtÿ S÷Ÿñgìb¯Ò4{½jåm,cig~Ãñfcð¨ÿ +#)îYF$ìõùyùWoåÀ··ÜgÔ:ƒO†?øÇâÿ ñoüó>¯6£‹aô»,X8w<Ùöb9nÅ]Š»v*ìUØ«±W3˜Ð¤â¯™¿2üáþ&ÕX‰ú¬5Žâ+ñIÿ =>×ú¼3u‡ §M—'·¡~EyOêöòk×ûÉë5ì€üoþÍÇùçü²f&«'ð‡+Møž¯˜{±Wb®Å]Š»v*Á:¯ßËsFzÏ$q˜a/üÊÌ­(õ8º“éygäfš5;hðP.ãøÇûÿ ù—›wTýÅ]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUÿÐõN*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š¼Wþrã\w’%¶{q#äÖþLb¯Ž¿.tã¨y‚ÊÚa!¯„¾?ñ«)¨’Ûˆ\ƒê<Ñ»§b®Å]Š»v*–ùC‹]ÓçÓgÙfB Ò¼[ª?ûâÙf9ðkœ8…>V½²¸Ò®ÞÞ`c¸·r§Ù”þÉÿ ˆæð”Š/¦|ƒæ´ó6—åG®¿Ê;8ø}±ñÿ ²áû9¥Í€»Œ98Ã"Ê[Š»v*ìUØªWæO.Zù†Íì/V¨ÛƒÝ[ö]?Êf9˜s€˜¢ù«Î>P»òÅá´¹C¼r²ëâ=ÿ g78ò	‹¢p04^¿ùÿ 9%7”==ÌlÓhõ)~ÓÛ×·Œ–ÿ ä}¸¿Ýï¼±­öf¨ÛjvñÞÙH“[Ì¡ã‘e`iXb¨¬UØ«±WbªS@“£E*‡F2°{Š¾küÞÿ œF·ÔêžJ+o1«5›FÇþ]äÿ tÿ Æ'ý×ò´X«å]sA¿ÐnšÃT‚Kk¨þÒH¥HþÏò±T-µÔ¶’¬öîc•*ÊH ŽêÃ{åçüå¿˜¼¼Ó\QªÚ-'<fþ3S÷ŸóÕyÅ˜«é#ÎCùGÍác·»·mþè¹¤o_b})?çœ˜«Ò•ƒ A¨;‚1UØ«±Wb®Å]Š»v*ìUØ«±U+‹˜íãifeŽ5,Äü¦8«È¼õÿ 9Iå,†Öc©Ý®Þ¶é_òîî¿ä_«þ®*ù«óþroÍ>qçmŸ£l[oJØÄÅ·Þ?ûI?ÈÅ^EŠ¶vqW²~\þN0dÔüÀ»
+2[Ùiÿ Õÿ |ÿ ÈÏÚ°3j:EÎÃ§ë'±M‡LÖ»bª7wYD×R,Q/Wv
+£æÍ¶vI›Í¼Ëùë§Ù†‹GŒÝK½ª‘ƒÿ '$ÿ ’ëæl4¤ýN$õ@rxÿ š<ÏwæK³}}ÇÔ ((Šñ‹}¬ØBƒ9™)6Mƒ±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*Éüµù‡«ùx…³˜´ýÓ'Ä”ÿ $îÿ Ø2åSÅóm†SOZò—ç^ª•·Ô×êwƒ‘5ˆ¿oíG_òþÿ ~æM)·s±êAç³Ñ‘ÖE„2°¨#pAÌ")Ë»o°6þQé:õg€}RèïÎ08±ÿ ‹"û'ý‡þnY•PcÏÔâäÓ‰rô¼cÌÿ —Ç—9=Ô>¥¸ÿ wEñ'û/Ûþz*“›fŒù:ùâ”9±l¹©Ø«`Ó|Ué_˜^bÒ)ú?S¼€'p?à9qÅYE§üäwŸm(#Õ¥`?#ù9b©Äó–}ŒQ¯"“ýkxÿ ãT\U{ÎZyðŠ˜G¸?æœU-»ÿ œœóý×]LÆ?È†!ÿ 2±V;ª~où¿T¨»ÕïYOU2/üeb·7s]9–áÚIVbIûÎ*¡ŠªEÌâ8Ágc@äâ¯Kòoüã—œ¼ÓÅâ²6–íþíºýÐ§ú‡÷íþÆ,Uô¿çô- ­Ï˜æ}Nq¿¦µŽ~J}Y?àÓþ1â¯xÒ´‹="Ýlôèc··eŽ%
+£ä«Š£1Wb®Å]Š±Ÿ8~dyÉñuÛØ­*šÈßêBœ¥øUó§æüælÓ´òu·¤GÖn -óŽÑç£?ücÅ_9yƒÌº—˜îö¯q%ÝËþÔŒXÿ ª¿Ê¿ä®*Ê¼›ù?©k¼.o?Ñ,˜É‡ÆÀŠN?øÝøÿ ‘Ï1²j<Ë“—¹î^[ò®ŸåÈ>¯§Drs»¹ä~ÿ ñå\ÕÏ!Ÿ7eb“l­±Ø«±Wb®Å]Š»v*ìUæ>xýkúÍ¿Òn÷¤Ò3û?ëKÿ &ÿ ×\ÎÓb¿Qpµ9+ÒQäo*Éæ}J;¨ˆ|r·ò ?ÿ Xý”ÿ /ŽgdŸ ·8Í>¢¶·ŽÚ$‚jTt 
+(Í!7»º¶TÀ—b®Å]Š»v*ìUå_óWÜ4ûK>òÌÒÈµãÿ 3ó?H7%ÁÕ€Aÿ Î$ébûÏ0LE~«óÂúó;6N¹÷n*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb¯ÿÑõN*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š»v*ìUØ«±Wb®Å]Š¾Xÿ œàÖHM#JS±3NÃåÂ8ÿ âRâ¯üˆ°[mîWÐ™Oƒ1Xÿ â&bjEÊÓ“ßóRí]Š»v*ìUØ«±W~yù4¿0Ú¯@àÂÅ/üËoùçþVlt¹?„ºýN?â/òÃÎ‡Ë:õÛý
+â‰7]ºð—þy·ü'<ÉÍŒ8ørpÒªÁ…TÔ„f•Ü;v*ìUØ«±Wb©o˜|»gæF±¿Nq·B>ÒžÏ~ËúëáË!3a®p_:y×òþûÊ³RqêÚ1¤s( qû“ÿ Ù·Ç”Llêrb0æÈ(=uŸË›…ŠúÎ–ÍY-\í¿W…¿Ý2Â7í¦\Ôû_òëóWBóý ºÑ¦U ËÐKüdþ7NQÿ •Š³UØ«±Wb®ÅX×¿.ô?;[}O]µK…aþË§üb•~4ÿ ˆâ¯–ÿ 1¿ç5m'ß•%ý!l7ôd¢Î£Øü1Mÿ $›þ+Å^ªézMÃZjÉmp‡âŽE*Ãý‹ïŠ ±Vaå/ÍÏ4ùN‰£j3Åô‰›œò&^qÿ Ââ¯bò×üæ®±jzí„7kÝác}ÇÖO»†*ôÍþsÉ÷Àåº²nüãæ¿ðP4ÿ $ñVs¦þ{ù#Q Ã¬Z­{Jþ—üŸôñVKgæýðkk-’doø‹b©‚_Û½8Ê†½(Àâ«_RµŒUæG»Š¥·¾zÐlk½FÒ?žx×þ$ø«Õç!<‹¦fÕ ŽÐò–¿ò!dÅX&½ÿ 9›åk*¦›ouzã¡â±¡ÿ díêÉ,UåÞfÿ œÎó-ø1èöÖöz1¬²öOÂ/ù#Š¼{Ìÿ ˜÷šŸž¹}=ØêÜðêD?tŸìSc¸«±TÏAòýî»p,ôøÌ²‘]ºüÎÝ?ÊÈÊB"Ë(ÄÈÐ{ß¿*ìüµK»’./öøÈøSþ0ƒÿ 'âþ^-^]AžÃévx°îy³¬ÄrŠ¼ëÎ_œÖ96Ú`[Û‘±!¿v¿ì×ûÃþJÁæf=1–çg& †ïóšu0ÍëêS4„}•è«þ¢…ÊþoÚÍ” #°uò™—4£&Áè^EüˆógË§Y´v­ÿ »Žž*[ã“þx¤˜«.óÿ üâ˜ü¯bº‹¦¨ª¤Î+ŽÑâ?ÕýçüWŠ¼D‚Äb«qWb®Å]Š»v*ìUØ«±Wb¯Gü©üŽ×?1gj†ßM’]È¾ÒÅþþ“ü”ÿ fÉŠ¾ÎÐÿ #|§¥èñè/aÔ+»<èGsö¥2ý¥sÿ ñà¿
+b¯4ó¿üá®‡¨†ŸËwióÄrVX¿ß§üŸêâ¯œ¼ÿ ù'æ#ú­«5¨4üq›®ñÿ ÏU`X«.ò_æF¥å‡ÄLÖ„ï“Oùåþûoõ~×í.S“Ÿ6ìyLûå/9Øy¢ßë,C¯Û‰¨ùCù•×þ%ðæ§&#»´Ç”O’{•6»aÞeü¨Ñ5ÊÉéýZàÿ »!¢×ýxéé·ü
+¿ùy“D£ý'zxËÉåÞbü‘Ö4âÒX½„oðü/Ox›þeÉ#fl51—?K‡=<‡/S¾°¸±•­îãh¥CFW}ÁÌ mÆ"¸PìUØªw y7Vóür­žàÖ”B	ÿ ëŠ²»oùÇŸ=Üý"q_ç(Ÿòq×doüâ_ž¯)êÛÁm_÷ìëÿ 2}lU˜èßó„z¤´mWT‚o/ã'ÕñW¢ù{þpëÊ:}Q{›÷C¸û¿ü•Å^­å¯Ëß/ùe@Ñl-íOó"L¦²ø,U‘b®Å]Š¡îï`³C-Ì‹¬ì}íŠ°o0þ~y+Bä.µH$uØ¤ÌÕÿ žOølUåžgÿ œÖÒ­ÃG ió]?@ó°‰~|SÕ‘¿äž*ñŸ8ÎOyÓÌ¢K¡anß±h8ÆoŠø1W—K-ÅôÆIÍ<‡rjÌÄÿ Ã6*Í¼µù7¬êô’é~¥ý©GÇ
